@@ -2,7 +2,8 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const DB_PATH = path.join(__dirname, 'lawncare.db');
+// Support Render.com persistent disk: set DB_PATH env var to /data/lawncare.db
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'lawncare.db');
 
 function initDB() {
   const db = new Database(DB_PATH);

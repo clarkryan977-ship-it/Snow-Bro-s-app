@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { authenticateToken } = require('../middleware/auth');
 
-const uploadDir = path.join(__dirname, '../uploads/beforeafter');
+const uploadDir = path.join(process.env.UPLOADS_ROOT || path.join(__dirname, '../uploads'), 'beforeafter');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({

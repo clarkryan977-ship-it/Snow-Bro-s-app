@@ -2,10 +2,21 @@ const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
 const path = require('path');
+const fs = require('fs');
 const { initDB } = require('./db/init');
-
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Support Render.com persistent disk for uploads
+// Set UPLOADS_PATH env var to /data/uploads on Render
+const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, 'uploads');
+// Ensure upload subdirectories exist
+['contracts','signed','gallery','jobphotos','beforeafter'].forEach(sub => {
+  const dir = path.join(UPLOADS_ROOT, sub);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+});
+// Make uploads path available to routes
+process.env.UPLOADS_ROOT = UPLOADS_ROOT;
 
 // Initialize database
 const db = initDB();
@@ -90,7 +101,7 @@ app.use('/api/calendar',      require('./routes/calendar'));
 app.use('/api/settings',      require('./routes/settings'));
 
 // ── Performance: Serve uploaded files with short cache ──
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+app.use('/uploads', express.static(UPLOADS_ROOT, {
   maxAge: '1h',
   etag: true,
   lastModified: true,
