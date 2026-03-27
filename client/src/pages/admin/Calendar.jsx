@@ -1,157 +1,365 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import FullCalendar from '@fullcalendar/react';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import timeGridPlugin from '@fullcalendar/timegrid';
+import interactionPlugin from '@fullcalendar/interaction';
+import listPlugin from '@fullcalendar/list';
 import api from '../../utils/api';
 
-const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const STATUS_COLORS = {
+  pending:   { bg: '#fef3c7', border: '#d97706', text: '#92400e' },
+  confirmed: { bg: '#dbeafe', border: '#2563eb', text: '#1e40af' },
+  completed: { bg: '#d1fae5', border: '#059669', text: '#065f46' },
+  cancelled: { bg: '#fee2e2', border: '#dc2626', text: '#991b1b' },
+};
+
+const EMPTY_FORM = {
+  service_id: '', preferred_date: '', preferred_time: '',
+  client_id: '', client_name: '', client_email: '', client_phone: '',
+  assigned_employee_id: '', status: 'confirmed', notes: '',
+};
 
 export default function AdminCalendar() {
-  const [bookings, setBookings] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selected, setSelected] = useState(null);
-  const [view, setView] = useState('month'); // month or week
-  const [msg, setMsg] = useState(null);
+  const [bookings, setBookings]     = useState([]);
+  const [services, setServices]     = useState([]);
+  const [clients, setClients]       = useState([]);
+  const [employees, setEmployees]   = useState([]);
+  const [modal, setModal]           = useState(null); // null | { mode:'add'|'edit', booking?, form }
+  const [saving, setSaving]         = useState(false);
+  const [msg, setMsg]               = useState(null);
+  const calRef                      = useRef(null);
 
-  const load = () => {
-    api.get('/calendar').then(r => setBookings(r.data)).catch(() => {});
-    api.get('/employees').then(r => setEmployees(r.data.filter(e => e.role === 'employee'))).catch(() => {});
+  const flash = (type, text) => {
+    setMsg({ type, text });
+    setTimeout(() => setMsg(null), 4000);
   };
+
+  const load = async () => {
+    try {
+      const [bRes, sRes, cRes, eRes] = await Promise.all([
+        api.get('/calendar'),
+        api.get('/services'),
+        api.get('/clients'),
+        api.get('/employees'),
+      ]);
+      setBookings(bRes.data);
+      setServices(sRes.data);
+      setClients(cRes.data);
+      setEmployees(eRes.data.filter(e => e.role === 'employee' || e.role === 'manager'));
+    } catch (e) { console.error(e); }
+  };
+
   useEffect(() => { load(); }, []);
 
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  // Convert bookings → FullCalendar events
+  const events = bookings.map(b => {
+    const col = STATUS_COLORS[b.status] || STATUS_COLORS.pending;
+    const title = [b.service_name, b.full_client_name || b.client_name].filter(Boolean).join(' — ');
+    const start = b.preferred_time
+      ? `${b.preferred_date}T${b.preferred_time}`
+      : b.preferred_date;
+    return {
+      id: String(b.id),
+      title,
+      start,
+      allDay: !b.preferred_time,
+      backgroundColor: col.bg,
+      borderColor: col.border,
+      textColor: col.text,
+      extendedProps: { booking: b },
+    };
+  });
 
-  const getBookingsForDate = (dateStr) => bookings.filter(b => b.preferred_date === dateStr);
+  // Click on empty date/slot → open Add modal
+  const handleDateClick = (info) => {
+    const date = info.dateStr.split('T')[0];
+    const time = info.dateStr.includes('T') ? info.dateStr.split('T')[1].slice(0, 5) : '';
+    setModal({ mode: 'add', form: { ...EMPTY_FORM, preferred_date: date, preferred_time: time } });
+  };
 
-  const assignEmployee = async (bookingId, employeeId) => {
+  // Click on existing event → open Edit modal
+  const handleEventClick = (info) => {
+    const b = info.event.extendedProps.booking;
+    setModal({
+      mode: 'edit',
+      booking: b,
+      form: {
+        service_id:          String(b.service_id || ''),
+        preferred_date:      b.preferred_date || '',
+        preferred_time:      b.preferred_time || '',
+        client_id:           String(b.client_id || ''),
+        client_name:         b.client_name || b.full_client_name || '',
+        client_email:        b.client_email || '',
+        client_phone:        b.client_phone || '',
+        assigned_employee_id: String(b.assigned_employee_id || ''),
+        status:              b.status || 'confirmed',
+        notes:               b.notes || '',
+      },
+    });
+  };
+
+  // Drag-and-drop reschedule
+  const handleEventDrop = async (info) => {
+    const id = info.event.id;
+    const newDate = info.event.startStr.split('T')[0];
+    const newTime = info.event.startStr.includes('T')
+      ? info.event.startStr.split('T')[1].slice(0, 5) : '';
     try {
-      await api.put(`/calendar/${bookingId}/assign`, { employee_id: employeeId || null });
-      setMsg({ type:'success', text:'Employee assigned & notified!' });
+      await api.put(`/calendar/${id}/reschedule`, { preferred_date: newDate, preferred_time: newTime });
+      flash('success', 'Appointment rescheduled!');
       load();
-    } catch (e) { setMsg({ type:'error', text:'Failed to assign' }); }
+    } catch (e) {
+      info.revert();
+      flash('error', 'Failed to reschedule');
+    }
   };
 
-  const reschedule = async (bookingId, date, time) => {
+  // Resize event (timegrid) → update time
+  const handleEventResize = async (info) => {
+    const id = info.event.id;
+    const newDate = info.event.startStr.split('T')[0];
+    const newTime = info.event.startStr.includes('T')
+      ? info.event.startStr.split('T')[1].slice(0, 5) : '';
     try {
-      await api.put(`/calendar/${bookingId}/reschedule`, { preferred_date: date, preferred_time: time });
-      setMsg({ type:'success', text:'Rescheduled!' });
+      await api.put(`/calendar/${id}/reschedule`, { preferred_date: newDate, preferred_time: newTime });
+      flash('success', 'Appointment updated!');
       load();
-    } catch (e) { setMsg({ type:'error', text:'Failed to reschedule' }); }
+    } catch (e) {
+      info.revert();
+      flash('error', 'Failed to update');
+    }
   };
 
-  const markComplete = async (bookingId) => {
+  const handleSave = async () => {
+    const f = modal.form;
+    if (!f.service_id || !f.preferred_date) {
+      flash('error', 'Service and date are required');
+      return;
+    }
+    setSaving(true);
     try {
-      await api.put(`/calendar/${bookingId}/complete`);
-      setMsg({ type:'success', text:'Marked as completed!' });
+      const payload = {
+        service_id:          Number(f.service_id),
+        preferred_date:      f.preferred_date,
+        preferred_time:      f.preferred_time,
+        client_id:           f.client_id ? Number(f.client_id) : null,
+        client_name:         f.client_name,
+        client_email:        f.client_email,
+        client_phone:        f.client_phone,
+        assigned_employee_id: f.assigned_employee_id ? Number(f.assigned_employee_id) : null,
+        status:              f.status,
+        notes:               f.notes,
+      };
+      if (modal.mode === 'add') {
+        await api.post('/calendar', payload);
+        flash('success', 'Appointment added!');
+      } else {
+        await api.put(`/calendar/${modal.booking.id}/edit`, payload);
+        flash('success', 'Appointment saved!');
+      }
+      setModal(null);
       load();
-      setSelected(null);
-    } catch (e) { setMsg({ type:'error', text:'Failed' }); }
+    } catch (e) {
+      flash('error', e.response?.data?.error || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const statusColor = (s) => {
-    if (s === 'completed') return '#059669';
-    if (s === 'confirmed') return '#2563eb';
-    if (s === 'cancelled') return '#dc2626';
-    return '#d97706';
+  const handleDelete = async () => {
+    if (!window.confirm('Delete this appointment? This cannot be undone.')) return;
+    setSaving(true);
+    try {
+      await api.delete(`/calendar/${modal.booking.id}`);
+      flash('success', 'Appointment deleted');
+      setModal(null);
+      load();
+    } catch (e) {
+      flash('error', 'Failed to delete');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const prev = () => setCurrentDate(new Date(year, month - 1, 1));
-  const next = () => setCurrentDate(new Date(year, month + 1, 1));
+  const setField = (key, val) =>
+    setModal(m => ({ ...m, form: { ...m.form, [key]: val } }));
 
-  const calendarDays = [];
-  for (let i = 0; i < firstDay; i++) calendarDays.push(null);
-  for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
+  // When a client is selected from the dropdown, auto-fill name/email/phone
+  const handleClientSelect = (clientId) => {
+    setField('client_id', clientId);
+    if (clientId) {
+      const c = clients.find(c => String(c.id) === String(clientId));
+      if (c) {
+        setModal(m => ({
+          ...m,
+          form: {
+            ...m.form,
+            client_id:    String(clientId),
+            client_name:  `${c.first_name} ${c.last_name}`.trim(),
+            client_email: c.email || '',
+            client_phone: c.phone || '',
+          },
+        }));
+      }
+    }
+  };
 
   return (
     <div>
-      <div className="page-header">
-        <h1>📅 Job Calendar</h1>
-        <p>Visual scheduling — assign employees, reschedule, and manage jobs.</p>
+      <div className="page-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'1rem' }}>
+        <div>
+          <h1>📅 Job Calendar</h1>
+          <p>Click a date to add · Click an event to edit · Drag to reschedule</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setModal({ mode:'add', form: { ...EMPTY_FORM } })}>
+          + New Appointment
+        </button>
       </div>
 
-      {msg && <div className={`alert alert-${msg.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom:'1rem' }}>{msg.text}</div>}
-
-      {/* Calendar Header */}
-      <div className="card" style={{ marginBottom:'1rem' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
-          <button className="btn btn-secondary btn-sm" onClick={prev}>← Prev</button>
-          <h2 style={{ fontSize:'1.2rem', fontWeight:700 }}>{MONTHS[month]} {year}</h2>
-          <button className="btn btn-secondary btn-sm" onClick={next}>Next →</button>
+      {msg && (
+        <div className={`alert alert-${msg.type === 'success' ? 'success' : 'error'}`}
+             style={{ marginBottom:'1rem' }}>
+          {msg.text}
         </div>
+      )}
 
-        {/* Day headers */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:2 }}>
-          {DAYS.map(d => (
-            <div key={d} style={{ textAlign:'center', fontWeight:700, fontSize:'.75rem', color:'var(--gray-500)', padding:'.3rem 0' }}>{d}</div>
-          ))}
-          {calendarDays.map((day, i) => {
-            if (!day) return <div key={`e${i}`} style={{ minHeight:80 }} />;
-            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const dayBookings = getBookingsForDate(dateStr);
-            const isToday = dateStr === new Date().toISOString().split('T')[0];
-            return (
-              <div key={day} style={{
-                minHeight:80, border:'1px solid var(--blue-100)', borderRadius:6, padding:'.25rem',
-                background: isToday ? 'var(--blue-50)' : '#fff', cursor:'pointer', overflow:'hidden'
-              }} onClick={() => dayBookings.length > 0 && setSelected({ date: dateStr, bookings: dayBookings })}>
-                <div style={{ fontSize:'.75rem', fontWeight: isToday ? 800 : 600, color: isToday ? 'var(--blue-700)' : 'var(--gray-700)', marginBottom:'.2rem' }}>{day}</div>
-                {dayBookings.slice(0, 3).map(b => (
-                  <div key={b.id} style={{
-                    fontSize:'.6rem', padding:'1px 3px', borderRadius:3, marginBottom:1,
-                    background: statusColor(b.status) + '20', color: statusColor(b.status),
-                    fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'
-                  }}>
-                    {b.service_name || 'Job'}
-                  </div>
-                ))}
-                {dayBookings.length > 3 && <div style={{ fontSize:'.55rem', color:'var(--gray-400)' }}>+{dayBookings.length - 3} more</div>}
-              </div>
-            );
-          })}
-        </div>
+      <div className="card" style={{ padding:'1rem' }}>
+        <FullCalendar
+          ref={calRef}
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+          initialView="dayGridMonth"
+          headerToolbar={{
+            left:   'prev,next today',
+            center: 'title',
+            right:  'dayGridMonth,timeGridWeek,timeGridDay,listWeek',
+          }}
+          events={events}
+          editable={true}
+          droppable={true}
+          selectable={true}
+          dateClick={handleDateClick}
+          eventClick={handleEventClick}
+          eventDrop={handleEventDrop}
+          eventResize={handleEventResize}
+          eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: true }}
+          height="auto"
+          dayMaxEvents={4}
+          eventDisplay="block"
+          nowIndicator={true}
+        />
       </div>
 
-      {/* Day Detail Modal */}
-      {selected && (
-        <div className="modal-overlay" onClick={() => setSelected(null)}>
-          <div className="modal" style={{ maxWidth:600 }} onClick={e => e.stopPropagation()}>
+      {/* Add / Edit Modal */}
+      {modal && (
+        <div className="modal-overlay" onClick={() => setModal(null)}>
+          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>📅 {selected.date}</h2>
-              <button className="modal-close" onClick={() => setSelected(null)}>×</button>
+              <h2>{modal.mode === 'add' ? '➕ New Appointment' : '✏️ Edit Appointment'}</h2>
+              <button className="modal-close" onClick={() => setModal(null)}>×</button>
             </div>
-            <div className="modal-body">
-              {selected.bookings.map(b => (
-                <div key={b.id} style={{ border:'1px solid var(--blue-100)', borderRadius:'var(--radius)', padding:'1rem', marginBottom:'.75rem' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'.5rem' }}>
-                    <div>
-                      <strong>{b.service_name || 'Service'}</strong>
-                      <span style={{ marginLeft:'.5rem', fontSize:'.8rem', color:statusColor(b.status), fontWeight:600 }}>({b.status})</span>
-                    </div>
-                    <span style={{ fontSize:'.82rem', color:'var(--gray-500)' }}>{b.preferred_time || 'No time'}</span>
-                  </div>
-                  <div style={{ fontSize:'.85rem', color:'var(--gray-600)', marginBottom:'.5rem' }}>
-                    👤 {b.client_name || b.full_client_name || 'Unknown'} {b.client_phone && `· ${b.client_phone}`}
-                  </div>
-                  <div style={{ display:'flex', gap:'.5rem', alignItems:'center', flexWrap:'wrap' }}>
-                    <select
-                      style={{ fontSize:'.82rem', padding:'.3rem .5rem', borderRadius:6, border:'1px solid var(--blue-200)' }}
-                      value={b.assigned_employee_id || ''}
-                      onChange={e => assignEmployee(b.id, e.target.value)}
-                    >
-                      <option value="">Assign Employee</option>
-                      {employees.map(emp => (
-                        <option key={emp.id} value={emp.id}>{emp.first_name} {emp.last_name}</option>
-                      ))}
-                    </select>
-                    {b.assigned_employee_name && <span className="badge badge-blue">{b.assigned_employee_name}</span>}
-                    {b.status !== 'completed' && (
-                      <button className="btn btn-primary btn-sm" onClick={() => markComplete(b.id)}>✅ Complete</button>
-                    )}
-                  </div>
+            <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:'.75rem' }}>
+
+              {/* Service */}
+              <div>
+                <label style={labelStyle}>Service *</label>
+                <select style={inputStyle} value={modal.form.service_id}
+                        onChange={e => setField('service_id', e.target.value)}>
+                  <option value="">— Select service —</option>
+                  {services.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date & Time */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Date *</label>
+                  <input type="date" style={inputStyle} value={modal.form.preferred_date}
+                         onChange={e => setField('preferred_date', e.target.value)} />
                 </div>
-              ))}
+                <div>
+                  <label style={labelStyle}>Time</label>
+                  <input type="time" style={inputStyle} value={modal.form.preferred_time}
+                         onChange={e => setField('preferred_time', e.target.value)} />
+                </div>
+              </div>
+
+              {/* Customer — pick from list or type */}
+              <div>
+                <label style={labelStyle}>Customer (select existing or type below)</label>
+                <select style={inputStyle} value={modal.form.client_id}
+                        onChange={e => handleClientSelect(e.target.value)}>
+                  <option value="">— Select customer —</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.first_name} {c.last_name} {c.address ? `· ${c.address}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+                <div>
+                  <label style={labelStyle}>Customer Name</label>
+                  <input style={inputStyle} placeholder="Full name" value={modal.form.client_name}
+                         onChange={e => setField('client_name', e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Phone</label>
+                  <input style={inputStyle} placeholder="Phone" value={modal.form.client_phone}
+                         onChange={e => setField('client_phone', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>Customer Email</label>
+                <input style={inputStyle} placeholder="Email" value={modal.form.client_email}
+                       onChange={e => setField('client_email', e.target.value)} />
+              </div>
+
+              {/* Assign Employee */}
+              <div>
+                <label style={labelStyle}>Assigned Employee</label>
+                <select style={inputStyle} value={modal.form.assigned_employee_id}
+                        onChange={e => setField('assigned_employee_id', e.target.value)}>
+                  <option value="">— Unassigned —</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.first_name} {emp.last_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label style={labelStyle}>Status</label>
+                <select style={inputStyle} value={modal.form.status}
+                        onChange={e => setField('status', e.target.value)}>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label style={labelStyle}>Notes</label>
+                <textarea style={{ ...inputStyle, minHeight: 70, resize:'vertical' }}
+                          placeholder="Any notes…" value={modal.form.notes}
+                          onChange={e => setField('notes', e.target.value)} />
+              </div>
+
+              {/* Actions */}
+              <div style={{ display:'flex', gap:'.5rem', justifyContent:'flex-end', paddingTop:'.5rem', borderTop:'1px solid var(--blue-100)' }}>
+                {modal.mode === 'edit' && (
+                  <button className="btn btn-danger btn-sm" onClick={handleDelete} disabled={saving}>
+                    🗑 Delete
+                  </button>
+                )}
+                <button className="btn btn-secondary btn-sm" onClick={() => setModal(null)} disabled={saving}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving…' : modal.mode === 'add' ? '➕ Add Appointment' : '💾 Save Changes'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -159,3 +367,20 @@ export default function AdminCalendar() {
     </div>
   );
 }
+
+const labelStyle = {
+  display: 'block',
+  fontSize: '.8rem',
+  fontWeight: 600,
+  color: 'var(--gray-600)',
+  marginBottom: '.25rem',
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '.45rem .6rem',
+  borderRadius: 6,
+  border: '1px solid var(--blue-200)',
+  fontSize: '.9rem',
+  boxSizing: 'border-box',
+};

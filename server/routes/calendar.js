@@ -19,6 +19,47 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST create a new booking from admin calendar
+router.post('/', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const { client_id, service_id, preferred_date, preferred_time, notes, client_name, client_email, client_phone, assigned_employee_id, status } = req.body;
+    if (!service_id || !preferred_date) {
+      return res.status(400).json({ error: 'Service and preferred date required' });
+    }
+    const result = req.db.prepare(
+      'INSERT INTO bookings (client_id, service_id, preferred_date, preferred_time, notes, client_name, client_email, client_phone, assigned_employee_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      client_id || null, service_id, preferred_date, preferred_time || '',
+      notes || '', client_name || '', client_email || '', client_phone || '',
+      assigned_employee_id || null, status || 'confirmed'
+    );
+    res.status(201).json({ id: result.lastInsertRowid, message: 'Booking created' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT full edit a booking (admin)
+router.put('/:id/edit', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const { client_id, service_id, preferred_date, preferred_time, notes, client_name, client_email, client_phone, assigned_employee_id, status } = req.body;
+    req.db.prepare(
+      'UPDATE bookings SET client_id=?, service_id=?, preferred_date=?, preferred_time=?, notes=?, client_name=?, client_email=?, client_phone=?, assigned_employee_id=?, status=? WHERE id=?'
+    ).run(
+      client_id || null, service_id, preferred_date, preferred_time || '',
+      notes || '', client_name || '', client_email || '', client_phone || '',
+      assigned_employee_id || null, status || 'confirmed', req.params.id
+    );
+    res.json({ message: 'Booking updated' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE a booking (admin)
+router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    req.db.prepare('DELETE FROM bookings WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Booking deleted' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // PUT assign employee to booking + send notification
 router.put('/:id/assign', authenticateToken, requireAdmin, (req, res) => {
   try {
