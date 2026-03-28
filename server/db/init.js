@@ -185,11 +185,30 @@ async function initDB() {
       signer_name TEXT DEFAULT '',
       signed_file_path TEXT DEFAULT '',
       uploaded_by INTEGER NOT NULL REFERENCES employees(id),
+      contract_type TEXT DEFAULT 'uploaded',
+      service_category TEXT DEFAULT '',
+      rate TEXT DEFAULT '',
+      start_date TEXT DEFAULT '',
+      sign_token TEXT DEFAULT '',
+      contract_html TEXT DEFAULT '',
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
-  // Estimates
+  // Add columns if they don't exist (migration for existing tables)
+  const contractCols = [
+    ["contract_type", "TEXT DEFAULT 'uploaded'"],
+    ["service_category", "TEXT DEFAULT ''"],
+    ["rate", "TEXT DEFAULT ''"],
+    ["start_date", "TEXT DEFAULT ''"],
+    ["sign_token", "TEXT DEFAULT ''"],
+    ["contract_html", "TEXT DEFAULT ''"],
+  ];
+  for (const [col, def] of contractCols) {
+    await db.query(`ALTER TABLE contracts ADD COLUMN IF NOT EXISTS ${col} ${def}`).catch(() => {});
+  }
+
+  // Estimatess
   await db.query(`
     CREATE TABLE IF NOT EXISTS estimates (
       id SERIAL PRIMARY KEY,

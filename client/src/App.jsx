@@ -15,6 +15,7 @@ const Pay = lazy(() => import('./pages/Pay'));
 const Gallery = lazy(() => import('./pages/Gallery'));
 const PublicReviews = lazy(() => import('./pages/Reviews'));
 const ETALookup = lazy(() => import('./pages/ETALookup'));
+const SignContract = lazy(() => import('./pages/SignContract'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
@@ -171,6 +172,7 @@ export default function App() {
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/reviews" element={<PublicReviews />} />
             <Route path="/eta" element={<ETALookup />} />
+            <Route path="/sign-contract/:token" element={<SignContract />} />
           </Route>
 
           {/* Admin + Manager routes */}
