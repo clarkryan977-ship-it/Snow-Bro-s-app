@@ -1,10 +1,10 @@
 const nodemailer = require('nodemailer');
 
 const EMAIL_USER = process.env.EMAIL_USER || 'prosnowbros@gmail.com';
-const EMAIL_PASS = process.env.EMAIL_PASS || 'qzvtdmbvdyyhzfck';
+const EMAIL_PASS = process.env.EMAIL_PASS || 'hisaxewlwuxmkghz';
 const BCC_EMAIL = 'clarkryan977@gmail.com';
 
-// Create transporter with explicit Gmail SMTP settings for better compatibility
+// Create transporter with explicit Gmail SMTP settings
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
@@ -20,21 +20,23 @@ const transporter = nodemailer.createTransport({
 
 /**
  * Send an email using the Snow Bro's Gmail account.
- * @param {Object} options - { to, subject, html, attachments? }
+ * clarkryan977@gmail.com is always BCC'd on every outgoing email.
+ * @param {Object} options - { to, subject, html, attachments?, cc? }
  */
-async function sendMail({ to, subject, html, attachments }) {
+async function sendMail({ to, subject, html, attachments, cc }) {
   const mailOptions = {
     from: `"Snow Bro's Lawn Care & Snow Removal" <${EMAIL_USER}>`,
     to,
     bcc: BCC_EMAIL,
     subject,
     html,
-    attachments
+    ...(cc ? { cc } : {}),
+    ...(attachments ? { attachments } : {})
   };
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log(`[MAILER] Email sent to ${to}: ${info.messageId}`);
+    console.log(`[MAILER] Email sent to ${to} (BCC: ${BCC_EMAIL}): ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (err) {
     console.error(`[MAILER] Failed to send email to ${to}:`, err.message);
