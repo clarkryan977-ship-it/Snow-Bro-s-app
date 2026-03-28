@@ -229,19 +229,16 @@ export default function AdminClients() {
         service_category: isSnow ? 'snow' : 'lawn',
         rate: contractForm.rate,
         start_date: contractForm.start_date,
-        contract_html: contractHtml
+        end_date: contractForm.end_date,
+        deposit: contractForm.deposit || '0',
+        frequency: contractForm.frequency,
+        service_details: contractForm.details || '',
+        contract_html: contractHtml,
+        send_email: true
       });
 
       const signUrl = `${window.location.origin}/sign-contract/${res.data.sign_token}`;
-      
-      // Send email notification
-      await api.post('/emails/send', {
-        subject: `Action Required: Your Snow Bro's Service Contract`,
-        body: `Hello ${client.first_name},\n\nPlease review and sign your ${title} by clicking the link below:\n\n${signUrl}\n\nThank you,\nSnow Bro's Team`,
-        recipient_ids: [client.id]
-      });
-
-      alert(`Contract generated and sent! Link: ${signUrl}`);
+      alert(`Contract generated and sent to ${client.email}!\n\nSigning link:\n${signUrl}`);
       setContractModal(null);
     } catch (err) {
       setMsg(err.response?.data?.error || 'Failed to generate contract');

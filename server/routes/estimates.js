@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const nodemailer = require('nodemailer');
 const { emailHeader, emailFooter } = require('../utils/emailHeader');
+const { sendMail } = require('../utils/mailer');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 async function nextEstimateNumber(db) {
@@ -166,26 +166,7 @@ router.post('/:id/email', authenticateToken, requireAdmin, async (req, res) => {
     const { rows: items } = await req.db.query('SELECT * FROM estimate_items WHERE estimate_id = $1 ORDER BY id', [est.id]);
     const html = buildEstimateHTML(est, items);
 
-    // Use nodemailer with a simple SMTP config (or ethereal for demo)
-    let transporter;
-    if (process.env.SMTP_HOST) {
-      transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: false,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-      });
-    } else {
-      // Ethereal test account for demo
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email', port: 587, secure: false,
-        auth: { user: testAccount.user, pass: testAccount.pass }
-      });
-    }
-
-    const info = await transporter.sendMail({
-      from: '"Snow Bro\'s" <noreply@snowbros.com>',
+    const info = await sendMail({
       to: est.customer_email,
       subject: `Your Estimate from Snow Bro's — ${est.estimate_number}`,
       html
@@ -194,8 +175,7 @@ router.post('/:id/email', authenticateToken, requireAdmin, async (req, res) => {
     // Mark as emailed
     await req.db.query("UPDATE estimates SET emailed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END WHERE id = $1", [est.id]);
 
-    const previewUrl = nodemailer.getTestMessageUrl(info);
-    res.json({ success: true, messageId: info.messageId, previewUrl: previewUrl || null });
+    res.json({ success: true, messageId: info.messageId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

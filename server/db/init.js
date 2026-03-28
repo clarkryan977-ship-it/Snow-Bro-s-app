@@ -201,6 +201,10 @@ async function initDB() {
     ["service_category", "TEXT DEFAULT ''"],
     ["rate", "TEXT DEFAULT ''"],
     ["start_date", "TEXT DEFAULT ''"],
+    ["end_date", "TEXT DEFAULT ''"],
+    ["deposit", "TEXT DEFAULT '0'"],
+    ["frequency", "TEXT DEFAULT 'Weekly'"],
+    ["service_details", "TEXT DEFAULT ''"],
     ["sign_token", "TEXT DEFAULT ''"],
     ["contract_html", "TEXT DEFAULT ''"],
   ];

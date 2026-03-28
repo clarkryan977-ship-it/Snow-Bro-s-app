@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { wrapEmail } = require('../utils/emailHeader');
+const { sendMail } = require('../utils/mailer');
 
 // Send promotional email (admin)
 router.post('/send', authenticateToken, requireAdmin, async (req, res) => {
@@ -21,7 +22,7 @@ router.post('/send', authenticateToken, requireAdmin, async (req, res) => {
       recipients = recipientRows;
     } else {
       const { rows: allRows } = await req.db.query(
-        'SELECT id, email, first_name, last_name FROM clients WHERE email NOT LIKE \'%@snowbros.placeholder%\''
+        "SELECT id, email, first_name, last_name FROM clients WHERE email NOT LIKE '%@snowbros.placeholder%'"
       );
       recipients = allRows;
     }
@@ -43,15 +44,27 @@ router.post('/send', authenticateToken, requireAdmin, async (req, res) => {
       [subject, body, recipients.length, req.user.id]
     );
 
-    // In production, send via SMTP/SendGrid. For now, log and return success.
-    console.log(`[EMAIL] Subject: "${subject}" → ${recipients.length} recipients`);
-    recipients.forEach(r => console.log(`  → ${r.first_name} ${r.last_name} <${r.email}>`));
+    // Send real emails via nodemailer
+    const results = [];
+    for (const r of recipients) {
+      if (!r.email || r.email.includes('@snowbros.placeholder')) {
+        results.push({ name: `${r.first_name} ${r.last_name}`, email: r.email, status: 'skipped (no valid email)' });
+        continue;
+      }
+      try {
+        await sendMail({ to: r.email, subject, html: htmlBody });
+        results.push({ name: `${r.first_name} ${r.last_name}`, email: r.email, status: 'sent' });
+      } catch (err) {
+        console.error(`[EMAIL] Failed to send to ${r.email}:`, err.message);
+        results.push({ name: `${r.first_name} ${r.last_name}`, email: r.email, status: `failed: ${err.message}` });
+      }
+    }
 
+    const sentCount = results.filter(r => r.status === 'sent').length;
     res.json({
-      message: `Email queued for ${recipients.length} recipient(s)`,
-      recipients_count: recipients.length,
-      recipients: recipients.map(r => ({ name: `${r.first_name} ${r.last_name}`, email: r.email })),
-      html_preview: htmlBody.substring(0, 200) + '...'
+      message: `Email sent to ${sentCount} of ${recipients.length} recipient(s)`,
+      recipients_count: sentCount,
+      results
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
