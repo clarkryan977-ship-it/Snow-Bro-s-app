@@ -40,7 +40,7 @@ export default function Login() {
     setForgotLoading(true);
     setForgotMsg(null);
     try {
-      const { data } = await api.post('/auth/forgot-password', { email: forgotEmail });
+      const { data } = await api.post('/auth/forgot-password', { email: forgotEmail, type: tab });
       setForgotMsg({ type: 'success', text: data.message });
     } catch (err) {
       setForgotMsg({ type: 'error', text: err.response?.data?.error || 'Failed to send reset email.' });
@@ -59,7 +59,7 @@ export default function Login() {
             style={{ width: 100, height: 100, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--blue-200)', boxShadow: 'var(--shadow-md)', marginBottom: '.75rem', display: 'block', margin: '0 auto .75rem' }}
           />
           <h1>Reset Password</h1>
-          <p>Enter your email to receive a reset link</p>
+          <p>Enter your {tab === 'client' ? 'client' : 'staff'} email to receive a reset link</p>
         </div>
 
         <div className="card">
@@ -69,7 +69,7 @@ export default function Login() {
             </div>
           )}
 
-          {!forgotMsg?.type === 'success' || !forgotMsg ? (
+          {(!forgotMsg || forgotMsg.type !== 'success') && (
             <form onSubmit={sendForgotPassword}>
               <div className="form-group">
                 <label>Email Address</label>
@@ -79,27 +79,7 @@ export default function Login() {
                   onChange={e => setForgotEmail(e.target.value)}
                   required
                   className="form-control"
-                  placeholder="Enter your admin email"
-                  autoComplete="email"
-                />
-              </div>
-              <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={forgotLoading}>
-                {forgotLoading ? <span className="spinner" /> : '📧 Send Reset Link'}
-              </button>
-            </form>
-          ) : null}
-
-          {forgotMsg?.type !== 'success' && (
-            <form onSubmit={sendForgotPassword}>
-              <div className="form-group">
-                <label>Email Address</label>
-                <input
-                  type="email"
-                  value={forgotEmail}
-                  onChange={e => setForgotEmail(e.target.value)}
-                  required
-                  className="form-control"
-                  placeholder="Enter your admin email"
+                  placeholder={`Enter your ${tab === 'client' ? 'client' : 'admin'} email`}
                   autoComplete="email"
                 />
               </div>
@@ -159,18 +139,16 @@ export default function Login() {
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.35rem' }}>
               <label style={{ margin: 0 }}>Password</label>
-              {tab === 'staff' && (
-                <button
-                  type="button"
-                  onClick={() => setShowForgot(true)}
-                  style={{
-                    background: 'none', border: 'none', color: 'var(--blue-600)',
-                    cursor: 'pointer', fontSize: '.8rem', textDecoration: 'underline', padding: 0
-                  }}
-                >
-                  Forgot Password?
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setShowForgot(true)}
+                style={{
+                  background: 'none', border: 'none', color: 'var(--blue-600)',
+                  cursor: 'pointer', fontSize: '.8rem', textDecoration: 'underline', padding: 0
+                }}
+              >
+                Forgot Password?
+              </button>
             </div>
             <input type="password" name="password" value={form.password} onChange={handle} required className="form-control" autoComplete="current-password" />
           </div>

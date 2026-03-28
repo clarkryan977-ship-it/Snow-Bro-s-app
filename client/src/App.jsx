@@ -14,7 +14,7 @@ const Login = lazy(() => import('./pages/Login'));
 const Pay = lazy(() => import('./pages/Pay'));
 const Gallery = lazy(() => import('./pages/Gallery'));
 const PublicReviews = lazy(() => import('./pages/Reviews'));
-const ETALookup = lazy(() => import('./pages/ETALookup'));
+// const ETALookup = lazy(() => import('./pages/ETALookup'));
 const SignContract = lazy(() => import('./pages/SignContract'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
@@ -172,7 +172,7 @@ export default function App() {
             <Route path="/pay" element={<Pay />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/reviews" element={<PublicReviews />} />
-            <Route path="/eta" element={<ETALookup />} />
+            {/* <Route path="/eta" element={<ETALookup />} /> */}
             <Route path="/sign-contract/:token" element={<SignContract />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
           </Route>

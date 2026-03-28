@@ -273,15 +273,19 @@ router.get('/crew-locations', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-//  PUBLIC ETA LOOKUP (no auth required)
+//  CLIENT ETA LOOKUP (authenticated clients only)
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/eta/lookup', async (req, res) => {
+router.get('/my-eta', authenticateToken, async (req, res) => {
   try {
-    const { name, address } = req.query;
-    if (!name && !address) return res.status(400).json({ error: 'Provide name or address' });
-
+    const clientId = req.user.id;
     const db = req.db;
+
+    // Verify client is active
+    const { rows: clientRows } = await db.query('SELECT active FROM clients WHERE id = $1', [clientId]);
+    if (!clientRows[0] || clientRows[0].active !== 1) {
+      return res.json({ found: false, message: 'Account is not active' });
+    }
 
     // Get settings
     const { rows: settingsRows } = await db.query('SELECT key, value FROM route_settings');
@@ -295,21 +299,13 @@ router.get('/eta/lookup', async (req, res) => {
 
     let result = null;
     for (const route of routes) {
-      const { rows: allStops } = await db.query(`
-        SELECT rs.position, rs.frequency, c.first_name, c.last_name, c.address, c.city, c.state
-        FROM route_stops rs JOIN clients c ON rs.client_id = c.id
-        WHERE rs.route_id = $1
-        ORDER BY rs.position ASC`, [route.id]);
+      const { rows: stopRows } = await db.query(`
+        SELECT rs.position, rs.frequency
+        FROM route_stops rs
+        WHERE rs.route_id = $1 AND rs.client_id = $2`, [route.id, clientId]);
 
-      // Search for matching client
-      const match = allStops.find(s => {
-        const fullName = `${s.first_name} ${s.last_name}`.toLowerCase();
-        const fullAddr = `${s.address || ''} ${s.city || ''} ${s.state || ''}`.toLowerCase();
-        return (name && fullName.includes(name.toLowerCase())) ||
-               (address && fullAddr.includes(address.toLowerCase()));
-      });
-
-      if (match) {
+      if (stopRows.length > 0) {
+        const match = stopRows[0];
         const startTime = settings.eta_start_time || '08:00';
         const jobsPerHour = parseFloat(settings.eta_jobs_per_hour) || 2;
         const numCrews = parseInt(settings.eta_num_crews) || 1;
@@ -322,17 +318,12 @@ router.get('/eta/lookup', async (req, res) => {
 
         result = {
           found: true,
-          client_name: `${match.first_name} ${match.last_name}`,
-          address: `${match.address || ''}, ${match.city || ''}, ${match.state || ''}`,
           route_name: route.name,
           route_type: route.type,
           stop_number: match.position + 1,
-          total_stops: allStops.length,
           eta: `${String(etaH).padStart(2, '0')}:${String(etaM).padStart(2, '0')}`,
           crew_number: (match.position % numCrews) + 1,
-          num_crews: numCrews,
           snow_day: snowDay,
-          frequency: match.frequency,
         };
 
         // Check if crew GPS is available for refined ETA
@@ -340,17 +331,12 @@ router.get('/eta/lookup', async (req, res) => {
           const crewNum = (match.position % numCrews) + 1;
           const { rows: crewRows } = await db.query('SELECT * FROM crew_locations WHERE crew_id = $1', [crewNum]);
           const crewLoc = crewRows[0];
-          if (crewLoc) {
-            result.crew_gps = { latitude: crewLoc.latitude, longitude: crewLoc.longitude, last_update: crewLoc.updated_at };
-            result.crew_current_stop = crewLoc.current_stop;
-            // Refined ETA: if crew has passed some stops, adjust
-            if (crewLoc.current_stop > 0) {
-              const remainingStops = Math.max(0, match.position - crewLoc.current_stop);
-              const remainingMinutes = remainingStops * minutesPerJob;
-              const now = new Date();
-              const refinedTime = new Date(now.getTime() + remainingMinutes * 60000);
-              result.refined_eta = `${String(refinedTime.getHours()).padStart(2, '0')}:${String(refinedTime.getMinutes()).padStart(2, '0')}`;
-            }
+          if (crewLoc && crewLoc.current_stop > 0) {
+            const remainingStops = Math.max(0, match.position - crewLoc.current_stop);
+            const remainingMinutes = remainingStops * minutesPerJob;
+            const now = new Date();
+            const refinedTime = new Date(now.getTime() + remainingMinutes * 60000);
+            result.refined_eta = `${String(refinedTime.getHours()).padStart(2, '0')}:${String(refinedTime.getMinutes()).padStart(2, '0')}`;
           }
         } catch (e) { /* no crew location data */ }
 
@@ -359,7 +345,7 @@ router.get('/eta/lookup', async (req, res) => {
     }
 
     if (!result) {
-      return res.json({ found: false, message: 'No matching client found on active routes' });
+      return res.json({ found: false, message: 'No service scheduled today' });
     }
     res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }

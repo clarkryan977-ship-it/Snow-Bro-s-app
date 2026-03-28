@@ -95,24 +95,38 @@ router.post('/client-login', async (req, res) => {
 // Forgot password — send reset email
 router.post('/forgot-password', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, type } = req.body; // type: 'staff' or 'client'
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
-    const { rows } = await req.db.query('SELECT id, first_name FROM employees WHERE email = $1', [email]);
-    // Always return success to prevent email enumeration
-    if (!rows[0]) return res.json({ message: 'If that email is registered, a reset link has been sent.' });
+    let user;
+    if (type === 'client') {
+      const { rows } = await req.db.query('SELECT id, first_name FROM clients WHERE email = $1', [email]);
+      user = rows[0];
+    } else {
+      const { rows } = await req.db.query('SELECT id, first_name FROM employees WHERE email = $1', [email]);
+      user = rows[0];
+    }
 
-    const employee = rows[0];
+    // Always return success to prevent email enumeration
+    if (!user) return res.json({ message: 'If that email is registered, a reset link has been sent.' });
+
     const crypto = require('crypto');
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    // Invalidate any existing tokens for this employee
-    await req.db.query('UPDATE password_reset_tokens SET used = 1 WHERE employee_id = $1 AND used = 0', [employee.id]);
-    await req.db.query(
-      'INSERT INTO password_reset_tokens (employee_id, token, expires_at) VALUES ($1, $2, $3)',
-      [employee.id, token, expiresAt]
-    );
+    if (type === 'client') {
+      await req.db.query('UPDATE password_reset_tokens SET used = 1 WHERE client_id = $1 AND used = 0', [user.id]);
+      await req.db.query(
+        'INSERT INTO password_reset_tokens (client_id, token, expires_at) VALUES ($1, $2, $3)',
+        [user.id, token, expiresAt]
+      );
+    } else {
+      await req.db.query('UPDATE password_reset_tokens SET used = 1 WHERE employee_id = $1 AND used = 0', [user.id]);
+      await req.db.query(
+        'INSERT INTO password_reset_tokens (employee_id, token, expires_at) VALUES ($1, $2, $3)',
+        [user.id, token, expiresAt]
+      );
+    }
 
     const BASE_URL = process.env.BASE_URL || 'https://snowbros-production.up.railway.app';
     const resetLink = `${BASE_URL}/reset-password/${token}`;
@@ -129,8 +143,8 @@ router.post('/forgot-password', async (req, res) => {
           </div>
           <div style="background:#f9fafb;padding:32px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;">
             <h2 style="margin:0 0 16px;color:#111827;">Password Reset Request</h2>
-            <p style="color:#374151;">Hi ${employee.first_name},</p>
-            <p style="color:#374151;">We received a request to reset your Snow Bro's admin password. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+            <p style="color:#374151;">Hi ${user.first_name},</p>
+            <p style="color:#374151;">We received a request to reset your Snow Bro's ${type === 'client' ? 'client' : 'admin'} password. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
             <div style="text-align:center;margin:32px 0;">
               <a href="${resetLink}" style="background:#1a56db;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:1rem;display:inline-block;">Reset My Password</a>
             </div>
@@ -162,7 +176,13 @@ router.post('/reset-password', async (req, res) => {
 
     const resetToken = rows[0];
     const newHash = bcrypt.hashSync(new_password, 12);
-    await req.db.query('UPDATE employees SET password_hash = $1 WHERE id = $2', [newHash, resetToken.employee_id]);
+    
+    if (resetToken.client_id) {
+      await req.db.query('UPDATE clients SET password_hash = $1 WHERE id = $2', [newHash, resetToken.client_id]);
+    } else {
+      await req.db.query('UPDATE employees SET password_hash = $1 WHERE id = $2', [newHash, resetToken.employee_id]);
+    }
+    
     await req.db.query('UPDATE password_reset_tokens SET used = 1 WHERE id = $1', [resetToken.id]);
 
     res.json({ message: 'Password reset successfully. You can now log in with your new password.' });
