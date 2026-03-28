@@ -25,7 +25,7 @@ export default function AdminClients() {
     type: 'snow',
     frequency: 'weekly',
     start_date: new Date().toISOString().split('T')[0],
-    end_date: '',
+    end_date: '', // No default — must be explicitly set
     rate: '',
     deposit: '',
     details: ''
@@ -67,19 +67,12 @@ export default function AdminClients() {
 
   const openContract = c => {
     setContractModal(c);
-    const defaultEndDate = new Date();
-    if (contractForm.type === 'snow') {
-      defaultEndDate.setMonth(3); // April 30
-      defaultEndDate.setDate(30);
-    } else {
-      defaultEndDate.setMonth(10); // November 30
-      defaultEndDate.setDate(30);
-    }
+    // NO default end date — admin must explicitly choose
     setContractForm({
       type: 'snow',
       frequency: 'weekly',
       start_date: new Date().toISOString().split('T')[0],
-      end_date: defaultEndDate.toISOString().split('T')[0],
+      end_date: '', // Empty — required field
       rate: '',
       deposit: '',
       details: c.service_type === 'commercial' ? 'Commercial property maintenance' : 'Residential property maintenance'
@@ -89,22 +82,7 @@ export default function AdminClients() {
 
   const handleContractForm = e => {
     const { name, value } = e.target;
-    setContractForm(f => {
-      const updated = { ...f, [name]: value };
-      // Auto-set end date based on type
-      if (name === 'type') {
-        const defaultEndDate = new Date(updated.start_date);
-        if (value === 'snow') {
-          defaultEndDate.setMonth(3);
-          defaultEndDate.setDate(30);
-        } else {
-          defaultEndDate.setMonth(10);
-          defaultEndDate.setDate(30);
-        }
-        updated.end_date = defaultEndDate.toISOString().split('T')[0];
-      }
-      return updated;
-    });
+    setContractForm(f => ({ ...f, [name]: value }));
   };
 
   const sendContract = async (e) => {
@@ -183,11 +161,9 @@ export default function AdminClients() {
 
     <div class="section">
       <h2>2. Term of Agreement</h2>
-      <table>
-        <tr><th>Start Date</th><td>${new Date(contractForm.start_date).toLocaleDateString()}</td></tr>
-        <tr><th>End Date</th><td>${new Date(contractForm.end_date).toLocaleDateString()}</td></tr>
-      </table>
-      <p>This Agreement remains in effect until the end date above, subject to earlier termination with 30 days written notice.</p>
+      <p><strong>Effective Date:</strong> ${new Date(contractForm.start_date).toLocaleDateString()}</p>
+      <p><strong style="color: #dc2626; font-size: 16px;">Agreement Termination Date: ${new Date(contractForm.end_date).toLocaleDateString()}</strong></p>
+      <p>This Service Agreement will commence on the Effective Date above and will terminate on the Agreement Termination Date specified above, unless earlier terminated by either party with 30 days written notice.</p>
     </div>
 
     <div class="section">
@@ -432,14 +408,18 @@ export default function AdminClients() {
                   </select>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="form-group">
-                    <label>Start Date *</label>
-                    <input name="start_date" type="date" value={contractForm.start_date} onChange={handleContractForm} required className="form-control" />
-                  </div>
-                  <div className="form-group">
-                    <label>End Date *</label>
-                    <input name="end_date" type="date" value={contractForm.end_date} onChange={handleContractForm} required className="form-control" />
+                <div className="form-group">
+                  <label style={{ fontSize: '16px', fontWeight: '700', color: '#1e40af', marginBottom: '12px' }}>📅 Agreement Term</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className="form-group">
+                      <label>Start Date *</label>
+                      <input name="start_date" type="date" value={contractForm.start_date} onChange={handleContractForm} required className="form-control" />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: '700', color: '#dc2626' }}>End Date * (Required)</label>
+                      <input name="end_date" type="date" value={contractForm.end_date} onChange={handleContractForm} required className="form-control" style={{ borderColor: contractForm.end_date ? '#22c55e' : '#dc2626', borderWidth: '2px' }} />
+                      <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>Admin must explicitly choose the contract termination date</small>
+                    </div>
                   </div>
                 </div>
 
