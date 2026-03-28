@@ -47,8 +47,13 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 // Update client (admin)
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { first_name, last_name, email, phone, address, city, state, zip, notes } = req.body;
-    await req.db.query('UPDATE clients SET first_name=$1, last_name=$2, email=$3, phone=$4, address=$5, city=$6, state=$7, zip=$8, notes=$9 WHERE id=$10', [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', req.params.id]);
+    const { first_name, last_name, email, phone, address, city, state, zip, notes, active, service_type } = req.body;
+    // active can be 0/1 or true/false — normalise to integer for PostgreSQL
+    const activeVal = (active === false || active === 0 || active === '0') ? 0 : 1;
+    await req.db.query(
+      'UPDATE clients SET first_name=$1, last_name=$2, email=$3, phone=$4, address=$5, city=$6, state=$7, zip=$8, notes=$9, active=$10, service_type=$11 WHERE id=$12',
+      [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', activeVal, service_type || 'residential', req.params.id]
+    );
     res.json({ message: 'Client updated' });
   } catch (err) {
     res.status(500).json({ error: err.message });
