@@ -7,6 +7,11 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
+  // Change password state
+  const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
+  const [pwMsg, setPwMsg] = useState(null);
+  const [pwSaving, setPwSaving] = useState(false);
+
   const load = async () => {
     try {
       const { data } = await api.get('/settings');
@@ -37,13 +42,36 @@ export default function AdminSettings() {
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
+  const changePassword = async () => {
+    setPwMsg(null);
+    const { current_password, new_password, confirm_password } = pwForm;
+    if (!current_password || !new_password || !confirm_password) {
+      return setPwMsg({ type: 'error', text: 'All password fields are required.' });
+    }
+    if (new_password.length < 8) {
+      return setPwMsg({ type: 'error', text: 'New password must be at least 8 characters.' });
+    }
+    if (new_password !== confirm_password) {
+      return setPwMsg({ type: 'error', text: 'New passwords do not match.' });
+    }
+    setPwSaving(true);
+    try {
+      const { data } = await api.post('/auth/change-password', { current_password, new_password });
+      setPwMsg({ type: 'success', text: data.message || 'Password updated successfully.' });
+      setPwForm({ current_password: '', new_password: '', confirm_password: '' });
+    } catch (e) {
+      setPwMsg({ type: 'error', text: e.response?.data?.error || 'Failed to update password.' });
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
   const discountEnabled = form.first_time_discount_enabled === '1';
   const discountType = form.first_time_discount_type || 'fixed';
   const discountAmount = form.first_time_discount_amount || '10';
   const discountMessage = form.first_time_discount_message || '';
   const discountCode = form.first_time_discount_code || '';
 
-  // Build preview message
   const previewMsg = discountType === 'fixed'
     ? `Welcome to Snow Bro's! Get $${discountAmount} off your first service.`
     : `Welcome to Snow Bro's! Get ${discountAmount}% off your first service.`;
@@ -52,7 +80,7 @@ export default function AdminSettings() {
     <div className="container" style={{ maxWidth: 720, padding: '2rem 1rem' }}>
       <div className="page-header">
         <h1>⚙️ App Settings</h1>
-        <p>Configure promotions and business preferences.</p>
+        <p>Configure promotions, business preferences, and account security.</p>
       </div>
 
       {msg && (
@@ -70,7 +98,6 @@ export default function AdminSettings() {
               Show a promotional offer to new customers when they register or book their first service.
             </p>
           </div>
-          {/* Toggle switch */}
           <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer', flexShrink: 0 }}>
             <div
               onClick={() => set('first_time_discount_enabled', discountEnabled ? '0' : '1')}
@@ -102,7 +129,6 @@ export default function AdminSettings() {
                   value={discountType}
                   onChange={e => {
                     set('first_time_discount_type', e.target.value);
-                    // Update message preview automatically
                     const newMsg = e.target.value === 'fixed'
                       ? `Welcome to Snow Bro's! Get $${discountAmount} off your first service when you book today.`
                       : `Welcome to Snow Bro's! Get ${discountAmount}% off your first service when you book today.`;
@@ -159,7 +185,6 @@ export default function AdminSettings() {
               />
             </div>
 
-            {/* Live preview */}
             <div style={{
               background: 'linear-gradient(135deg, var(--blue-600), var(--blue-800))',
               borderRadius: 'var(--radius)', padding: '1.25rem 1.5rem', color: '#fff'
@@ -183,10 +208,110 @@ export default function AdminSettings() {
         )}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '2.5rem' }}>
         <button className="btn btn-primary" onClick={save} disabled={saving} style={{ minWidth: 140 }}>
           {saving ? <span className="spinner" /> : '💾 Save Settings'}
         </button>
+      </div>
+
+      {/* ── Change Password ── */}
+      <div className="card" style={{ marginBottom: '1.5rem', borderTop: '3px solid var(--blue-600)' }}>
+        <div style={{ marginBottom: '1.25rem' }}>
+          <h2 style={{ fontSize: '1.1rem', marginBottom: '.25rem' }}>🔒 Change Password</h2>
+          <p style={{ fontSize: '.85rem', color: 'var(--gray-500)', margin: 0 }}>
+            Update your admin account password. Minimum 8 characters required.
+          </p>
+        </div>
+
+        {pwMsg && (
+          <div
+            className={`alert alert-${pwMsg.type === 'success' ? 'success' : 'error'}`}
+            style={{ marginBottom: '1rem' }}
+          >
+            {pwMsg.type === 'success' ? '✅ ' : '❌ '}{pwMsg.text}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontWeight: 600 }}>Current Password <span style={{ color: 'red' }}>*</span></label>
+            <input
+              className="form-control"
+              type="password"
+              value={pwForm.current_password}
+              onChange={e => setPwForm(f => ({ ...f, current_password: e.target.value }))}
+              placeholder="Enter your current password"
+              autoComplete="current-password"
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ fontWeight: 600 }}>New Password <span style={{ color: 'red' }}>*</span></label>
+              <input
+                className="form-control"
+                type="password"
+                value={pwForm.new_password}
+                onChange={e => setPwForm(f => ({ ...f, new_password: e.target.value }))}
+                placeholder="At least 8 characters"
+                autoComplete="new-password"
+              />
+              {pwForm.new_password && pwForm.new_password.length < 8 && (
+                <p style={{ color: 'var(--red-600)', fontSize: '.8rem', margin: '.25rem 0 0' }}>
+                  Must be at least 8 characters
+                </p>
+              )}
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ fontWeight: 600 }}>Confirm New Password <span style={{ color: 'red' }}>*</span></label>
+              <input
+                className="form-control"
+                type="password"
+                value={pwForm.confirm_password}
+                onChange={e => setPwForm(f => ({ ...f, confirm_password: e.target.value }))}
+                placeholder="Re-enter new password"
+                autoComplete="new-password"
+              />
+              {pwForm.confirm_password && pwForm.new_password !== pwForm.confirm_password && (
+                <p style={{ color: 'var(--red-600)', fontSize: '.8rem', margin: '.25rem 0 0' }}>
+                  Passwords do not match
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Password strength indicator */}
+          {pwForm.new_password && (
+            <div>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                {[1,2,3,4].map(i => (
+                  <div key={i} style={{
+                    flex: 1, height: 4, borderRadius: 2,
+                    background: pwForm.new_password.length >= i * 3
+                      ? (pwForm.new_password.length >= 12 ? '#16a34a' : pwForm.new_password.length >= 8 ? '#d97706' : '#dc2626')
+                      : '#e5e7eb'
+                  }} />
+                ))}
+              </div>
+              <p style={{ fontSize: '.78rem', color: 'var(--gray-500)', margin: 0 }}>
+                {pwForm.new_password.length < 8 ? 'Too short' :
+                 pwForm.new_password.length < 12 ? 'Fair — consider a longer password' :
+                 'Strong password ✓'}
+              </p>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-primary"
+              onClick={changePassword}
+              disabled={pwSaving || !pwForm.current_password || !pwForm.new_password || !pwForm.confirm_password}
+              style={{ minWidth: 160 }}
+            >
+              {pwSaving ? <span className="spinner" /> : '🔒 Update Password'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

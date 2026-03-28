@@ -4,11 +4,17 @@ const EMAIL_USER = process.env.EMAIL_USER || 'prosnowbros@gmail.com';
 const EMAIL_PASS = process.env.EMAIL_PASS || 'qzvtdmbvdyyhzfck';
 const BCC_EMAIL = 'clarkryan977@gmail.com';
 
+// Create transporter with explicit Gmail SMTP settings for better compatibility
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: EMAIL_USER,
     pass: EMAIL_PASS
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 

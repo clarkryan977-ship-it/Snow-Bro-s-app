@@ -92,4 +92,114 @@ router.post('/client-login', async (req, res) => {
   }
 });
 
+// Forgot password — send reset email
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const { rows } = await req.db.query('SELECT id, first_name FROM employees WHERE email = $1', [email]);
+    // Always return success to prevent email enumeration
+    if (!rows[0]) return res.json({ message: 'If that email is registered, a reset link has been sent.' });
+
+    const employee = rows[0];
+    const crypto = require('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Invalidate any existing tokens for this employee
+    await req.db.query('UPDATE password_reset_tokens SET used = 1 WHERE employee_id = $1 AND used = 0', [employee.id]);
+    await req.db.query(
+      'INSERT INTO password_reset_tokens (employee_id, token, expires_at) VALUES ($1, $2, $3)',
+      [employee.id, token, expiresAt]
+    );
+
+    const BASE_URL = process.env.BASE_URL || 'https://snowbros-production.up.railway.app';
+    const resetLink = `${BASE_URL}/reset-password/${token}`;
+
+    const { sendMail } = require('../utils/mailer');
+    await sendMail({
+      to: email,
+      subject: 'Snow Bro\'s — Password Reset Request',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          <div style="background:#1a56db;color:#fff;padding:24px 32px;border-radius:8px 8px 0 0;">
+            <h1 style="margin:0;font-size:1.4rem;">❄️ Snow Bro's Lawn Care &amp; Snow Removal</h1>
+            <p style="margin:4px 0 0;font-size:.85rem;opacity:.85;">1812 33rd St S, Moorhead, MN 56560 · 218-331-5145</p>
+          </div>
+          <div style="background:#f9fafb;padding:32px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;">
+            <h2 style="margin:0 0 16px;color:#111827;">Password Reset Request</h2>
+            <p style="color:#374151;">Hi ${employee.first_name},</p>
+            <p style="color:#374151;">We received a request to reset your Snow Bro's admin password. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+            <div style="text-align:center;margin:32px 0;">
+              <a href="${resetLink}" style="background:#1a56db;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:1rem;display:inline-block;">Reset My Password</a>
+            </div>
+            <p style="color:#6b7280;font-size:.85rem;">If you didn't request this, you can safely ignore this email. Your password will not change.</p>
+            <p style="color:#6b7280;font-size:.85rem;">Or copy this link: <a href="${resetLink}" style="color:#1a56db;">${resetLink}</a></p>
+          </div>
+        </div>
+      `
+    });
+
+    res.json({ message: 'If that email is registered, a reset link has been sent.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset password via token
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, new_password } = req.body;
+    if (!token || !new_password) return res.status(400).json({ error: 'Token and new password are required' });
+    if (new_password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const { rows } = await req.db.query(
+      'SELECT * FROM password_reset_tokens WHERE token = $1 AND used = 0 AND expires_at > NOW()',
+      [token]
+    );
+    if (!rows[0]) return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' });
+
+    const resetToken = rows[0];
+    const newHash = bcrypt.hashSync(new_password, 12);
+    await req.db.query('UPDATE employees SET password_hash = $1 WHERE id = $2', [newHash, resetToken.employee_id]);
+    await req.db.query('UPDATE password_reset_tokens SET used = 1 WHERE id = $1', [resetToken.id]);
+
+    res.json({ message: 'Password reset successfully. You can now log in with your new password.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Change password (authenticated employee/admin)
+const { authenticateToken } = require('../middleware/auth');
+router.post('/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+    if (new_password.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+
+    // Fetch the employee record
+    const { rows } = await req.db.query('SELECT * FROM employees WHERE id = $1', [req.user.id]);
+    const employee = rows[0];
+    if (!employee) return res.status(404).json({ error: 'User not found' });
+
+    // Verify current password
+    const valid = bcrypt.compareSync(current_password, employee.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    // Hash and save the new password
+    const newHash = bcrypt.hashSync(new_password, 12);
+    await req.db.query('UPDATE employees SET password_hash = $1 WHERE id = $2', [newHash, req.user.id]);
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

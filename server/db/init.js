@@ -403,6 +403,18 @@ async function initDB() {
     )
   `);
 
+  // Password reset tokens
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   // ── Indexes ──
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)',

@@ -11,6 +11,12 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Forgot password state
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotMsg, setForgotMsg] = useState(null);
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   const handle = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
   const submit = async e => {
@@ -27,6 +33,94 @@ export default function Login() {
       setError(err.response?.data?.error || 'Login failed');
     } finally { setLoading(false); }
   };
+
+  const sendForgotPassword = async e => {
+    e.preventDefault();
+    if (!forgotEmail) return setForgotMsg({ type: 'error', text: 'Please enter your email address.' });
+    setForgotLoading(true);
+    setForgotMsg(null);
+    try {
+      const { data } = await api.post('/auth/forgot-password', { email: forgotEmail });
+      setForgotMsg({ type: 'success', text: data.message });
+    } catch (err) {
+      setForgotMsg({ type: 'error', text: err.response?.data?.error || 'Failed to send reset email.' });
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  if (showForgot) {
+    return (
+      <div className="container" style={{ maxWidth: 420, padding: '2rem 1rem' }}>
+        <div className="page-header text-center">
+          <img
+            src="/logo.jpg"
+            alt="Snow Bro's"
+            style={{ width: 100, height: 100, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--blue-200)', boxShadow: 'var(--shadow-md)', marginBottom: '.75rem', display: 'block', margin: '0 auto .75rem' }}
+          />
+          <h1>Reset Password</h1>
+          <p>Enter your email to receive a reset link</p>
+        </div>
+
+        <div className="card">
+          {forgotMsg && (
+            <div className={`alert alert-${forgotMsg.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: '1rem' }}>
+              {forgotMsg.type === 'success' ? '✅ ' : '❌ '}{forgotMsg.text}
+            </div>
+          )}
+
+          {!forgotMsg?.type === 'success' || !forgotMsg ? (
+            <form onSubmit={sendForgotPassword}>
+              <div className="form-group">
+                <label>Email Address</label>
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  required
+                  className="form-control"
+                  placeholder="Enter your admin email"
+                  autoComplete="email"
+                />
+              </div>
+              <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={forgotLoading}>
+                {forgotLoading ? <span className="spinner" /> : '📧 Send Reset Link'}
+              </button>
+            </form>
+          ) : null}
+
+          {forgotMsg?.type !== 'success' && (
+            <form onSubmit={sendForgotPassword}>
+              <div className="form-group">
+                <label>Email Address</label>
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  required
+                  className="form-control"
+                  placeholder="Enter your admin email"
+                  autoComplete="email"
+                />
+              </div>
+              <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={forgotLoading}>
+                {forgotLoading ? <span className="spinner" /> : '📧 Send Reset Link'}
+              </button>
+            </form>
+          )}
+
+          <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '.88rem' }}>
+            <button
+              onClick={() => { setShowForgot(false); setForgotMsg(null); setForgotEmail(''); }}
+              style={{ background: 'none', border: 'none', color: 'var(--blue-600)', cursor: 'pointer', textDecoration: 'underline', fontSize: '.88rem' }}
+            >
+              ← Back to Sign In
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container" style={{ maxWidth: 420, padding: '2rem 1rem' }}>
@@ -63,7 +157,21 @@ export default function Login() {
             <input type="email" name="email" value={form.email} onChange={handle} required className="form-control" autoComplete="email" />
           </div>
           <div className="form-group">
-            <label>Password</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.35rem' }}>
+              <label style={{ margin: 0 }}>Password</label>
+              {tab === 'staff' && (
+                <button
+                  type="button"
+                  onClick={() => setShowForgot(true)}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--blue-600)',
+                    cursor: 'pointer', fontSize: '.8rem', textDecoration: 'underline', padding: 0
+                  }}
+                >
+                  Forgot Password?
+                </button>
+              )}
+            </div>
             <input type="password" name="password" value={form.password} onChange={handle} required className="form-control" autoComplete="current-password" />
           </div>
           <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={loading}>
@@ -75,14 +183,6 @@ export default function Login() {
           <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '.88rem', color: 'var(--gray-500)' }}>
             No account? <Link to="/register">Create one free</Link>
           </p>
-        )}
-
-        {tab === 'staff' && (
-          <div className="alert alert-info mt-2" style={{ fontSize: '.8rem' }}>
-            <strong>Demo credentials:</strong><br />
-            Admin: admin@snowbros.com / admin123<br />
-            Employee: john@snowbros.com / employee123
-          </div>
         )}
       </div>
     </div>
