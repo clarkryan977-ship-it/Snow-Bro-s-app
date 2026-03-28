@@ -3,7 +3,7 @@ const router = express.Router();
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // Send promotional email (admin) - logs the email; in production would use SMTP
-router.post('/send', authenticateToken, requireAdmin, (req, res) => {
+router.post('/send', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { subject, body, recipient_ids } = req.body;
     if (!subject || !body) {
@@ -12,16 +12,16 @@ router.post('/send', authenticateToken, requireAdmin, (req, res) => {
 
     let recipients;
     if (recipient_ids && recipient_ids.length > 0) {
-      const placeholders = recipient_ids.map(() => '?').join(',');
-      recipients = req.db.prepare(`SELECT id, email, first_name, last_name FROM clients WHERE id IN (${placeholders})`).all(...recipient_ids);
+      const placeholders = recipient_ids.map((_, i) => `$${i + 1}`).join(',');
+      const { rows: recipientRows } = await req.db.query(`SELECT id, email, first_name, last_name FROM clients WHERE id IN (${placeholders})`, recipient_ids);
+      recipients = recipientRows;
     } else {
-      recipients = req.db.prepare('SELECT id, email, first_name, last_name FROM clients').all();
+      const { rows: allRows } = await req.db.query('SELECT id, email, first_name, last_name FROM clients');
+      recipients = allRows;
     }
 
     // Log the email
-    req.db.prepare('INSERT INTO email_log (subject, body, recipients_count, sent_by) VALUES (?, ?, ?, ?)').run(
-      subject, body, recipients.length, req.user.id
-    );
+    await req.db.query('INSERT INTO email_log (subject, body, recipients_count, sent_by) VALUES ($1, $2, $3, $4)', [subject, body, recipients.length, req.user.id]);
 
     // In production, this would send actual emails via SMTP/SendGrid/etc.
     // For demo purposes, we log it and return success
@@ -36,9 +36,9 @@ router.post('/send', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Get email history (admin)
-router.get('/history', authenticateToken, requireAdmin, (req, res) => {
+router.get('/history', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const logs = req.db.prepare('SELECT * FROM email_log ORDER BY sent_at DESC LIMIT 50').all();
+    const { rows: logs } = await req.db.query('SELECT * FROM email_log ORDER BY sent_at DESC LIMIT 50');
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: err.message });

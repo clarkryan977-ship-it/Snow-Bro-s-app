@@ -4,9 +4,9 @@ const bcrypt = require('bcryptjs');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // Get all clients (admin)
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const clients = req.db.prepare('SELECT id, first_name, last_name, email, phone, address, city, state, zip, notes, created_at FROM clients ORDER BY last_name, first_name').all();
+    const { rows: clients } = await req.db.query('SELECT id, first_name, last_name, email, phone, address, city, state, zip, notes, created_at, active, latitude, longitude, service_type FROM clients ORDER BY last_name, first_name');
     res.json(clients);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -14,9 +14,10 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Get single client
-router.get('/:id', authenticateToken, (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const client = req.db.prepare('SELECT id, first_name, last_name, email, phone, address, city, state, zip, notes, created_at FROM clients WHERE id = ?').get(req.params.id);
+    const { rows: __client } = await req.db.query('SELECT id, first_name, last_name, email, phone, address, city, state, zip, notes, created_at, active, latitude, longitude, service_type FROM clients WHERE id = $1', [req.params.id]);
+    const client = __client[0];
     if (!client) return res.status(404).json({ error: 'Client not found' });
     res.json(client);
   } catch (err) {
@@ -25,7 +26,7 @@ router.get('/:id', authenticateToken, (req, res) => {
 });
 
 // Add client (admin)
-router.post('/', authenticateToken, requireAdmin, (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { first_name, last_name, email, phone, address, city, state, zip, notes, password } = req.body;
     if (!first_name || !last_name || !email) {
@@ -34,11 +35,9 @@ router.post('/', authenticateToken, requireAdmin, (req, res) => {
 
     const password_hash = password ? bcrypt.hashSync(password, 10) : null;
 
-    const result = req.db.prepare(
-      'INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, notes, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', password_hash);
+    const result = await req.db.query('INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, notes, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id', [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', password_hash]);
 
-    res.status(201).json({ id: result.lastInsertRowid, message: 'Client added' });
+    res.status(201).json({ id: result[0].id, message: 'Client added' });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
     res.status(500).json({ error: err.message });
@@ -46,12 +45,10 @@ router.post('/', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Update client (admin)
-router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { first_name, last_name, email, phone, address, city, state, zip, notes } = req.body;
-    req.db.prepare(
-      'UPDATE clients SET first_name=?, last_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?, notes=? WHERE id=?'
-    ).run(first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', req.params.id);
+    await req.db.query('UPDATE clients SET first_name=$1, last_name=$2, email=$3, phone=$4, address=$5, city=$6, state=$7, zip=$8, notes=$9 WHERE id=$10', [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', req.params.id]);
     res.json({ message: 'Client updated' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -59,9 +56,9 @@ router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Delete client (admin)
-router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    req.db.prepare('DELETE FROM clients WHERE id = ?').run(req.params.id);
+    await req.db.query('DELETE FROM clients WHERE id = $1', [req.params.id]);
     res.json({ message: 'Client deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -5,12 +5,12 @@ export default function Pay() {
     <div className="container" style={{ maxWidth: 700, padding: '2rem 1rem' }}>
       <div className="page-header">
         <h1>💳 Make a Payment</h1>
-        <p>Pay your invoice quickly and securely using Venmo or Zelle.</p>
+        <p>Pay your invoice quickly and securely using Cash App, Venmo, or Zelle.</p>
       </div>
 
       <div className="card">
         <p style={{ color: 'var(--gray-600)', marginBottom: '1.5rem', fontSize: '.95rem' }}>
-          We accept payments via <strong>Venmo</strong> and <strong>Zelle</strong>. Please include your
+          We accept payments via <strong>Cash App</strong>, <strong>Venmo</strong>, and <strong>Zelle</strong>. Please include your
           invoice number in the payment memo so we can apply it to your account.
         </p>
         <PaymentSection />

@@ -31,43 +31,33 @@ const upload = multer({
 });
 
 // ── Admin: upload + create contract ──────────────────────────────────────────
-router.post('/upload', authenticateToken, requireAdmin, upload.single('file'), (req, res) => {
+router.post('/upload', authenticateToken, requireAdmin, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const { title, description, client_id } = req.body;
     if (!title || !client_id) return res.status(400).json({ error: 'Title and client required' });
 
-    const result = req.db.prepare(
-      `INSERT INTO contracts
+    const { rows: result } = await req.db.query(`INSERT INTO contracts
          (title, description, client_id, filename, original_name, file_path, uploaded_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      title,
-      description || '',
-      client_id,
-      req.file.filename,
-      req.file.originalname,
-      req.file.path,
-      req.user.id
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [title, description || '', client_id, req.file.filename, req.file.originalname, req.file.path, req.user.id]
     );
 
-    res.status(201).json({ id: result.lastInsertRowid, message: 'Contract uploaded' });
+    res.status(201).json({ id: result[0].id, message: 'Contract uploaded' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // ── Admin: list all contracts ─────────────────────────────────────────────────
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const contracts = req.db.prepare(
-      `SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email,
+    const { rows: __contracts } = await req.db.query(`SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email,
               e.first_name || ' ' || e.last_name AS uploaded_by_name
        FROM contracts c
        JOIN clients cl ON c.client_id = cl.id
        JOIN employees e ON c.uploaded_by = e.id
-       ORDER BY c.created_at DESC`
-    ).all();
+       ORDER BY c.created_at DESC`);
     res.json(contracts);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -75,13 +65,11 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // ── Client: list their own contracts ─────────────────────────────────────────
-router.get('/my', authenticateToken, (req, res) => {
+router.get('/my', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'client') return res.status(403).json({ error: 'Clients only' });
-    const contracts = req.db.prepare(
-      `SELECT id, title, description, original_name, status, signed_at, signer_name, created_at
-       FROM contracts WHERE client_id = ? ORDER BY created_at DESC`
-    ).all(req.user.id);
+    const { rows: contracts } = await req.db.query(`SELECT id, title, description, original_name, status, signed_at, signer_name, created_at
+       FROM contracts WHERE client_id = $1 ORDER BY created_at DESC`, [req.user.id]);
     res.json(contracts);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -89,13 +77,12 @@ router.get('/my', authenticateToken, (req, res) => {
 });
 
 // ── Get single contract metadata ──────────────────────────────────────────────
-router.get('/:id', authenticateToken, (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const contract = req.db.prepare(
-      `SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email
+    const contract = await req.db.query(`SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email
        FROM contracts c JOIN clients cl ON c.client_id = cl.id
-       WHERE c.id = ?`
-    ).get(req.params.id);
+       WHERE c.id = $1`, [req.params.id]);
+    const contracts = __contracts[0];
     if (!contract) return res.status(404).json({ error: 'Contract not found' });
 
     // Clients can only see their own
@@ -109,9 +96,10 @@ router.get('/:id', authenticateToken, (req, res) => {
 });
 
 // ── Serve the original contract file ─────────────────────────────────────────
-router.get('/:id/file', authenticateToken, (req, res) => {
+router.get('/:id/file', authenticateToken, async (req, res) => {
   try {
-    const contract = req.db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id);
+    const { rows: __contract } = await req.db.query('SELECT * FROM contracts WHERE id = $1', [req.params.id]);
+    const contract = __contract[0];
     if (!contract) return res.status(404).json({ error: 'Not found' });
     if (req.user.role === 'client' && contract.client_id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
@@ -124,9 +112,10 @@ router.get('/:id/file', authenticateToken, (req, res) => {
 });
 
 // ── Serve the signed contract file ───────────────────────────────────────────
-router.get('/:id/signed-file', authenticateToken, (req, res) => {
+router.get('/:id/signed-file', authenticateToken, async (req, res) => {
   try {
-    const contract = req.db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id);
+    const { rows: __contract } = await req.db.query('SELECT * FROM contracts WHERE id = $1', [req.params.id]);
+    const contract = __contract[0];
     if (!contract || !contract.signed_file_path) return res.status(404).json({ error: 'Signed file not found' });
     if (req.user.role === 'client' && contract.client_id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
@@ -141,11 +130,12 @@ router.get('/:id/signed-file', authenticateToken, (req, res) => {
 // ── Client: sign a contract ───────────────────────────────────────────────────
 // signature_data: base64 PNG data URL (drawn) OR plain text (typed name)
 // signature_type: 'drawn' | 'typed'
-router.post('/:id/sign', authenticateToken, async (req, res) => {
+router.post('/:id/sign', authenticateToken, async async (req, res) => {
   try {
     if (req.user.role !== 'client') return res.status(403).json({ error: 'Clients only' });
 
-    const contract = req.db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id);
+    const { rows: __contract } = await req.db.query('SELECT * FROM contracts WHERE id = $1', [req.params.id]);
+    const contract = __contract[0];
     if (!contract) return res.status(404).json({ error: 'Contract not found' });
     if (contract.client_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
     if (contract.status === 'signed') return res.status(400).json({ error: 'Already signed' });
@@ -204,7 +194,7 @@ router.post('/:id/sign', authenticateToken, async (req, res) => {
         });
 
         // Signature type
-        lastPage.drawText(`Signature method: ${signature_type === 'drawn' ? 'Drawn signature' : 'Typed name'}`, {
+        lastPage.drawText(`Signature method: ${signature_type === 'drawn' $1 'Drawn signature' : 'Typed name'}`, {
           x: 50, y: 82,
           size: 8, font,
           color: rgb(0.4, 0.4, 0.4),
@@ -243,12 +233,11 @@ router.post('/:id/sign', authenticateToken, async (req, res) => {
       }
     }
 
-    req.db.prepare(
+    await req.db.query(
       `UPDATE contracts
-       SET status='signed', signed_at=?, signature_data=?, signature_type=?,
-           signer_name=?, signed_file_path=?
-       WHERE id=?`
-    ).run(signedAt, signature_data, signature_type || 'drawn', signer_name, signedFilePath, contract.id);
+       SET status='signed', signed_at=$1, signature_data=$2, signature_type=$3,
+           signer_name=$4, signed_file_path=$5
+       WHERE id=$6`, [signedAt, signature_data, signature_type || 'drawn', signer_name, signedFilePath, contract.id]);
 
     res.json({ message: 'Contract signed successfully', signed_at: signedAt });
   } catch (err) {
@@ -257,16 +246,17 @@ router.post('/:id/sign', authenticateToken, async (req, res) => {
 });
 
 // ── Admin: delete contract ────────────────────────────────────────────────────
-router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const contract = req.db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id);
+    const { rows: __contract } = await req.db.query('SELECT * FROM contracts WHERE id = $1', [req.params.id]);
+    const contract = __contract[0];
     if (!contract) return res.status(404).json({ error: 'Not found' });
 
     // Remove files
     try { if (fs.existsSync(contract.file_path)) fs.unlinkSync(contract.file_path); } catch (_) {}
     try { if (contract.signed_file_path && fs.existsSync(contract.signed_file_path)) fs.unlinkSync(contract.signed_file_path); } catch (_) {}
 
-    req.db.prepare('DELETE FROM contracts WHERE id = ?').run(req.params.id);
+    await req.db.query('DELETE FROM contracts WHERE id = $1', [req.params.id]);
     res.json({ message: 'Contract deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });

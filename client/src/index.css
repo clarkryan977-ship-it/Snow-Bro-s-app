@@ -88,6 +88,8 @@ input, textarea, select { font-family: inherit; }
 .btn-outline:hover { background: var(--blue-50); }
 .btn-venmo { background: #008CFF; color: #fff; font-weight: 700; font-size: 1rem; }
 .btn-venmo:hover { background: #0070cc; }
+.btn-cashapp { background: #00D632; color: #fff; font-weight: 700; font-size: 1rem; }
+.btn-cashapp:hover { background: #00B82B; }
 .btn-sm { padding: .35rem .8rem; font-size: .8rem; }
 .btn-lg { padding: .75rem 1.8rem; font-size: 1rem; }
 .btn-block { width: 100%; }
@@ -208,7 +210,7 @@ tbody tr:hover { background: var(--blue-50); }
 .payment-card { border-radius: var(--radius-lg); padding: 1.5rem; border: 2px solid var(--blue-200); background: var(--white); transition: border-color .2s; }
 .payment-card:hover { border-color: var(--blue-400); }
 .payment-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem; }
-.payment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.payment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
 @media (max-width: 600px) { .payment-grid { grid-template-columns: 1fr; } }
 
 /* ── Signature canvas ───────────────────────────────────────────────────── */

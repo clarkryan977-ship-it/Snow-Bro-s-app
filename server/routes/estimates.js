@@ -4,8 +4,9 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const nodemailer = require('nodemailer');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function nextEstimateNumber(db) {
-  const last = db.prepare("SELECT estimate_number FROM estimates ORDER BY id DESC LIMIT 1").get();
+async function nextEstimateNumber(db) {
+  const { rows: __last } = await db.query('SELECT estimate_number FROM estimates ORDER BY id DESC LIMIT 1');
+  const last = __last[0];
   if (!last) return 'EST-1001';
   const n = parseInt(last.estimate_number.replace('EST-', ''), 10) || 1000;
   return `EST-${n + 1}`;
@@ -104,93 +105,91 @@ function buildEstimateHTML(est, items) {
 }
 
 // ── GET all estimates ─────────────────────────────────────────────────────────
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const estimates = req.db.prepare(`
-      SELECT * FROM estimates ORDER BY created_at DESC
-    `).all();
+    const { rows: estimates } = await req.db.query(`SELECT * FROM estimates ORDER BY created_at DESC`);
     res.json(estimates);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── GET single estimate with items ───────────────────────────────────────────
-router.get('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const est = req.db.prepare('SELECT * FROM estimates WHERE id = ?').get(req.params.id);
+    const { rows: __est } = await req.db.query('SELECT * FROM estimates WHERE id = $1', [req.params.id]);
+    const est = __est[0];
     if (!est) return res.status(404).json({ error: 'Not found' });
-    const items = req.db.prepare('SELECT * FROM estimate_items WHERE estimate_id = ? ORDER BY id').all(est.id);
+    const { rows: items } = await req.db.query('SELECT * FROM estimate_items WHERE estimate_id = $1 ORDER BY id', [est.id]);
     res.json({ ...est, items });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── POST create estimate ──────────────────────────────────────────────────────
-router.post('/', authenticateToken, requireAdmin, (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address,
             subtotal, tax_rate, tax_amount, total, notes, valid_until, items } = req.body;
-    const estimate_number = nextEstimateNumber(req.db);
-    const ins = req.db.prepare(`
-      INSERT INTO estimates (estimate_number, customer_name, customer_email, customer_phone,
+    const estimate_number = await nextEstimateNumber(req.db);
+    const { rows: insResult } = await req.db.query(`INSERT INTO estimates (estimate_number, customer_name, customer_email, customer_phone,
         customer_address, subtotal, tax_rate, tax_amount, total, notes, valid_until)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)
-    `);
-    const result = ins.run(estimate_number, customer_name, customer_email || '',
-      customer_phone || '', customer_address || '',
-      subtotal || 0, tax_rate || 0, tax_amount || 0, total || 0,
-      notes || '', valid_until || '');
-    const estId = result.lastInsertRowid;
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+      [estimate_number, customer_name, customer_email || '',
+       customer_phone || '', customer_address || '',
+       subtotal || 0, tax_rate || 0, tax_amount || 0, total || 0,
+       notes || '', valid_until || '']);
+    const estId = insResult[0].id;
     if (items && items.length) {
-      const insItem = req.db.prepare('INSERT INTO estimate_items (estimate_id, description, quantity, unit_price, total) VALUES (?,?,?,?,?)');
+      
       for (const it of items) {
-        insItem.run(estId, it.description, it.quantity || 1, it.unit_price || 0, it.total || 0);
+        await req.db.query('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, total) VALUES ($1,$2,$3,$4,$5)', [estId, it.description, it.quantity || 1, it.unit_price || 0, it.total || 0]);
       }
     }
-    const est = req.db.prepare('SELECT * FROM estimates WHERE id = ?').get(estId);
-    const estItems = req.db.prepare('SELECT * FROM estimate_items WHERE estimate_id = ?').all(estId);
+    const { rows: __est } = await req.db.query('SELECT * FROM estimates WHERE id = $1', [estId]);
+    const est = __est[0];
+    const { rows: estItems } = await req.db.query('SELECT * FROM estimate_items WHERE estimate_id = $1', [estId]);
     res.status(201).json({ ...est, items: estItems });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── PUT update estimate ───────────────────────────────────────────────────────
-router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address,
             subtotal, tax_rate, tax_amount, total, notes, valid_until, status, items } = req.body;
-    req.db.prepare(`
-      UPDATE estimates SET customer_name=?, customer_email=?, customer_phone=?,
-        customer_address=?, subtotal=?, tax_rate=?, tax_amount=?, total=?,
-        notes=?, valid_until=?, status=? WHERE id=?
-    `).run(customer_name, customer_email || '', customer_phone || '', customer_address || '',
+    await req.db.query(`UPDATE estimates SET customer_name=$17, customer_email=$18, customer_phone=$19,
+        customer_address=$20, subtotal=$21, tax_rate=$22, tax_amount=$23, total=$24,
+        notes=$25, valid_until=$26, status=$27 WHERE id=$28`, [customer_name, customer_email || '', customer_phone || '', customer_address || '',
       subtotal || 0, tax_rate || 0, tax_amount || 0, total || 0,
-      notes || '', valid_until || '', status || 'draft', req.params.id);
-    req.db.prepare('DELETE FROM estimate_items WHERE estimate_id = ?').run(req.params.id);
+      notes || '', valid_until || '', status || 'draft', req.params.id]);
+    await req.db.query('DELETE FROM estimate_items WHERE estimate_id = $1', [req.params.id]);
     if (items && items.length) {
-      const insItem = req.db.prepare('INSERT INTO estimate_items (estimate_id, description, quantity, unit_price, total) VALUES (?,?,?,?,?)');
+      
       for (const it of items) {
-        insItem.run(req.params.id, it.description, it.quantity || 1, it.unit_price || 0, it.total || 0);
+        await req.db.query('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, total) VALUES ($1,$2,$3,$4,$5)', [req.params.id, it.description, it.quantity || 1, it.unit_price || 0, it.total || 0]);
       }
     }
-    const est = req.db.prepare('SELECT * FROM estimates WHERE id = ?').get(req.params.id);
-    const estItems = req.db.prepare('SELECT * FROM estimate_items WHERE estimate_id = ?').all(req.params.id);
+    const { rows: __est } = await req.db.query('SELECT * FROM estimates WHERE id = $1', [req.params.id]);
+    const est = __est[0];
+    const { rows: estItems } = await req.db.query('SELECT * FROM estimate_items WHERE estimate_id = $1', [req.params.id]);
     res.json({ ...est, items: estItems });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── DELETE estimate ───────────────────────────────────────────────────────────
-router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    req.db.prepare('DELETE FROM estimates WHERE id = ?').run(req.params.id);
+    await req.db.query('DELETE FROM estimates WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── POST email estimate ───────────────────────────────────────────────────────
-router.post('/:id/email', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/:id/email', authenticateToken, requireAdmin, async async (req, res) => {
   try {
-    const est = req.db.prepare('SELECT * FROM estimates WHERE id = ?').get(req.params.id);
+    const { rows: __est } = await req.db.query('SELECT * FROM estimates WHERE id = $1', [req.params.id]);
+    const est = __est[0];
     if (!est) return res.status(404).json({ error: 'Estimate not found' });
     if (!est.customer_email) return res.status(400).json({ error: 'No customer email on this estimate' });
-    const items = req.db.prepare('SELECT * FROM estimate_items WHERE estimate_id = ? ORDER BY id').all(est.id);
+    const { rows: items } = await req.db.query('SELECT * FROM estimate_items WHERE estimate_id = $1 ORDER BY id', [est.id]);
     const html = buildEstimateHTML(est, items);
 
     // Use nodemailer with a simple SMTP config (or ethereal for demo)
@@ -219,7 +218,7 @@ router.post('/:id/email', authenticateToken, requireAdmin, async (req, res) => {
     });
 
     // Mark as emailed
-    req.db.prepare("UPDATE estimates SET emailed_at = datetime('now'), status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END WHERE id = ?").run(est.id);
+    await req.db.query('UPDATE estimates SET emailed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END WHERE id = $1', [est.id]);
 
     const previewUrl = nodemailer.getTestMessageUrl(info);
     res.json({ success: true, messageId: info.messageId, previewUrl: previewUrl || null });
@@ -227,34 +226,35 @@ router.post('/:id/email', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // ── POST convert estimate to invoice ─────────────────────────────────────────
-router.post('/:id/convert', authenticateToken, requireAdmin, (req, res) => {
+router.post('/:id/convert', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const est = req.db.prepare('SELECT * FROM estimates WHERE id = ?').get(req.params.id);
+    const { rows: __est } = await req.db.query('SELECT * FROM estimates WHERE id = $1', [req.params.id]);
+    const est = __est[0];
     if (!est) return res.status(404).json({ error: 'Estimate not found' });
     const { client_id } = req.body;
     if (!client_id) return res.status(400).json({ error: 'client_id is required to convert to invoice' });
 
     // Generate invoice number
-    const lastInv = req.db.prepare("SELECT invoice_number FROM invoices ORDER BY id DESC LIMIT 1").get();
+    const { rows: __lastInv } = await req.db.query('SELECT invoice_number FROM invoices ORDER BY id DESC LIMIT 1');
+    const lastInv = __lastInv[0];
     let invNum = 'INV-1001';
     if (lastInv) {
       const n = parseInt(lastInv.invoice_number.replace('INV-', ''), 10) || 1000;
       invNum = `INV-${n + 1}`;
     }
 
-    const invResult = req.db.prepare(`
+    const invResult = await req.db.query(`
       INSERT INTO invoices (invoice_number, client_id, subtotal, tax_rate, tax_amount, total, notes, status)
-      VALUES (?,?,?,?,?,?,?,'draft')
-    `).run(invNum, client_id, est.subtotal, est.tax_rate, est.tax_amount, est.total, est.notes || '');
-    const invoiceId = invResult.lastInsertRowid;
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'draft') RETURNING id`, [invNum, client_id, est.subtotal, est.tax_rate, est.tax_amount, est.total, est.notes || '']);
+    const invoiceId = invResult.rows[0].id;
 
-    const items = req.db.prepare('SELECT * FROM estimate_items WHERE estimate_id = ?').all(est.id);
-    const insItem = req.db.prepare('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, total) VALUES (?,?,?,?,?)');
+    const { rows: items } = await req.db.query('SELECT * FROM estimate_items WHERE estimate_id = $1', [est.id]);
+    
     for (const it of items) {
-      insItem.run(invoiceId, it.description, it.quantity, it.unit_price, it.total);
+      await req.db.query('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, total) VALUES ($1,$2,$3,$4,$5)', [invoiceId, it.description, it.quantity, it.unit_price, it.total]);
     }
 
-    req.db.prepare("UPDATE estimates SET status='accepted', converted_invoice_id=? WHERE id=?").run(invoiceId, est.id);
+    await req.db.query(`UPDATE estimates SET status='accepted', converted_invoice_id=$1 WHERE id=$2`, [invoiceId, est.id]);
     res.json({ success: true, invoice_id: invoiceId, invoice_number: invNum });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

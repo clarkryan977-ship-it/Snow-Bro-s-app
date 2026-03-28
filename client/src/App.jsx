@@ -14,6 +14,7 @@ const Login = lazy(() => import('./pages/Login'));
 const Pay = lazy(() => import('./pages/Pay'));
 const Gallery = lazy(() => import('./pages/Gallery'));
 const PublicReviews = lazy(() => import('./pages/Reviews'));
+const ETALookup = lazy(() => import('./pages/ETALookup'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
@@ -34,6 +35,7 @@ const AdminRevenue = lazy(() => import('./pages/admin/Revenue'));
 const AdminCalendar = lazy(() => import('./pages/admin/Calendar'));
 const AdminRecurring = lazy(() => import('./pages/admin/Recurring'));
 const AdminReviews = lazy(() => import('./pages/admin/Reviews'));
+const AdminRoutePlanner = lazy(() => import('./pages/admin/RoutePlanner'));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import('./pages/employee/Dashboard'));
@@ -168,6 +170,7 @@ export default function App() {
             <Route path="/pay" element={<Pay />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/reviews" element={<PublicReviews />} />
+            <Route path="/eta" element={<ETALookup />} />
           </Route>
 
           {/* Admin + Manager routes */}
@@ -191,6 +194,7 @@ export default function App() {
               <Route path="/admin/recurring" element={<AdminRecurring />} />
               <Route path="/admin/reviews" element={<AdminReviews />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/admin/routes" element={<AdminRoutePlanner />} />
             </Route>
           </Route>
 

@@ -36,15 +36,38 @@ export default function AdminClients() {
     load();
   };
 
+  const toggleActive = async (id, currentActive) => {
+    try {
+      await api.put(`/routes/clients/${id}/active`, { active: !currentActive });
+      load();
+    } catch (e) { console.error(e); }
+  };
+
   const filtered = clients.filter(c =>
     `${c.first_name} ${c.last_name} ${c.email}`.toLowerCase().includes(search.toLowerCase())
   );
+
+  const activeCount = clients.filter(c => c.active).length;
+  const inactiveCount = clients.length - activeCount;
 
   return (
     <div>
       <div className="flex-between page-header">
         <div><h1>👥 Clients</h1><p>Manage your client list.</p></div>
         <button className="btn btn-primary" onClick={openAdd}>+ Add Client</button>
+      </div>
+
+      {/* Status summary */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+        <div style={{ padding: '8px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#166534' }}>
+          {activeCount} Active
+        </div>
+        <div style={{ padding: '8px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#991b1b' }}>
+          {inactiveCount} Inactive
+        </div>
+        <div style={{ padding: '8px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#475569' }}>
+          {clients.length} Total
+        </div>
       </div>
 
       <div className="card mb-2">
@@ -54,11 +77,29 @@ export default function AdminClients() {
       <div className="card">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>City</th><th>Since</th><th></th></tr></thead>
+            <thead><tr><th>Status</th><th>Name</th><th>Email</th><th>Phone</th><th>City</th><th>Since</th><th></th></tr></thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--gray-400)', padding:'2rem' }}>No clients found</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign:'center', color:'var(--gray-400)', padding:'2rem' }}>No clients found</td></tr>}
               {filtered.map(c => (
-                <tr key={c.id}>
+                <tr key={c.id} style={{ background: c.active ? '#f0fdf4' : '#fef2f2', borderLeft: `4px solid ${c.active ? '#22c55e' : '#ef4444'}` }}>
+                  <td>
+                    <button
+                      onClick={() => toggleActive(c.id, c.active)}
+                      style={{
+                        background: c.active ? '#22c55e' : '#ef4444',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 12,
+                        padding: '4px 12px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        minWidth: 70,
+                      }}
+                    >
+                      {c.active ? 'Active' : 'Inactive'}
+                    </button>
+                  </td>
                   <td><strong>{c.first_name} {c.last_name}</strong></td>
                   <td>{c.email}</td>
                   <td>{c.phone}</td>

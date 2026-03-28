@@ -3,11 +3,9 @@ const router = express.Router();
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // GET /api/settings/public — public endpoint (no auth) for first-time discount info
-router.get('/public', (req, res) => {
+router.get('/public', async (req, res) => {
   try {
-    const rows = req.db.prepare(
-      "SELECT key, value FROM app_settings WHERE key LIKE 'first_time_discount%'"
-    ).all();
+    const { rows } = await req.db.query(`SELECT key, value FROM app_settings WHERE key LIKE 'first_time_discount%'`);
     const settings = {};
     rows.forEach(r => { settings[r.key] = r.value; });
     res.json(settings);
@@ -17,9 +15,9 @@ router.get('/public', (req, res) => {
 });
 
 // GET /api/settings — all settings (admin/manager only)
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const rows = req.db.prepare('SELECT * FROM app_settings ORDER BY key').all();
+    const { rows } = await req.db.query('SELECT * FROM app_settings ORDER BY key');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -28,18 +26,15 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
 
 // PUT /api/settings — update one or many settings (admin/manager only)
 // Body: { key: value, key2: value2, ... }
-router.put('/', authenticateToken, requireAdmin, (req, res) => {
+router.put('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const updates = req.body;
-    const stmt = req.db.prepare(
-      "UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = ?"
-    );
-    const updateMany = req.db.transaction((obj) => {
-      for (const [key, value] of Object.entries(obj)) {
-        stmt.run(String(value), key);
-      }
-    });
-    updateMany(updates);
+    for (const [key, value] of Object.entries(updates)) {
+      await req.db.query(
+        'UPDATE app_settings SET value = $1, updated_at = NOW() WHERE key = $2',
+        [String(value), key]
+      );
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

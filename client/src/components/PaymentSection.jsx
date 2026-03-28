@@ -1,21 +1,15 @@
 function openVenmo(e) {
   e.preventDefault();
-  // Try the Venmo deep link first — opens the Venmo app on mobile
   const deepLink = 'venmo://paycharge?txn=pay&recipients=snowbros&note=Invoice%20Payment';
-  // Fallback: PayPal/Venmo QR code web page
   const webFallback = 'https://www.paypal.com/qrcodes/venmocs/90262e17-2bae-475f-b440-57449f5eaf05?created=1774482943';
 
-  // Attempt to launch the app; if the page is still visible after 1.2s, the app
-  // wasn't installed — open the web fallback in a new tab instead.
   let appOpened = false;
-
   const timer = setTimeout(() => {
     if (!appOpened && !document.hidden) {
       window.open(webFallback, '_blank');
     }
   }, 1200);
 
-  // Listen for the page becoming hidden (app launched and took focus)
   const onVisibilityChange = () => {
     if (document.hidden) {
       appOpened = true;
@@ -24,8 +18,29 @@ function openVenmo(e) {
     }
   };
   document.addEventListener('visibilitychange', onVisibilityChange);
+  window.location.href = deepLink;
+}
 
-  // Fire the deep link
+function openCashApp(e) {
+  e.preventDefault();
+  const deepLink = 'cashme://cash.app/$snowbros218';
+  const webFallback = 'https://cash.app/$snowbros218';
+
+  let appOpened = false;
+  const timer = setTimeout(() => {
+    if (!appOpened && !document.hidden) {
+      window.open(webFallback, '_blank');
+    }
+  }, 1200);
+
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      appOpened = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
   window.location.href = deepLink;
 }
 
@@ -50,6 +65,32 @@ export default function PaymentSection({ invoiceTotal, invoiceNumber }) {
       )}
 
       <div className="payment-grid">
+        {/* ── Cash App ── */}
+        <div className="payment-card" style={{ borderColor: '#00D632' }}>
+          <h3 style={{ color: '#00D632' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#00D632" style={{ flexShrink: 0 }}>
+              <path d="M23.59 3.47A5.1 5.1 0 0020.55.42C19.54.14 18.04 0 16.03 0h-8.06C7.17 0 6.53.14 5.5.42A5.1 5.1 0 002.47 3.47C.14 5.54 0 7.17 0 7.97v8.06c0 .8.14 2.43 2.47 4.5a5.1 5.1 0 003.03 3.05c1.01.28 2.51.42 4.53.42h8.06c2.01 0 3.51-.14 4.52-.42a5.1 5.1 0 003.04-3.05C23.86 18.46 24 16.83 24 16.03V7.97c0-.8-.14-2.43-2.41-4.5zM17.2 7.63a.96.96 0 01-.04.14l-1.6 5.12c-.08.24-.24.4-.48.48a.87.87 0 01-.68-.04.78.78 0 01-.4-.52l-.56-2.16a.8.8 0 00-.56-.56l-2.16-.56a.78.78 0 01-.52-.4.87.87 0 01-.04-.68c.08-.24.24-.4.48-.48l5.12-1.6a.96.96 0 01.14-.04c.16 0 .32.08.44.2s.2.28.2.44c0 .04 0 .08-.04.14z"/>
+            </svg>
+            Pay with Cash App
+          </h3>
+          <p style={{ fontSize: '.85rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>
+            Tap the button below — opens Cash App directly on your phone, or the Cash App website.
+          </p>
+          <a
+            href="https://cash.app/$snowbros218"
+            onClick={openCashApp}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-cashapp btn-block"
+            style={{ borderRadius: 'var(--radius)', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.5rem' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+              <path d="M23.59 3.47A5.1 5.1 0 0020.55.42C19.54.14 18.04 0 16.03 0h-8.06C7.17 0 6.53.14 5.5.42A5.1 5.1 0 002.47 3.47C.14 5.54 0 7.17 0 7.97v8.06c0 .8.14 2.43 2.47 4.5a5.1 5.1 0 003.03 3.05c1.01.28 2.51.42 4.53.42h8.06c2.01 0 3.51-.14 4.52-.42a5.1 5.1 0 003.04-3.05C23.86 18.46 24 16.83 24 16.03V7.97c0-.8-.14-2.43-2.41-4.5zM17.2 7.63a.96.96 0 01-.04.14l-1.6 5.12c-.08.24-.24.4-.48.48a.87.87 0 01-.68-.04.78.78 0 01-.4-.52l-.56-2.16a.8.8 0 00-.56-.56l-2.16-.56a.78.78 0 01-.52-.4.87.87 0 01-.04-.68c.08-.24.24-.4.48-.48l5.12-1.6a.96.96 0 01.14-.04c.16 0 .32.08.44.2s.2.28.2.44c0 .04 0 .08-.04.14z"/>
+            </svg>
+            Pay with Cash App — $snowbros218
+          </a>
+        </div>
+
         {/* ── Venmo ── */}
         <div className="payment-card">
           <h3 style={{ color: '#008CFF' }}>

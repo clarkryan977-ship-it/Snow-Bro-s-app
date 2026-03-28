@@ -18,6 +18,7 @@ const links = [
   { to: '/admin/employees', label: '👷 Employees' },
   { to: '/admin/time-records', label: '⏱ Time Records' },
   { to: '/admin/gps', label: '📍 GPS Tracking' },
+  { to: '/admin/routes', label: '🗺️ Route Planner' },
   { section: 'Marketing' },
   { to: '/admin/emails', label: '📧 Email Blast' },
   { to: '/admin/gallery', label: '🖼️ Photo Gallery' },

@@ -5,12 +5,13 @@ const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/auth');
 
 // Employee/Admin login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    const employee = req.db.prepare('SELECT * FROM employees WHERE email = ? AND active = 1').get(email);
+    const { rows: __employee } = await req.db.query('SELECT * FROM employees WHERE email = $1 AND active = 1', [email]);
+    const employee = __employee[0];
     if (!employee) return res.status(401).json({ error: 'Invalid credentials' });
 
     const valid = bcrypt.compareSync(password, employee.password_hash);
@@ -37,35 +38,35 @@ router.post('/login', (req, res) => {
 });
 
 // Client registration
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   try {
     const { first_name, last_name, email, phone, address, city, state, zip, password } = req.body;
     if (!first_name || !last_name || !email) {
       return res.status(400).json({ error: 'First name, last name, and email are required' });
     }
 
-    const existing = req.db.prepare('SELECT id FROM clients WHERE email = ?').get(email);
+    const { rows: __existing } = await req.db.query('SELECT id FROM clients WHERE email = $1', [email]);
+    const existing = __existing[0];
     if (existing) return res.status(409).json({ error: 'Email already registered' });
 
     const password_hash = password ? bcrypt.hashSync(password, 10) : null;
 
-    const result = req.db.prepare(
-      'INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', password_hash);
+    const result = await req.db.query('INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', password_hash]);
 
-    res.status(201).json({ id: result.lastInsertRowid, message: 'Registration successful' });
+    res.status(201).json({ id: result[0].id, message: 'Registration successful' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // Client login
-router.post('/client-login', (req, res) => {
+router.post('/client-login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    const client = req.db.prepare('SELECT * FROM clients WHERE email = ?').get(email);
+    const { rows: __client } = await req.db.query('SELECT * FROM clients WHERE email = $1', [email]);
+    const client = __client[0];
     if (!client || !client.password_hash) return res.status(401).json({ error: 'Invalid credentials' });
 
     const valid = bcrypt.compareSync(password, client.password_hash);
