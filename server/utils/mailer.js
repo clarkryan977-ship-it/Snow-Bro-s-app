@@ -1,21 +1,32 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
+
+// Force IPv4 DNS resolution to avoid Railway IPv6 ENETUNREACH issue
+dns.setDefaultResultOrder('ipv4first');
 
 const EMAIL_USER = process.env.EMAIL_USER || 'prosnowbros@gmail.com';
 const EMAIL_PASS = process.env.EMAIL_PASS || 'hisaxewlwuxmkghz';
 const BCC_EMAIL = 'clarkryan977@gmail.com';
 
-// Create transporter with explicit Gmail SMTP settings
+// Create transporter with Gmail SMTP forced to IPv4 via port 587 (STARTTLS)
+// Port 587 is more reliable on Railway than 465 (SSL) for IPv4
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false, // STARTTLS
   auth: {
     user: EMAIL_USER,
     pass: EMAIL_PASS
   },
   tls: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2'
+  },
+  // Force IPv4 family to avoid Railway IPv6 routing issues
+  family: 4,
+  connectionTimeout: 30000,
+  greetingTimeout: 15000,
+  socketTimeout: 30000
 });
 
 /**
