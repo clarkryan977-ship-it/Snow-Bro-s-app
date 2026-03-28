@@ -195,6 +195,70 @@ export default function Home() {
         </div>
       </div>
 
+      {/* NWS Snow Forecast & Accumulation Banner */}
+      <div style={{
+        background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+        padding: '2rem 1rem',
+        textAlign: 'center',
+        borderTop: '1px solid var(--blue-100)'
+      }}>
+        <div className="container">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+            <div style={{ fontSize: '2.5rem' }}>❄️</div>
+            <div style={{ flex: 1, minWidth: '200px' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '1.1rem', color: '#fff', marginBottom: '.3rem' }}>Local Snow Information</h3>
+              <p style={{ fontSize: '.9rem', color: 'rgba(255,255,255,0.8)' }}>Check the National Weather Service for Moorhead, MN snow forecasts and recent accumulation data.</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a
+              href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8739&textField2=-96.7678"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                background: '#fff',
+                color: '#1e3a8a',
+                padding: '.6rem 1.5rem',
+                borderRadius: '2rem',
+                fontWeight: 700,
+                fontSize: '.95rem',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '.4rem',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              📋 Snow Forecast
+            </a>
+            <a
+              href="https://www.nohrsc.noaa.gov/nsa/index.html?region=mn&var=wteq&season=2024-2025"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                background: '#fff',
+                color: '#1e3a8a',
+                padding: '.6rem 1.5rem',
+                borderRadius: '2rem',
+                fontWeight: 700,
+                fontSize: '.95rem',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '.4rem',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              📊 24-Hour Accumulation
+            </a>
+          </div>
+        </div>
+      </div>
+
       {/* CTA row */}
       <div style={{ background: '#fff', borderTop: '1px solid var(--blue-100)', padding: '2.5rem 1rem' }}>
         <div className="container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>

@@ -408,9 +408,30 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id SERIAL PRIMARY KEY,
       employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+      client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
       token TEXT NOT NULL UNIQUE,
       expires_at TIMESTAMP NOT NULL,
       used INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.query(`ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE`).catch(() => {});
+
+  // Live route sessions
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS route_sessions (
+      id SERIAL PRIMARY KEY,
+      route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'active',
+      num_crews INTEGER DEFAULT 1,
+      jobs_per_hour REAL DEFAULT 2,
+      snow_condition TEXT DEFAULT 'moderate',
+      start_time TIMESTAMP NOT NULL DEFAULT NOW(),
+      current_stop INTEGER DEFAULT 0,
+      admin_lat REAL,
+      admin_lng REAL,
+      admin_gps_updated_at TIMESTAMP,
+      ended_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
@@ -449,6 +470,8 @@ async function initDB() {
     'CREATE INDEX IF NOT EXISTS idx_services_active ON services(active)',
     'CREATE INDEX IF NOT EXISTS idx_route_stops_route ON route_stops(route_id)',
     'CREATE INDEX IF NOT EXISTS idx_route_stops_client ON route_stops(client_id)',
+    'CREATE INDEX IF NOT EXISTS idx_route_sessions_status ON route_sessions(status)',
+    'CREATE INDEX IF NOT EXISTS idx_route_sessions_route ON route_sessions(route_id)',
   ];
   for (const sql of indexes) {
     try { await db.query(sql); } catch (e) { /* ignore */ }

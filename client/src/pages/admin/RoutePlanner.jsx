@@ -1,225 +1,237 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../../utils/api';
+import DraggableList from '../../components/DraggableList';
 
-// ─── Inline drag-and-drop helpers (no external lib needed) ───────
-function DraggableList({ items, onReorder, renderItem }) {
-  const [dragIdx, setDragIdx] = useState(null);
-  const [overIdx, setOverIdx] = useState(null);
-
-  const handleDragStart = (e, idx) => { setDragIdx(idx); e.dataTransfer.effectAllowed = 'move'; };
-  const handleDragOver = (e, idx) => { e.preventDefault(); setOverIdx(idx); };
-  const handleDrop = (e, idx) => {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
-    const newItems = [...items];
-    const [moved] = newItems.splice(dragIdx, 1);
-    newItems.splice(idx, 0, moved);
-    onReorder(newItems);
-    setDragIdx(null); setOverIdx(null);
-  };
-
-  return (
-    <div>
-      {items.map((item, idx) => (
-        <div key={item.id}
-          draggable
-          onDragStart={e => handleDragStart(e, idx)}
-          onDragOver={e => handleDragOver(e, idx)}
-          onDrop={e => handleDrop(e, idx)}
-          onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-          style={{
-            opacity: dragIdx === idx ? 0.4 : 1,
-            borderTop: overIdx === idx && dragIdx !== idx ? '3px solid #2563eb' : '3px solid transparent',
-            transition: 'all 0.15s ease',
-            cursor: 'grab',
-          }}
-        >
-          {renderItem(item, idx)}
-        </div>
-      ))}
-    </div>
-  );
-}
+const SNOW_CONDITIONS = {
+  'light': { label: 'Light Snow', jobsPerHour: 3, color: '#e0f2fe' },
+  'moderate': { label: 'Moderate Snow', jobsPerHour: 2, color: '#f0f9ff' },
+  'heavy': { label: 'Heavy Snow', jobsPerHour: 1.5, color: '#fef2f2' },
+  'blizzard': { label: 'Blizzard', jobsPerHour: 1, color: '#fee2e2' }
+};
 
 export default function RoutePlanner() {
-  // State
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [stops, setStops] = useState([]);
   const [clients, setClients] = useState([]);
-  const [settings, setSettings] = useState({});
-  const [flash, setFlash] = useState('');
-  const [showNewRoute, setShowNewRoute] = useState(false);
-  const [newRoute, setNewRoute] = useState({ name: '', type: 'lawn' });
   const [addClientId, setAddClientId] = useState('');
   const [addFrequency, setAddFrequency] = useState('weekly');
-  const [tab, setTab] = useState('routes'); // routes | settings | eta-lookup
+  const [showNewRoute, setShowNewRoute] = useState(false);
+  const [newRoute, setNewRoute] = useState({ name: '', type: 'snow' });
 
-  const showFlash = (msg) => { setFlash(msg); setTimeout(() => setFlash(''), 3000); };
+  // Route session state
+  const [activeSession, setActiveSession] = useState(null);
+  const [numCrews, setNumCrews] = useState(1);
+  const [snowCondition, setSnowCondition] = useState('moderate');
+  const [jobsPerHourOverride, setJobsPerHourOverride] = useState('');
+  const [gpsTracking, setGpsTracking] = useState(false);
+  const gpsIntervalRef = useRef(null);
 
-  // ─── Data fetching ──────────────────────────────────────────────
-  const fetchRoutes = useCallback(async () => {
-    try { const r = await api.get('/routes'); setRoutes(r.data); } catch (e) { console.error(e); }
+  useEffect(() => {
+    loadRoutes();
+    loadClients();
   }, []);
 
-  const fetchStops = useCallback(async (routeId) => {
-    try { const r = await api.get(`/routes/${routeId}/stops`); setStops(r.data); } catch (e) { console.error(e); }
-  }, []);
+  useEffect(() => {
+    if (selectedRoute) loadStops();
+  }, [selectedRoute]);
 
-  const fetchClients = useCallback(async () => {
-    try { const r = await api.get('/clients'); setClients(r.data); } catch (e) { console.error(e); }
-  }, []);
+  useEffect(() => {
+    if (activeSession && gpsTracking) {
+      startGpsTracking();
+    } else {
+      stopGpsTracking();
+    }
+    return () => stopGpsTracking();
+  }, [gpsTracking, activeSession]);
 
-  const fetchSettings = useCallback(async () => {
-    try { const r = await api.get('/routes/settings'); setSettings(r.data); } catch (e) { console.error(e); }
-  }, []);
+  const loadRoutes = async () => {
+    try {
+      const r = await api.get('/routes');
+      setRoutes(r.data);
+    } catch (e) { console.error(e); }
+  };
 
-  useEffect(() => { fetchRoutes(); fetchClients(); fetchSettings(); }, [fetchRoutes, fetchClients, fetchSettings]);
-  useEffect(() => { if (selectedRoute) fetchStops(selectedRoute); }, [selectedRoute, fetchStops]);
+  const loadClients = async () => {
+    try {
+      const r = await api.get('/clients');
+      setClients(r.data);
+    } catch (e) { console.error(e); }
+  };
 
-  // ─── Route CRUD ─────────────────────────────────────────────────
+  const loadStops = async () => {
+    try {
+      const r = await api.get(`/routes/${selectedRoute}/stops`);
+      setStops(r.data);
+      
+      // Load active session for this route
+      const sessionR = await api.get(`/routes/sessions/active/${selectedRoute}`);
+      if (sessionR.data.found) {
+        setActiveSession(sessionR.data.session);
+        setNumCrews(sessionR.data.session.num_crews);
+        setSnowCondition(sessionR.data.session.snow_condition);
+        setJobsPerHourOverride(sessionR.data.session.jobs_per_hour.toString());
+      } else {
+        setActiveSession(null);
+        setJobsPerHourOverride('');
+      }
+    } catch (e) { console.error(e); }
+  };
+
   const createRoute = async () => {
-    if (!newRoute.name) return;
-    await api.post('/routes', newRoute);
-    setNewRoute({ name: '', type: 'lawn' }); setShowNewRoute(false);
-    fetchRoutes(); showFlash('Route created');
+    if (!newRoute.name.trim()) return;
+    try {
+      await api.post('/routes', newRoute);
+      setNewRoute({ name: '', type: 'snow' });
+      setShowNewRoute(false);
+      loadRoutes();
+    } catch (e) { console.error(e); }
   };
 
   const deleteRoute = async (id) => {
-    if (!confirm('Delete this route and all its stops?')) return;
-    await api.delete(`/routes/${id}`);
-    if (selectedRoute === id) { setSelectedRoute(null); setStops([]); }
-    fetchRoutes(); showFlash('Route deleted');
+    if (!confirm('Delete this route?')) return;
+    try {
+      await api.delete(`/routes/${id}`);
+      loadRoutes();
+      if (selectedRoute === id) setSelectedRoute(null);
+    } catch (e) { console.error(e); }
   };
 
-  // ─── Stop management ───────────────────────────────────────────
   const addStop = async () => {
-    if (!addClientId || !selectedRoute) return;
+    if (!addClientId) return;
     try {
       await api.post(`/routes/${selectedRoute}/stops`, { client_id: parseInt(addClientId), frequency: addFrequency });
-      setAddClientId(''); fetchStops(selectedRoute); showFlash('Client added to route');
-    } catch (e) { showFlash(e.response?.data?.error || 'Error adding client'); }
+      setAddClientId('');
+      setAddFrequency('weekly');
+      loadStops();
+    } catch (e) { console.error(e); }
   };
 
-  const removeStop = async (stopId) => {
-    await api.delete(`/routes/${selectedRoute}/stops/${stopId}`);
-    fetchStops(selectedRoute); showFlash('Stop removed');
+  const removeStop = async (id) => {
+    if (!confirm('Remove this stop?')) return;
+    try {
+      await api.delete(`/routes/${selectedRoute}/stops/${id}`);
+      loadStops();
+    } catch (e) { console.error(e); }
   };
 
-  const updateStopFrequency = async (stopId, frequency) => {
-    await api.put(`/routes/${selectedRoute}/stops/${stopId}`, { frequency });
-    fetchStops(selectedRoute);
+  const updateStopFrequency = async (id, freq) => {
+    try {
+      await api.put(`/routes/${selectedRoute}/stops/${id}`, { frequency: freq });
+      loadStops();
+    } catch (e) { console.error(e); }
   };
 
-  const handleReorder = async (newStops) => {
-    setStops(newStops);
-    await api.put(`/routes/${selectedRoute}/reorder`, { stop_ids: newStops.map(s => s.id) });
-    fetchStops(selectedRoute);
+  const handleReorder = async (newOrder) => {
+    const stopIds = newOrder.map(s => s.id);
+    try {
+      await api.put(`/routes/${selectedRoute}/reorder`, { stop_ids: stopIds });
+      loadStops();
+    } catch (e) { console.error(e); }
   };
 
   const optimizeRoute = async () => {
-    await api.post(`/routes/${selectedRoute}/optimize`);
-    fetchStops(selectedRoute); showFlash('Route optimized by geographic proximity');
+    try {
+      await api.post(`/routes/${selectedRoute}/optimize`);
+      loadStops();
+    } catch (e) { console.error(e); }
   };
 
-  // ─── Client active/inactive ────────────────────────────────────
-  const toggleClientActive = async (clientId, currentActive) => {
-    await api.put(`/routes/clients/${clientId}/active`, { active: !currentActive });
-    fetchClients(); if (selectedRoute) fetchStops(selectedRoute);
+  const toggleClientActive = async (id, active) => {
+    try {
+      await api.put(`/routes/clients/${id}/active`, { active: !active });
+      loadClients();
+      loadStops();
+    } catch (e) { console.error(e); }
   };
 
-  // ─── Settings ──────────────────────────────────────────────────
-  const updateSettings = async (updates) => {
-    const newSettings = { ...settings, ...updates };
-    setSettings(newSettings);
-    await api.put('/routes/settings', updates);
-    if (selectedRoute) fetchStops(selectedRoute);
-    showFlash('Settings updated');
+  // ─── Route Session Controls ───
+  const startRouteSession = async () => {
+    if (!selectedRoute) return;
+    try {
+      const res = await api.post('/routes/sessions/start', {
+        route_id: selectedRoute,
+        num_crews: numCrews,
+        snow_condition: snowCondition
+      });
+      setActiveSession(res.data);
+      setJobsPerHourOverride(res.data.jobs_per_hour.toString());
+    } catch (e) { console.error(e); }
   };
 
-  // ─── Styles ────────────────────────────────────────────────────
-  const card = { background: '#fff', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: '0 1px 3px rgba(0,0,0,.1)' };
-  const btn = (color = '#2563eb') => ({ background: color, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontWeight: 600, fontSize: 14 });
-  const btnSm = (color = '#2563eb') => ({ ...btn(color), padding: '5px 12px', fontSize: 13 });
-  const input = { padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box' };
-  const select = { ...input, width: 'auto' };
-  const badge = (color, bg) => ({ display: 'inline-block', padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 700, color, background: bg });
+  const endRouteSession = async () => {
+    if (!activeSession) return;
+    try {
+      await api.post(`/routes/sessions/${activeSession.id}/end`);
+      setActiveSession(null);
+      setGpsTracking(false);
+      setJobsPerHourOverride('');
+      loadStops();
+    } catch (e) { console.error(e); }
+  };
+
+  const updateSessionParams = async () => {
+    if (!activeSession) return;
+    try {
+      const updates = {
+        num_crews: numCrews,
+        snow_condition: snowCondition
+      };
+      if (jobsPerHourOverride) {
+        updates.jobs_per_hour = parseFloat(jobsPerHourOverride);
+      }
+      await api.put(`/routes/sessions/${activeSession.id}`, updates);
+      loadStops();
+      const sessionR = await api.get(`/routes/sessions/active/${selectedRoute}`);
+      if (sessionR.data.found) setActiveSession(sessionR.data.session);
+    } catch (e) { console.error(e); }
+  };
+
+  const startGpsTracking = () => {
+    if (!activeSession) return;
+    if (gpsIntervalRef.current) clearInterval(gpsIntervalRef.current);
+
+    const trackGps = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          api.post(`/routes/sessions/${activeSession.id}/gps`, {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude
+          }).catch(e => console.error('GPS update failed:', e));
+        },
+        (err) => console.error('Geolocation error:', err)
+      );
+    };
+
+    trackGps();
+    gpsIntervalRef.current = setInterval(trackGps, 45000); // 45 seconds
+  };
+
+  const stopGpsTracking = () => {
+    if (gpsIntervalRef.current) {
+      clearInterval(gpsIntervalRef.current);
+      gpsIntervalRef.current = null;
+    }
+  };
 
   const activeRoute = routes.find(r => r.id === selectedRoute);
-  const snowDayActive = settings.snow_day_active === '1';
+  const availableClients = clients.filter(c => !stops.some(s => s.client_id === c.id));
 
-  // Clients not already on this route
-  const availableClients = clients.filter(c => !stops.find(s => s.client_id === c.id));
+  const card = { background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,.1)', marginBottom: 20 };
+  const input = { padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 16, width: '100%', boxSizing: 'border-box' };
+  const select = { padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' };
+  const btnSm = (bg = '#2563eb', hover = '#1d4ed8') => ({ background: bg, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13, transition: 'background 0.2s', ':hover': { background: hover } });
+  const badge = (bg, bgLight) => ({ background: bgLight, color: bg, padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 });
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Route Planner</h2>
-      <p style={{ color: '#6b7280', marginBottom: 20 }}>Manage lawn and snow routes, set ETAs, and track crew progress.</p>
+    <div style={{ padding: '2rem 1rem' }}>
+      <div className="container">
+        <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 24 }}>🗺️ Route Planner</h1>
 
-      {flash && <div style={{ background: '#dcfce7', color: '#166534', padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontWeight: 600 }}>{flash}</div>}
-
-      {/* Tab navigation */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        {[['routes', 'Routes'], ['settings', 'ETA Settings'], ['eta-lookup', 'Public ETA Lookup']].map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
-            style={{ ...btn(tab === key ? '#2563eb' : '#9ca3af'), borderRadius: 20, padding: '8px 20px' }}>{label}</button>
-        ))}
-      </div>
-
-      {/* ════════ SETTINGS TAB ════════ */}
-      {tab === 'settings' && (
-        <div style={card}>
-          <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Route & ETA Settings</h3>
-
-          {/* Snow Day Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: 16, background: snowDayActive ? '#fef2f2' : '#f0fdf4', borderRadius: 12, border: `2px solid ${snowDayActive ? '#ef4444' : '#22c55e'}` }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Snow Day Mode</div>
-              <div style={{ color: '#6b7280', fontSize: 14 }}>When active, snow routes are used instead of lawn routes. Toggle on when it snows.</div>
-            </div>
-            <button onClick={() => updateSettings({ snow_day_active: snowDayActive ? '0' : '1' })}
-              style={{ ...btn(snowDayActive ? '#ef4444' : '#22c55e'), padding: '12px 24px', fontSize: 16, minWidth: 140 }}>
-              {snowDayActive ? '❄️ SNOW DAY ON' : '☀️ SNOW DAY OFF'}
-            </button>
-          </div>
-
-          {/* ETA Config */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            <div>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 4 }}>Start Time</label>
-              <input type="time" value={settings.eta_start_time || '08:00'}
-                onChange={e => updateSettings({ eta_start_time: e.target.value })} style={input} />
-            </div>
-            <div>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 4 }}>Jobs Per Hour Per Crew</label>
-              <select value={settings.eta_jobs_per_hour || '2'}
-                onChange={e => updateSettings({ eta_jobs_per_hour: e.target.value })} style={input}>
-                {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} job{n > 1 ? 's' : ''}/hr</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 4 }}>Number of Crews</label>
-              <select value={settings.eta_num_crews || '1'}
-                onChange={e => updateSettings({ eta_num_crews: e.target.value })} style={input}>
-                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} crew{n > 1 ? 's' : ''}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', borderRadius: 8, fontSize: 14, color: '#6b7280' }}>
-            <strong>How ETA works:</strong> Each crew handles {settings.eta_jobs_per_hour || 2} jobs/hour. With {settings.eta_num_crews || 1} crew(s), jobs are distributed in parallel. Stop #1 goes to Crew 1, Stop #2 to Crew 2, etc. ETAs are calculated based on position in each crew's queue.
-          </div>
-        </div>
-      )}
-
-      {/* ════════ ETA LOOKUP TAB ════════ */}
-      {tab === 'eta-lookup' && <ETALookup />}
-
-      {/* ════════ ROUTES TAB ════════ */}
-      {tab === 'routes' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20 }}>
-          {/* Left: Route list */}
+        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20 }}>
+          {/* Left: Route list + clients */}
           <div>
+            {/* Routes */}
             <div style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Routes</h3>
@@ -283,7 +295,7 @@ export default function RoutePlanner() {
             </div>
           </div>
 
-          {/* Right: Route detail */}
+          {/* Right: Route detail + session controls */}
           <div>
             {!selectedRoute ? (
               <div style={{ ...card, textAlign: 'center', padding: 60, color: '#9ca3af' }}>
@@ -292,6 +304,75 @@ export default function RoutePlanner() {
               </div>
             ) : (
               <>
+                {/* Route Session Controls */}
+                <div style={{ ...card, background: activeSession ? '#f0fdf4' : '#fef2f2', borderLeft: `4px solid ${activeSession ? '#22c55e' : '#ef4444'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <div>
+                      <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, marginBottom: 4 }}>
+                        {activeSession ? '🟢 Route Active' : '⚪ Route Inactive'}
+                      </h3>
+                      {activeSession && (
+                        <div style={{ fontSize: 12, color: '#6b7280' }}>
+                          Started: {new Date(activeSession.start_time).toLocaleTimeString()}
+                        </div>
+                      )}
+                    </div>
+                    {activeSession ? (
+                      <button onClick={endRouteSession} style={btnSm('#ef4444')}>🛑 End Route</button>
+                    ) : (
+                      <button onClick={startRouteSession} style={btnSm('#22c55e')}>▶️ Start Route</button>
+                    )}
+                  </div>
+
+                  {activeSession && (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                        <div>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Crews</label>
+                          <select value={numCrews} onChange={e => setNumCrews(parseInt(e.target.value))}
+                            style={{ ...select, width: '100%' }}>
+                            {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} crew{n > 1 ? 's' : ''}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Snow Condition</label>
+                          <select value={snowCondition} onChange={e => setSnowCondition(e.target.value)}
+                            style={{ ...select, width: '100%' }}>
+                            {Object.entries(SNOW_CONDITIONS).map(([key, val]) => (
+                              <option key={key} value={key}>{val.label} ({val.jobsPerHour} jobs/hr)</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+                          Override Jobs/Hour (leave blank to use condition baseline)
+                        </label>
+                        <input type="number" step="0.5" min="0.5" max="10" value={jobsPerHourOverride}
+                          onChange={e => setJobsPerHourOverride(e.target.value)}
+                          placeholder={SNOW_CONDITIONS[snowCondition].jobsPerHour.toString()}
+                          style={{ ...input, marginBottom: 8 }} />
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                        <button onClick={updateSessionParams} style={btnSm('#7c3aed')}>💾 Save Changes</button>
+                        <button onClick={() => setGpsTracking(!gpsTracking)}
+                          style={btnSm(gpsTracking ? '#ef4444' : '#2563eb')}>
+                          {gpsTracking ? '🛑 Stop GPS' : '📍 Start GPS Tracking'}
+                        </button>
+                      </div>
+
+                      {gpsTracking && (
+                        <div style={{ padding: 8, background: '#dbeafe', borderRadius: 6, fontSize: 12, color: '#1e40af' }}>
+                          📍 Live GPS tracking active — updating every 45 seconds
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Route Detail */}
                 <div style={card}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                     <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
@@ -397,71 +478,6 @@ export default function RoutePlanner() {
             )}
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Public ETA Lookup Component ─────────────────────────────────
-function ETALookup() {
-  const [query, setQuery] = useState('');
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const lookup = async () => {
-    if (!query.trim()) return;
-    setLoading(true);
-    try {
-      const r = await api.get(`/routes/eta/lookup?name=${encodeURIComponent(query)}&address=${encodeURIComponent(query)}`);
-      setResult(r.data);
-    } catch (e) { setResult({ found: false, message: 'Error looking up ETA' }); }
-    setLoading(false);
-  };
-
-  const card = { background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,.1)' };
-  const input = { padding: '12px 16px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 16, width: '100%', boxSizing: 'border-box' };
-
-  return (
-    <div style={{ maxWidth: 600, margin: '0 auto' }}>
-      <div style={card}>
-        <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>ETA Lookup</h3>
-        <p style={{ color: '#6b7280', marginBottom: 16, fontSize: 14 }}>
-          This is how customers can look up their estimated arrival time. Enter a name or address.
-        </p>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <input placeholder="Enter your name or address..." value={query}
-            onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && lookup()} style={{ ...input, flex: 1 }} />
-          <button onClick={lookup} disabled={loading}
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 24px', fontWeight: 700, cursor: 'pointer' }}>
-            {loading ? '...' : 'Look Up'}
-          </button>
-        </div>
-
-        {result && !result.found && (
-          <div style={{ padding: 16, background: '#fef2f2', borderRadius: 8, color: '#991b1b' }}>
-            No matching client found on active routes. Please check your name or address.
-          </div>
-        )}
-
-        {result && result.found && (
-          <div style={{ padding: 16, background: '#f0fdf4', borderRadius: 8 }}>
-            <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>Hello, {result.client_name}!</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: '#2563eb', marginBottom: 8 }}>
-              ETA: {result.refined_eta || result.eta}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 14 }}>
-              <div><strong>Route:</strong> {result.route_name}</div>
-              <div><strong>Stop:</strong> #{result.stop_number} of {result.total_stops}</div>
-              <div><strong>Crew:</strong> #{result.crew_number} of {result.num_crews}</div>
-              <div><strong>Type:</strong> {result.snow_day ? '❄️ Snow' : '🌿 Lawn'}</div>
-            </div>
-            {result.refined_eta && (
-              <div style={{ marginTop: 8, padding: 8, background: '#dbeafe', borderRadius: 6, fontSize: 13 }}>
-                📍 Live GPS tracking active — ETA refined based on crew location.
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

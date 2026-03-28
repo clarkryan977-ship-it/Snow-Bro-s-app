@@ -37,6 +37,14 @@ function nearestNeighborOrder(stops) {
   return [...ordered, ...noGeo];
 }
 
+// Snow conditions baseline: jobs per hour per crew
+const SNOW_CONDITIONS = {
+  'light': 3,
+  'moderate': 2,
+  'heavy': 1.5,
+  'blizzard': 1
+};
+
 // ═══════════════════════════════════════════════════════════════════
 //  ROUTE SETTINGS (Snow Day, ETA config)
 // ═══════════════════════════════════════════════════════════════════
@@ -147,14 +155,25 @@ router.get('/:id/stops', authenticateToken, async (req, res) => {
       WHERE rs.route_id = $1
       ORDER BY rs.position ASC`, [req.params.id]);
 
-    // Calculate ETAs
-    const { rows: settingsRows } = await req.db.query('SELECT key, value FROM route_settings');
-    const settings = {};
-    settingsRows.forEach(r => { settings[r.key] = r.value; });
+    // Check if there's an active session for this route
+    const { rows: sessionRows } = await req.db.query(`
+      SELECT * FROM route_sessions
+      WHERE route_id = $1 AND status = $2
+      ORDER BY created_at DESC LIMIT 1`,
+      [req.params.id, 'active']);
+    
+    const session = sessionRows[0];
+
+    // Calculate ETAs using session params or settings
+    let settings = {};
+    if (!session) {
+      const { rows: settingsRows } = await req.db.query('SELECT key, value FROM route_settings');
+      settingsRows.forEach(r => { settings[r.key] = r.value; });
+    }
 
     const startTime = settings.eta_start_time || '08:00';
-    const jobsPerHour = parseFloat(settings.eta_jobs_per_hour) || 2;
-    const numCrews = parseInt(settings.eta_num_crews) || 1;
+    const jobsPerHour = session ? session.jobs_per_hour : (parseFloat(settings.eta_jobs_per_hour) || 2);
+    const numCrews = session ? session.num_crews : (parseInt(settings.eta_num_crews) || 1);
     const minutesPerJob = 60 / jobsPerHour;
 
     const [startH, startM] = startTime.split(':').map(Number);
@@ -247,28 +266,131 @@ router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) =
 });
 
 // ═══════════════════════════════════════════════════════════════════
-//  CREW GPS TRACKING
+//  LIVE ROUTE SESSIONS (admin GPS tracking + real-time ETA)
 // ═══════════════════════════════════════════════════════════════════
 
-// POST update crew location
-router.post('/crew-location', authenticateToken, async (req, res) => {
+// POST start a new route session
+router.post('/sessions/start', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { crew_id, latitude, longitude, current_stop } = req.body;
-    await req.db.query(`
-      INSERT INTO crew_locations (crew_id, latitude, longitude, current_stop, updated_at)
-      VALUES ($1, $2, $3, $4, NOW())
-      ON CONFLICT(crew_id) DO UPDATE SET latitude=excluded.latitude, longitude=excluded.longitude,
-        current_stop=excluded.current_stop, updated_at=excluded.updated_at`,
-      [crew_id || 1, latitude, longitude, current_stop || 0]);
-    res.json({ message: 'Location updated' });
+    const { route_id, num_crews = 1, snow_condition = 'moderate' } = req.body;
+    if (!route_id) return res.status(400).json({ error: 'route_id required' });
+    
+    const jobsPerHour = SNOW_CONDITIONS[snow_condition] || SNOW_CONDITIONS['moderate'];
+    
+    // End any existing active sessions for this route
+    await req.db.query('UPDATE route_sessions SET status = $1 WHERE route_id = $2 AND status = $3',
+      ['ended', route_id, 'active']);
+    
+    // Create new session
+    const { rows } = await req.db.query(`
+      INSERT INTO route_sessions (route_id, status, num_crews, jobs_per_hour, snow_condition, start_time)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      RETURNING id, route_id, status, num_crews, jobs_per_hour, snow_condition, start_time`,
+      [route_id, 'active', num_crews, jobsPerHour, snow_condition]);
+    
+    res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET crew locations (admin)
-router.get('/crew-locations', authenticateToken, async (req, res) => {
+// GET active session for a route
+router.get('/sessions/active/:route_id', authenticateToken, async (req, res) => {
   try {
-    const { rows: locs } = await req.db.query('SELECT * FROM crew_locations ORDER BY crew_id');
-    res.json(locs);
+    const { rows } = await req.db.query(`
+      SELECT * FROM route_sessions
+      WHERE route_id = $1 AND status = $2
+      ORDER BY created_at DESC LIMIT 1`,
+      [req.params.route_id, 'active']);
+    
+    if (rows.length === 0) return res.json({ found: false });
+    res.json({ found: true, session: rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST update admin GPS location for active session
+router.post('/sessions/:session_id/gps', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ error: 'latitude and longitude required' });
+    }
+    
+    // Get the session and its route
+    const { rows: sessionRows } = await req.db.query(
+      'SELECT * FROM route_sessions WHERE id = $1 AND status = $2',
+      [req.params.session_id, 'active']);
+    
+    if (sessionRows.length === 0) {
+      return res.status(404).json({ error: 'Active session not found' });
+    }
+    
+    const session = sessionRows[0];
+    
+    // Get all stops for this route with client coords
+    const { rows: stops } = await req.db.query(`
+      SELECT rs.id, rs.position, rs.client_id, c.latitude, c.longitude, c.first_name, c.last_name
+      FROM route_stops rs
+      JOIN clients c ON rs.client_id = c.id
+      WHERE rs.route_id = $1
+      ORDER BY rs.position ASC`, [session.route_id]);
+    
+    // Determine which stop the admin is currently at or closest to
+    let currentStop = 0;
+    let minDist = Infinity;
+    for (const stop of stops) {
+      if (stop.latitude && stop.longitude) {
+        const dist = haversine(latitude, longitude, stop.latitude, stop.longitude);
+        if (dist < minDist) {
+          minDist = dist;
+          currentStop = stop.position;
+        }
+      }
+    }
+    
+    // Update session with GPS location
+    await req.db.query(`
+      UPDATE route_sessions
+      SET admin_lat = $1, admin_lng = $2, admin_gps_updated_at = NOW(), current_stop = $3
+      WHERE id = $4`,
+      [latitude, longitude, currentStop, req.params.session_id]);
+    
+    res.json({ message: 'GPS updated', current_stop: currentStop });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT update session parameters (num_crews, snow_condition, jobs_per_hour)
+router.put('/sessions/:session_id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { num_crews, snow_condition, jobs_per_hour } = req.body;
+    
+    let jobsPerHour = jobs_per_hour;
+    if (snow_condition && !jobs_per_hour) {
+      jobsPerHour = SNOW_CONDITIONS[snow_condition] || SNOW_CONDITIONS['moderate'];
+    }
+    
+    const updates = {};
+    if (num_crews !== undefined) updates.num_crews = num_crews;
+    if (snow_condition !== undefined) updates.snow_condition = snow_condition;
+    if (jobsPerHour !== undefined) updates.jobs_per_hour = jobsPerHour;
+    
+    const setClauses = Object.keys(updates).map((k, i) => `${k} = $${i + 1}`).join(', ');
+    const values = [...Object.values(updates), req.params.session_id];
+    
+    await req.db.query(
+      `UPDATE route_sessions SET ${setClauses} WHERE id = $${values.length}`,
+      values);
+    
+    res.json({ message: 'Session updated', updates });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST end a route session
+router.post('/sessions/:session_id/end', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await req.db.query(
+      'UPDATE route_sessions SET status = $1, ended_at = NOW() WHERE id = $2',
+      ['ended', req.params.session_id]);
+    
+    res.json({ message: 'Route session ended' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -299,22 +421,35 @@ router.get('/my-eta', authenticateToken, async (req, res) => {
 
     let result = null;
     for (const route of routes) {
+      // Check if there's an active session for this route
+      const { rows: sessionRows } = await db.query(`
+        SELECT * FROM route_sessions
+        WHERE route_id = $1 AND status = $2
+        ORDER BY created_at DESC LIMIT 1`,
+        [route.id, 'active']);
+      
+      const session = sessionRows[0];
+      
       const { rows: stopRows } = await db.query(`
-        SELECT rs.position, rs.frequency
+        SELECT rs.position, rs.frequency, rs.client_id, c.latitude, c.longitude
         FROM route_stops rs
+        JOIN clients c ON rs.client_id = c.id
         WHERE rs.route_id = $1 AND rs.client_id = $2`, [route.id, clientId]);
 
       if (stopRows.length > 0) {
         const match = stopRows[0];
+        
+        // Use session parameters if active, otherwise use settings
+        const jobsPerHour = session ? session.jobs_per_hour : (parseFloat(settings.eta_jobs_per_hour) || 2);
+        const numCrews = session ? session.num_crews : (parseInt(settings.eta_num_crews) || 1);
         const startTime = settings.eta_start_time || '08:00';
-        const jobsPerHour = parseFloat(settings.eta_jobs_per_hour) || 2;
-        const numCrews = parseInt(settings.eta_num_crews) || 1;
         const minutesPerJob = 60 / jobsPerHour;
         const [startH, startM] = startTime.split(':').map(Number);
         const jobInCrewSequence = Math.floor(match.position / numCrews);
         const totalMinutes = startH * 60 + startM + jobInCrewSequence * minutesPerJob;
         const etaH = Math.floor(totalMinutes / 60) % 24;
         const etaM = Math.floor(totalMinutes % 60);
+        const stopsAhead = Math.max(0, match.position - (session?.current_stop || 0));
 
         result = {
           found: true,
@@ -324,21 +459,35 @@ router.get('/my-eta', authenticateToken, async (req, res) => {
           eta: `${String(etaH).padStart(2, '0')}:${String(etaM).padStart(2, '0')}`,
           crew_number: (match.position % numCrews) + 1,
           snow_day: snowDay,
+          stops_ahead: stopsAhead,
+          session_active: !!session,
+          snow_condition: session?.snow_condition || 'moderate'
         };
 
-        // Check if crew GPS is available for refined ETA
-        try {
-          const crewNum = (match.position % numCrews) + 1;
-          const { rows: crewRows } = await db.query('SELECT * FROM crew_locations WHERE crew_id = $1', [crewNum]);
-          const crewLoc = crewRows[0];
-          if (crewLoc && crewLoc.current_stop > 0) {
-            const remainingStops = Math.max(0, match.position - crewLoc.current_stop);
-            const remainingMinutes = remainingStops * minutesPerJob;
+        // If session is active with GPS, calculate refined ETA based on distance
+        if (session && session.admin_lat && session.admin_lng && match.latitude && match.longitude) {
+          try {
+            // Distance from admin GPS to this client
+            const distToClient = haversine(session.admin_lat, session.admin_lng, match.latitude, match.longitude);
+            // Assume 15 mph average speed in snow
+            const driveMinsToClient = (distToClient / 15) * 60;
+            
+            // Remaining stops ahead * time per job
+            const remainingJobMins = stopsAhead * minutesPerJob;
+            
+            // Total remaining time
+            const totalRemainMins = driveMinsToClient + remainingJobMins;
             const now = new Date();
-            const refinedTime = new Date(now.getTime() + remainingMinutes * 60000);
+            const refinedTime = new Date(now.getTime() + totalRemainMins * 60000);
             result.refined_eta = `${String(refinedTime.getHours()).padStart(2, '0')}:${String(refinedTime.getMinutes()).padStart(2, '0')}`;
-          }
-        } catch (e) { /* no crew location data */ }
+            
+            // ETA window: +/- 15 minutes
+            const windowStart = new Date(refinedTime.getTime() - 15 * 60000);
+            const windowEnd = new Date(refinedTime.getTime() + 15 * 60000);
+            result.eta_window_start = `${String(windowStart.getHours()).padStart(2, '0')}:${String(windowStart.getMinutes()).padStart(2, '0')}`;
+            result.eta_window_end = `${String(windowEnd.getHours()).padStart(2, '0')}:${String(windowEnd.getMinutes()).padStart(2, '0')}`;
+          } catch (e) { /* no GPS data */ }
+        }
 
         break;
       }
