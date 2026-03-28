@@ -1,9 +1,23 @@
 /**
  * Snow Bro's — Shared Email Header & Footer Utility
  * Use emailHeader() and emailFooter() to wrap all customer-facing HTML emails.
+ * All emails include a faint Snow Bro's logo watermark in the background.
  */
+const fs = require('fs');
+const path = require('path');
 
 const LOGO_URL = 'https://prosnowbros.com/logo.jpg';
+
+// Load logo as inline base64 for watermark (works regardless of external URL availability)
+let LOGO_B64 = '';
+try {
+  const logoPath = path.join(__dirname, '../../client/public/icons/icon-512.png');
+  if (fs.existsSync(logoPath)) {
+    LOGO_B64 = `data:image/png;base64,${fs.readFileSync(logoPath).toString('base64')}`;
+  }
+} catch (_) {
+  LOGO_B64 = LOGO_URL;
+}
 const BUSINESS = {
   name:    "Snow Bro's",
   tagline: "Lawn Care & Snow Removal",
@@ -70,6 +84,22 @@ function emailFooter() {
  * @param {string} [subtitle] - Optional subtitle for the header
  */
 function wrapEmail(content, subtitle = '') {
+  // Faint watermark: centered logo at 8% opacity behind the email body content
+  const watermark = LOGO_B64 ? `
+    <div style="
+      position:absolute;
+      top:50%;left:50%;
+      transform:translate(-50%,-50%);
+      width:340px;height:340px;
+      opacity:0.08;
+      pointer-events:none;
+      z-index:0;
+      background-image:url('${LOGO_B64}');
+      background-size:contain;
+      background-repeat:no-repeat;
+      background-position:center;
+    "></div>` : '';
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -80,8 +110,11 @@ function wrapEmail(content, subtitle = '') {
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
   <div style="max-width:680px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);">
     ${emailHeader(subtitle)}
-    <div style="padding:28px 36px;">
-      ${content}
+    <div style="padding:28px 36px;position:relative;">
+      ${watermark}
+      <div style="position:relative;z-index:1;">
+        ${content}
+      </div>
     </div>
     ${emailFooter()}
   </div>
