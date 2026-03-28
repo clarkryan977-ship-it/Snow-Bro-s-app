@@ -4,7 +4,7 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || 're_hN64D3QT_BHqyEfVJRAVzLw
 const BCC_EMAIL = 'clarkryan977@gmail.com';
 
 // Use Resend's onboarding address until prosnowbros@gmail.com domain is verified
-const FROM_ADDRESS = 'Snow Bro\'s <onboarding@resend.dev>';
+const FROM_ADDRESS = 'Snow Bro\'s <prosnowbros@prosnowbros.com>';
 
 const resend = new Resend(RESEND_API_KEY);
 
