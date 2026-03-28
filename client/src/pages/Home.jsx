@@ -120,10 +120,13 @@ export default function Home() {
             { icon: '💨', name: 'Aeration' },
             { icon: '❄️', name: 'Snow Removal' },
             { icon: '🍂', name: 'Gutter Cleaning' },
+            { icon: '🌸', name: 'Spring Cleanup', price: 'Starting at $65' },
+            { icon: '🍁', name: 'Fall Cleanup', price: 'Starting at $65' },
           ].map(s => (
             <div key={s.name} className="card" style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
               <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>{s.icon}</div>
               <div style={{ fontWeight: 600, fontSize: '.95rem' }}>{s.name}</div>
+              {s.price && <div style={{ fontSize: '.8rem', color: 'var(--green-600, #16a34a)', fontWeight: 600, marginTop: '.3rem' }}>{s.price}</div>}
             </div>
           ))}
         </div>
@@ -144,6 +147,8 @@ export default function Home() {
               { icon: '🌳', name: 'Property Maintenance', desc: 'Comprehensive grounds keeping — mulching, bed maintenance, and seasonal clean-ups.' },
               { icon: '🧂', name: 'Ice Management', desc: 'De-icing and salting services for walkways, entrances, and parking areas.' },
               { icon: '📋', name: 'Service Contracts', desc: 'Flexible seasonal and annual contracts tailored to your commercial property needs.' },
+              { icon: '🌸', name: 'Spring Cleanup', desc: 'Commercial spring yard cleanup — debris removal, bed cleanup, and property prep. Starting at $65.', price: 'Starting at $65' },
+              { icon: '🍁', name: 'Fall Cleanup', desc: 'Commercial fall cleanup — leaf removal, debris clearing, and winter prep. Starting at $65.', price: 'Starting at $65' },
             ].map(s => (
               <div key={s.name} style={{
                 background: 'rgba(255,255,255,0.08)',
