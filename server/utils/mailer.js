@@ -1,58 +1,56 @@
-const nodemailer = require('nodemailer');
-const dns = require('dns');
+const { Resend } = require('resend');
 
-// Force IPv4 DNS resolution to avoid Railway IPv6 ENETUNREACH issue
-dns.setDefaultResultOrder('ipv4first');
-
-const EMAIL_USER = process.env.EMAIL_USER || 'prosnowbros@gmail.com';
-const EMAIL_PASS = process.env.EMAIL_PASS || 'hisaxewlwuxmkghz';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || 're_hN64D3QT_BHqyEfVJRAVzLwYESNjfRNKC';
 const BCC_EMAIL = 'clarkryan977@gmail.com';
 
-// Create transporter with Gmail SMTP forced to IPv4 via port 587 (STARTTLS)
-// Port 587 is more reliable on Railway than 465 (SSL) for IPv4
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // STARTTLS
-  auth: {
-    user: EMAIL_USER,
-    pass: EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false,
-    minVersion: 'TLSv1.2'
-  },
-  // Force IPv4 family to avoid Railway IPv6 routing issues
-  family: 4,
-  connectionTimeout: 30000,
-  greetingTimeout: 15000,
-  socketTimeout: 30000
-});
+// Use Resend's onboarding address until prosnowbros@gmail.com domain is verified
+const FROM_ADDRESS = 'Snow Bro\'s <onboarding@resend.dev>';
+
+const resend = new Resend(RESEND_API_KEY);
 
 /**
- * Send an email using the Snow Bro's Gmail account.
+ * Send an email using the Resend API.
  * clarkryan977@gmail.com is always BCC'd on every outgoing email.
  * @param {Object} options - { to, subject, html, attachments?, cc? }
  */
 async function sendMail({ to, subject, html, attachments, cc }) {
-  const mailOptions = {
-    from: `"Snow Bro's Lawn Care & Snow Removal" <${EMAIL_USER}>`,
-    to,
-    bcc: BCC_EMAIL,
-    subject,
-    html,
-    ...(cc ? { cc } : {}),
-    ...(attachments ? { attachments } : {})
-  };
-
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[MAILER] Email sent to ${to} (BCC: ${BCC_EMAIL}): ${info.messageId}`);
-    return { success: true, messageId: info.messageId };
+    const payload = {
+      from: FROM_ADDRESS,
+      to: Array.isArray(to) ? to : [to],
+      bcc: [BCC_EMAIL],
+      subject,
+      html,
+    };
+
+    if (cc) {
+      payload.cc = Array.isArray(cc) ? cc : [cc];
+    }
+
+    // Resend attachments format: [{ filename, content (base64 or Buffer) }]
+    if (attachments && attachments.length > 0) {
+      payload.attachments = attachments.map(a => ({
+        filename: a.filename || a.name || 'attachment',
+        content: a.content || a.data,
+      }));
+    }
+
+    const { data, error } = await resend.emails.send(payload);
+
+    if (error) {
+      console.error(`[MAILER] Resend error sending to ${to}:`, error);
+      throw new Error(error.message || JSON.stringify(error));
+    }
+
+    console.log(`[MAILER] Email sent via Resend to ${to} (BCC: ${BCC_EMAIL}): ${data.id}`);
+    return { success: true, messageId: data.id };
   } catch (err) {
     console.error(`[MAILER] Failed to send email to ${to}:`, err.message);
     throw err;
   }
 }
 
-module.exports = { sendMail, transporter, EMAIL_USER, BCC_EMAIL };
+// Legacy compatibility: export EMAIL_USER for any code that references it
+const EMAIL_USER = FROM_ADDRESS;
+
+module.exports = { sendMail, EMAIL_USER, BCC_EMAIL };
