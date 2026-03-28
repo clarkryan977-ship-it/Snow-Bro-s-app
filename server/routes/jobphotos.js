@@ -51,7 +51,7 @@ router.post('/record/:recordId', authenticateToken, upload.array('photos', 10), 
       const filePath = `/uploads/jobphotos/${file.filename}`;
       const result = await req.db.query(`INSERT INTO job_photos (time_record_id, employee_id, filename, original_name, file_path, caption)
       VALUES ($1,$2,$3,$4,$5,$6)`, [recordId, req.user.id, file.filename, file.originalname, filePath, req.body.caption || '']);
-      inserted.push(await req.db.query('SELECT * FROM job_photos WHERE id = $1', [result[0].id)]);
+      inserted.push((await req.db.query('SELECT * FROM job_photos WHERE id = $1', [result.rows[0].id])).rows[0]);
     }
     res.status(201).json(inserted);
   } catch (e) { res.status(500).json({ error: e.message }); }

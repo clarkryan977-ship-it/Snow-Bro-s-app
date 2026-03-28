@@ -37,7 +37,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 
     const result = await req.db.query('INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, notes, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id', [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', password_hash]);
 
-    res.status(201).json({ id: result[0].id, message: 'Client added' });
+    res.status(201).json({ id: result.rows[0].id, message: 'Client added' });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
     res.status(500).json({ error: err.message });

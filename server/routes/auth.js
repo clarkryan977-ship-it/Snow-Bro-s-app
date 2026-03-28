@@ -53,7 +53,7 @@ router.post('/register', async (req, res) => {
 
     const result = await req.db.query('INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', password_hash]);
 
-    res.status(201).json({ id: result[0].id, message: 'Registration successful' });
+    res.status(201).json({ id: result.rows[0].id, message: 'Registration successful' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

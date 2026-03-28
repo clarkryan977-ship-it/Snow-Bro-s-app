@@ -17,7 +17,7 @@ router.post('/clock-in', authenticateToken, async (req, res) => {
        VALUES ($1, NOW(), $2, $3, $4, $5) RETURNING id`,
       [empId, job_address, job_contact, scope_of_work, job_notes]);
 
-    res.json({ id: result[0].id, message: 'Clocked in successfully' });
+    res.json({ id: result.rows[0].id, message: 'Clocked in successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import FirstTimeDiscountBanner from '../components/FirstTimeDiscountBanner';
+import SiteFooter from '../components/SiteFooter';
 
 export default function BookService() {
   const [services, setServices] = useState([]);
@@ -49,10 +50,11 @@ export default function BookService() {
   const isCommercial = form.client_type === 'commercial';
 
   return (
-    <div className="container" style={{ maxWidth: 640, padding: '2rem 1rem' }}>
+    <div>
+      <div className="container" style={{ maxWidth: 640, padding: '2rem 1rem' }}>
       <div className="page-header">
-        <h1>📅 Book a Service</h1>
-        <p>Fill out the form below and we'll confirm your appointment.</p>
+        <h1>📅 Book a Lawn Care or Snow Removal Service</h1>
+        <p>Schedule residential or commercial lawn care and snow removal in Moorhead, MN &amp; Fargo, ND. Fill out the form and we'll confirm your appointment.</p>
       </div>
 
       <FirstTimeDiscountBanner compact />
@@ -161,6 +163,8 @@ export default function BookService() {
           </button>
         </form>
       </div>
+      </div>
+      <SiteFooter />
     </div>
   );
 }

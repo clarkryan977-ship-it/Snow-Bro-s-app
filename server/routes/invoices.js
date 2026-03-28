@@ -53,12 +53,12 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     const tax_amount = subtotal * (taxRate / 100);
     const total = subtotal + tax_amount;
 
-    const result = await req.db.query('INSERT INTO invoices (invoice_number, client_id, subtotal, tax_rate, tax_amount, total, notes) VALUES ($2, $3, $4, $5, $6, $7, $8) RETURNING id', [invoice_number, client_id, subtotal, taxRate, tax_amount, total, notes || '']);
+    const result = await req.db.query('INSERT INTO invoices (invoice_number, client_id, subtotal, tax_rate, tax_amount, total, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [invoice_number, client_id, subtotal, taxRate, tax_amount, total, notes || '']);
 
-    const invoiceId = result[0].id;
+    const invoiceId = result.rows[0].id;
 
     for (const item of items) {
-      await req.db.query('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, total) VALUES ($9, $10, $11, $12, $13)', [invoiceId, item.description, item.quantity, item.unit_price, item.quantity * item.unit_price]);
+      await req.db.query('INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, total) VALUES ($1, $2, $3, $4, $5)', [invoiceId, item.description, item.quantity, item.unit_price, item.quantity * item.unit_price]);
     }
 
     res.status(201).json({ id: invoiceId, invoice_number, message: 'Invoice created' });

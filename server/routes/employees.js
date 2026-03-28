@@ -42,7 +42,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     const hash = bcrypt.hashSync(password, 10);
     const result = await req.db.query('INSERT INTO employees (first_name, last_name, email, phone, password_hash, role, title) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [first_name, last_name, email, phone || '', hash, effectiveRole, title || '']);
 
-    res.status(201).json({ id: result[0].id, message: 'Account created' });
+    res.status(201).json({ id: result.rows[0].id, message: 'Account created' });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
     res.status(500).json({ error: err.message });
@@ -62,7 +62,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     }
     // Prevent demoting the last admin
     if (currentEmp && currentEmp.role === 'admin' && role !== 'admin') {
-      const adminCount = (await req.db.query('SELECT COUNT(*) as c FROM employees WHERE role='admin'')).rows[0].c;
+      const adminCount = (await req.db.query("SELECT COUNT(*) as c FROM employees WHERE role='admin'")).rows[0].c;
       if (adminCount <= 1) {
         return res.status(400).json({ error: 'Cannot change role of the last admin account' });
       }
@@ -90,7 +90,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
     const { rows: __emp } = await req.db.query('SELECT role FROM employees WHERE id = $1', [req.params.id]);
     const emp = __emp[0];
     if (emp && emp.role === 'admin') {
-      const adminCount = (await req.db.query('SELECT COUNT(*) as c FROM employees WHERE role='admin'')).rows[0].c;
+      const adminCount = (await req.db.query("SELECT COUNT(*) as c FROM employees WHERE role='admin'")).rows[0].c;
       if (adminCount <= 1) {
         return res.status(400).json({ error: 'Cannot delete the last admin account' });
       }

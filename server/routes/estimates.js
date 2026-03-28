@@ -183,7 +183,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // ── POST email estimate ───────────────────────────────────────────────────────
-router.post('/:id/email', authenticateToken, requireAdmin, async async (req, res) => {
+router.post('/:id/email', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { rows: __est } = await req.db.query('SELECT * FROM estimates WHERE id = $1', [req.params.id]);
     const est = __est[0];
@@ -218,7 +218,7 @@ router.post('/:id/email', authenticateToken, requireAdmin, async async (req, res
     });
 
     // Mark as emailed
-    await req.db.query('UPDATE estimates SET emailed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END WHERE id = $1', [est.id]);
+    await req.db.query("UPDATE estimates SET emailed_at = NOW(), status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END WHERE id = $1", [est.id]);
 
     const previewUrl = nodemailer.getTestMessageUrl(info);
     res.json({ success: true, messageId: info.messageId, previewUrl: previewUrl || null });

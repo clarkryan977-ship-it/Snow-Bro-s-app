@@ -188,7 +188,7 @@ router.post('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
       'INSERT INTO route_stops (route_id, client_id, position, frequency) VALUES ($1, $2, $3, $4) RETURNING id',
       [req.params.id, client_id, maxPos + 1, frequency || 'weekly']
     );
-    res.status(201).json({ id: result[0].id, message: 'Stop added' });
+    res.status(201).json({ id: result.rows[0].id, message: 'Stop added' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -11,6 +11,9 @@ const UPLOADS_ROOT = process.env.UPLOADS_ROOT || path.join(__dirname, '../upload
 const CONTRACTS_DIR = path.join(UPLOADS_ROOT, 'contracts');
 const SIGNED_DIR    = path.join(UPLOADS_ROOT, 'signed');
 
+// Ensure directories exist
+[CONTRACTS_DIR, SIGNED_DIR].forEach(d => { try { fs.mkdirSync(d, { recursive: true }); } catch (_) {} });
+
 // Multer storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, CONTRACTS_DIR),
@@ -52,7 +55,7 @@ router.post('/upload', authenticateToken, requireAdmin, upload.single('file'), a
 // ── Admin: list all contracts ─────────────────────────────────────────────────
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { rows: __contracts } = await req.db.query(`SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email,
+    const { rows: contracts } = await req.db.query(`SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email,
               e.first_name || ' ' || e.last_name AS uploaded_by_name
        FROM contracts c
        JOIN clients cl ON c.client_id = cl.id
@@ -79,10 +82,10 @@ router.get('/my', authenticateToken, async (req, res) => {
 // ── Get single contract metadata ──────────────────────────────────────────────
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const contract = await req.db.query(`SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email
+    const { rows: __contracts } = await req.db.query(`SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email
        FROM contracts c JOIN clients cl ON c.client_id = cl.id
        WHERE c.id = $1`, [req.params.id]);
-    const contracts = __contracts[0];
+    const contract = __contracts[0];
     if (!contract) return res.status(404).json({ error: 'Contract not found' });
 
     // Clients can only see their own
@@ -130,7 +133,7 @@ router.get('/:id/signed-file', authenticateToken, async (req, res) => {
 // ── Client: sign a contract ───────────────────────────────────────────────────
 // signature_data: base64 PNG data URL (drawn) OR plain text (typed name)
 // signature_type: 'drawn' | 'typed'
-router.post('/:id/sign', authenticateToken, async async (req, res) => {
+router.post('/:id/sign', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'client') return res.status(403).json({ error: 'Clients only' });
 
@@ -194,7 +197,7 @@ router.post('/:id/sign', authenticateToken, async async (req, res) => {
         });
 
         // Signature type
-        lastPage.drawText(`Signature method: ${signature_type === 'drawn' $1 'Drawn signature' : 'Typed name'}`, {
+        lastPage.drawText(`Signature method: ${signature_type === 'drawn' ? 'Drawn signature' : 'Typed name'}`, {
           x: 50, y: 82,
           size: 8, font,
           color: rgb(0.4, 0.4, 0.4),

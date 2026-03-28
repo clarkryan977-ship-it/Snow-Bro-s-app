@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
+import SiteFooter from '../components/SiteFooter';
 
 export default function Gallery() {
   const [photos, setPhotos] = useState([]);
@@ -22,9 +23,9 @@ export default function Gallery() {
         color: '#fff', padding: '3rem 1rem 2.5rem', textAlign: 'center'
       }}>
         <div style={{ fontSize: '2.5rem', marginBottom: '.5rem' }}>📸</div>
-        <h1 style={{ fontSize: 'clamp(1.6rem, 4vw, 2.4rem)', fontWeight: 800, color: '#fff' }}>Our Work</h1>
+        <h1 style={{ fontSize: 'clamp(1.6rem, 4vw, 2.4rem)', fontWeight: 800, color: '#fff' }}>Our Work — Lawn Care &amp; Snow Removal Gallery</h1>
         <p style={{ opacity: .85, maxWidth: 480, margin: '.5rem auto 0', fontSize: '1rem' }}>
-          See examples of the quality lawn care and snow removal services we provide.
+          See examples of our residential and commercial lawn care and snow removal services in Moorhead, MN and Fargo, ND.
         </p>
       </div>
 
@@ -106,6 +107,7 @@ export default function Gallery() {
           </div>
         </div>
       )}
+      <SiteFooter />
     </div>
   );
 }

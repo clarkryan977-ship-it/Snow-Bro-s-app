@@ -12,7 +12,7 @@ router.post('/', async (req, res) => {
 
     const result = await req.db.query('INSERT INTO bookings (client_id, service_id, preferred_date, preferred_time, notes, client_name, client_email, client_phone) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id', [client_id || null, service_id, preferred_date, preferred_time || '', notes || '', client_name || '', client_email || '', client_phone || '']);
 
-    res.status(201).json({ id: result[0].id, message: 'Booking submitted successfully' });
+    res.status(201).json({ id: result.rows[0].id, message: 'Booking submitted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -29,7 +29,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     if (!name) return res.status(400).json({ error: 'Service name required' });
 
     const result = await req.db.query('INSERT INTO services (name, description, price) VALUES ($1, $2, $3) RETURNING id', [name, description || '', price || 0]);
-    res.status(201).json({ id: result[0].id, message: 'Service added' });
+    res.status(201).json({ id: result.rows[0].id, message: 'Service added' });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Service name already exists' });
     res.status(500).json({ error: err.message });

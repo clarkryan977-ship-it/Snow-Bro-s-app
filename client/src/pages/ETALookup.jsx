@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SiteFooter from '../components/SiteFooter';
 
 export default function ETALookup() {
   const [query, setQuery] = useState('');
@@ -18,7 +19,8 @@ export default function ETALookup() {
   };
 
   return (
-    <div style={{ maxWidth: 600, margin: '40px auto', padding: '0 16px' }}>
+    <div>
+      <div style={{ maxWidth: 600, margin: '40px auto', padding: '0 16px' }}>
       <div style={{ background: '#fff', borderRadius: 16, padding: 32, boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>🕐</div>
@@ -96,9 +98,12 @@ export default function ETALookup() {
         )}
 
         <div style={{ marginTop: 24, textAlign: 'center', fontSize: 13, color: '#9ca3af' }}>
-          Snow Bro's · 1812 33rd St S, Moorhead MN 56560 · 218-331-5145
+          <strong>Snow Bro's</strong> · Lawn Care &amp; Snow Removal · Moorhead, MN &amp; Fargo, ND<br />
+          1812 33rd St S, Moorhead MN 56560 · <a href="tel:2183315145" style={{ color: '#6b7280' }}>218-331-5145</a>
         </div>
       </div>
+      </div>
+      <SiteFooter />
     </div>
   );
 }

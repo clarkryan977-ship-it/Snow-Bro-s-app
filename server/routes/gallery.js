@@ -41,7 +41,7 @@ router.post('/', authenticateToken, requireAdmin, upload.single('photo'), async 
     const result = await req.db.query(`INSERT INTO gallery_photos (filename, original_name, file_path, caption, description, uploaded_by)
       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, [req.file.filename, req.file.originalname, filePath,
            caption || '', description || '', req.user.id]);
-    const { rows: __photo } = await req.db.query('SELECT * FROM gallery_photos WHERE id = $1', [result[0].id]);
+    const { rows: __photo } = await req.db.query('SELECT * FROM gallery_photos WHERE id = $1', [result.rows[0].id]);
     const photo = __photo[0];
     res.status(201).json(photo);
   } catch (e) { res.status(500).json({ error: e.message }); }
