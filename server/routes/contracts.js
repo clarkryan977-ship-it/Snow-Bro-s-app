@@ -6,6 +6,7 @@ const fs = require('fs');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { v4: uuidv4 } = require('uuid');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { emailHeader, emailFooter, BUSINESS } = require('../utils/emailHeader');
 
 const UPLOADS_ROOT = process.env.UPLOADS_ROOT || path.join(__dirname, '../uploads');
 const CONTRACTS_DIR = path.join(UPLOADS_ROOT, 'contracts');

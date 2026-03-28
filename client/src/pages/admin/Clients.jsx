@@ -3,6 +3,18 @@ import api from '../../utils/api';
 
 const EMPTY = { first_name:'', last_name:'', email:'', phone:'', address:'', city:'', state:'', zip:'', notes:'', password:'' };
 
+const BUSINESS_INFO = {
+  name: "Snow Bro's",
+  owner: "Ryan Clark",
+  address: "1812 33rd St S",
+  city: "Moorhead",
+  state: "MN",
+  zip: "56560",
+  phone: "218-331-5145",
+  email: "clarkryan977@gmail.com",
+  website: "https://snowbros-production.up.railway.app"
+};
+
 export default function AdminClients() {
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
@@ -11,8 +23,11 @@ export default function AdminClients() {
   const [form, setForm] = useState(EMPTY);
   const [contractForm, setContractForm] = useState({
     type: 'snow',
-    rate: '',
+    frequency: 'weekly',
     start_date: new Date().toISOString().split('T')[0],
+    end_date: '',
+    rate: '',
+    deposit: '',
     details: ''
   });
   const [msg, setMsg] = useState(null);
@@ -52,13 +67,44 @@ export default function AdminClients() {
 
   const openContract = c => {
     setContractModal(c);
+    const defaultEndDate = new Date();
+    if (contractForm.type === 'snow') {
+      defaultEndDate.setMonth(3); // April 30
+      defaultEndDate.setDate(30);
+    } else {
+      defaultEndDate.setMonth(10); // November 30
+      defaultEndDate.setDate(30);
+    }
     setContractForm({
       type: 'snow',
-      rate: '',
+      frequency: 'weekly',
       start_date: new Date().toISOString().split('T')[0],
+      end_date: defaultEndDate.toISOString().split('T')[0],
+      rate: '',
+      deposit: '',
       details: c.service_type === 'commercial' ? 'Commercial property maintenance' : 'Residential property maintenance'
     });
     setMsg(null);
+  };
+
+  const handleContractForm = e => {
+    const { name, value } = e.target;
+    setContractForm(f => {
+      const updated = { ...f, [name]: value };
+      // Auto-set end date based on type
+      if (name === 'type') {
+        const defaultEndDate = new Date(updated.start_date);
+        if (value === 'snow') {
+          defaultEndDate.setMonth(3);
+          defaultEndDate.setDate(30);
+        } else {
+          defaultEndDate.setMonth(10);
+          defaultEndDate.setDate(30);
+        }
+        updated.end_date = defaultEndDate.toISOString().split('T')[0];
+      }
+      return updated;
+    });
   };
 
   const sendContract = async (e) => {
@@ -69,45 +115,135 @@ export default function AdminClients() {
       const isSnow = contractForm.type === 'snow';
       const title = isSnow ? 'Snow Removal Service Agreement' : 'Lawn Care Service Agreement';
       
+      // Build contract HTML with professional header and all editable fields
       const contractHtml = `
-        <div style="font-family: serif; line-height: 1.5;">
-          <h2 style="text-align: center; text-transform: uppercase;">${title}</h2>
-          <p>This Agreement is dated this ${new Date().toLocaleDateString()} between:</p>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-            <div>
-              <strong>Client:</strong><br/>
-              ${client.first_name} ${client.last_name}<br/>
-              ${client.address}<br/>
-              ${client.city}, ${client.state} ${client.zip}
-            </div>
-            <div style="text-align: right;">
-              <strong>Contractor:</strong><br/>
-              Snow Bro's (Ryan Clark)<br/>
-              1812 33rd St S<br/>
-              Moorhead, MN 56560
-            </div>
-          </div>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .header { background: linear-gradient(135deg, #0f2557 0%, #1d4ed8 100%); color: white; padding: 24px; margin-bottom: 24px; }
+    .header h1 { margin: 0; font-size: 28px; }
+    .header p { margin: 4px 0; font-size: 13px; opacity: 0.9; }
+    .content { padding: 24px; }
+    .section { margin-bottom: 20px; }
+    .section h2 { font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 2px solid #0f2557; padding-bottom: 6px; }
+    .parties { display: flex; justify-content: space-between; margin-bottom: 20px; }
+    .party { flex: 1; }
+    .party strong { display: block; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #f0f4f8; font-weight: bold; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px; text-align: center; font-size: 12px; color: #666; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${BUSINESS_INFO.name}</h1>
+    <p>${BUSINESS_INFO.address}, ${BUSINESS_INFO.city}, ${BUSINESS_INFO.state} ${BUSINESS_INFO.zip}</p>
+    <p>${BUSINESS_INFO.phone} • ${BUSINESS_INFO.email}</p>
+  </div>
 
-          <h3>1. Services Provided</h3>
-          <p>${isSnow 
-            ? "Snow removal services will be performed after snowfall accumulation reaches 2 inches or more, unless service is specifically requested by the Client. The Contractor reserves 12 hours from the end of the snowfall event to reach the Client's property."
-            : "Lawn care services including weekly/bi-weekly mowing, trimming, and property maintenance as scheduled between April and November."
-          }</p>
-          <p>Additional details: ${contractForm.details || 'Standard service agreement.'}</p>
+  <div class="content">
+    <h1 style="text-align: center; text-transform: uppercase; margin-bottom: 24px;">${title}</h1>
 
-          <h3>2. Term of Agreement</h3>
-          <p>This Agreement will begin on ${contractForm.start_date} and remain in effect until ${isSnow ? 'April 30th' : 'November 30th'}, subject to earlier termination with 30 days written notice.</p>
-
-          <h3>3. Compensation</h3>
-          <p>The Contractor will charge the Client for the Services at the rate of <strong>$${contractForm.rate}</strong> per month.</p>
-          <p>Invoices are due within 15 days of receipt. Late payments may be subject to interest charges.</p>
-
-          <h3>4. Performance & Liability</h3>
-          <p>The Contractor will provide all necessary equipment and tools. The Contractor is an independent contractor and not an employee of the Client. The Contractor agrees to indemnify and hold harmless the Client against claims arising from the Contractor's gross negligence.</p>
-
-          <h3>5. Governing Law</h3>
-          <p>This Agreement will be governed by and construed in accordance with the laws of the State of Minnesota.</p>
+    <div class="section">
+      <h2>Agreement Parties</h2>
+      <div class="parties">
+        <div class="party">
+          <strong>Client:</strong>
+          ${client.first_name} ${client.last_name}<br/>
+          ${client.address || '(Address not provided)'}<br/>
+          ${client.city}, ${client.state} ${client.zip}<br/>
+          Phone: ${client.phone || '(Not provided)'}<br/>
+          Email: ${client.email || '(Not provided)'}
         </div>
+        <div class="party">
+          <strong>Contractor:</strong>
+          ${BUSINESS_INFO.name} (${BUSINESS_INFO.owner})<br/>
+          ${BUSINESS_INFO.address}<br/>
+          ${BUSINESS_INFO.city}, ${BUSINESS_INFO.state} ${BUSINESS_INFO.zip}<br/>
+          Phone: ${BUSINESS_INFO.phone}<br/>
+          Email: ${BUSINESS_INFO.email}
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>1. Services Provided</h2>
+      <p>${isSnow 
+        ? "Snow removal services will be performed after snowfall accumulation reaches 2 inches or more, unless service is specifically requested by the Client. The Contractor reserves 12 hours from the end of the snowfall event to reach the Client's property."
+        : "Lawn care services including mowing, trimming, and property maintenance as scheduled."
+      }</p>
+      <p><strong>Service Frequency:</strong> ${contractForm.frequency}</p>
+      <p><strong>Service Details:</strong> ${contractForm.details || 'Standard service agreement.'}</p>
+    </div>
+
+    <div class="section">
+      <h2>2. Term of Agreement</h2>
+      <table>
+        <tr><th>Start Date</th><td>${new Date(contractForm.start_date).toLocaleDateString()}</td></tr>
+        <tr><th>End Date</th><td>${new Date(contractForm.end_date).toLocaleDateString()}</td></tr>
+      </table>
+      <p>This Agreement remains in effect until the end date above, subject to earlier termination with 30 days written notice.</p>
+    </div>
+
+    <div class="section">
+      <h2>3. Compensation & Payment Terms</h2>
+      <table>
+        <tr><th>Service Rate</th><td>$${contractForm.rate || '0.00'} per ${contractForm.frequency}</td></tr>
+        ${contractForm.deposit ? `<tr><th>Deposit Required</th><td>$${contractForm.deposit}</td></tr>` : ''}
+        <tr><th>Payment Terms</th><td>Due upon completion of service</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>4. Cancellation Policy</h2>
+      <p>Either party may terminate this agreement with 24 hours notice. Late cancellations may be subject to a service charge.</p>
+    </div>
+
+    <div class="section">
+      <h2>5. Liability & Indemnification</h2>
+      <p>The Contractor will provide all necessary equipment and tools. The Contractor is an independent contractor and not an employee of the Client. The Contractor agrees to indemnify and hold harmless the Client against claims arising from the Contractor's gross negligence or willful misconduct.</p>
+    </div>
+
+    <div class="section">
+      <h2>6. Service Area</h2>
+      <p>Services are provided in Moorhead, MN and Fargo, ND and surrounding areas.</p>
+    </div>
+
+    <div class="section">
+      <h2>7. Governing Law</h2>
+      <p>This Agreement will be governed by and construed in accordance with the laws of the State of Minnesota.</p>
+    </div>
+
+    <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #ddd;">
+      <p style="margin-bottom: 40px;">By signing below, both parties agree to the terms and conditions of this Service Agreement.</p>
+      <div style="display: flex; justify-content: space-between;">
+        <div>
+          <p style="margin-bottom: 40px;">_______________________________</p>
+          <p><strong>Client Signature</strong></p>
+          <p style="margin-top: 20px;">_______________________________</p>
+          <p><strong>Date</strong></p>
+        </div>
+        <div>
+          <p style="margin-bottom: 40px;">_______________________________</p>
+          <p><strong>Contractor Signature</strong></p>
+          <p style="margin-top: 20px;">_______________________________</p>
+          <p><strong>Date</strong></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>${BUSINESS_INFO.name}</strong> • ${BUSINESS_INFO.address}, ${BUSINESS_INFO.city}, ${BUSINESS_INFO.state} ${BUSINESS_INFO.zip}<br/>
+    ${BUSINESS_INFO.phone} • ${BUSINESS_INFO.email} • ${BUSINESS_INFO.website}
+  </div>
+</body>
+</html>
       `;
 
       const res = await api.post('/contracts/generate', {
@@ -122,10 +258,10 @@ export default function AdminClients() {
 
       const signUrl = `${window.location.origin}/sign-contract/${res.data.sign_token}`;
       
-      // Send email notification (mocked via existing email route)
+      // Send email notification
       await api.post('/emails/send', {
         subject: `Action Required: Your Snow Bro's Service Contract`,
-        body: `Hello ${client.first_name},\n\nPlease review and sign your ${title} by clicking the link below:\n\n${signUrl}\n\nThank you,\nSnow Bro's`,
+        body: `Hello ${client.first_name},\n\nPlease review and sign your ${title} by clicking the link below:\n\n${signUrl}\n\nThank you,\nSnow Bro's Team`,
         recipient_ids: [client.id]
       });
 
@@ -199,11 +335,9 @@ export default function AdminClients() {
                   <td>{c.phone}</td>
                   <td>{c.city}</td>
                   <td>
-                    <div style={{ display:'flex', gap:'.4rem' }}>
-                      <button className="btn btn-primary btn-sm" onClick={() => openContract(c)}>📄 Contract</button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}>Edit</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => del(c.id)}>Del</button>
-                    </div>
+                    <button className="btn btn-sm btn-secondary" onClick={() => openEdit(c)} style={{ marginRight: 8 }}>Edit</button>
+                    <button className="btn btn-sm btn-info" onClick={() => openContract(c)} style={{ marginRight: 8 }}>📄 Contract</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>Delete</button>
                   </td>
                 </tr>
               ))}
@@ -212,33 +346,66 @@ export default function AdminClients() {
         </div>
       </div>
 
-      {/* Client Edit Modal */}
+      {/* Add/Edit Client Modal */}
       {modal && (
         <div className="modal-overlay" onClick={close}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{modal === 'add' ? 'Add Client' : 'Edit Client'}</h2>
-              <button className="modal-close" onClick={close}>×</button>
+              <h2>{modal === 'add' ? 'Add Client' : `Edit ${modal.first_name} ${modal.last_name}`}</h2>
+              <button className="close-btn" onClick={close}>×</button>
             </div>
             <div className="modal-body">
-              {msg && <div className="alert alert-error">{msg}</div>}
+              {msg && <div className={`alert alert-${msg.includes('Error') ? 'error' : 'success'}`}>{msg}</div>}
               <form onSubmit={save}>
-                <div className="form-row">
-                  <div className="form-group"><label>First Name *</label><input name="first_name" value={form.first_name} onChange={handle} required className="form-control" /></div>
-                  <div className="form-group"><label>Last Name *</label><input name="last_name" value={form.last_name} onChange={handle} required className="form-control" /></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label>First Name *</label>
+                    <input name="first_name" value={form.first_name} onChange={handle} required className="form-control" />
+                  </div>
+                  <div className="form-group">
+                    <label>Last Name *</label>
+                    <input name="last_name" value={form.last_name} onChange={handle} required className="form-control" />
+                  </div>
+                  <div className="form-group">
+                    <label>Email *</label>
+                    <input name="email" type="email" value={form.email} onChange={handle} required className="form-control" />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone</label>
+                    <input name="phone" value={form.phone} onChange={handle} className="form-control" />
+                  </div>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Address</label>
+                    <input name="address" value={form.address} onChange={handle} className="form-control" />
+                  </div>
+                  <div className="form-group">
+                    <label>City</label>
+                    <input name="city" value={form.city} onChange={handle} className="form-control" />
+                  </div>
+                  <div className="form-group">
+                    <label>State</label>
+                    <input name="state" value={form.state} onChange={handle} className="form-control" />
+                  </div>
+                  <div className="form-group">
+                    <label>ZIP</label>
+                    <input name="zip" value={form.zip} onChange={handle} className="form-control" />
+                  </div>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Notes</label>
+                    <textarea name="notes" value={form.notes} onChange={handle} className="form-control" rows={3} />
+                  </div>
+                  {modal !== 'add' && (
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                      <label>New Password (leave blank to keep current)</label>
+                      <input name="password" type="password" value={form.password} onChange={handle} className="form-control" />
+                    </div>
+                  )}
                 </div>
-                <div className="form-group"><label>Email *</label><input type="email" name="email" value={form.email} onChange={handle} required className="form-control" /></div>
-                <div className="form-group"><label>Phone</label><input name="phone" value={form.phone} onChange={handle} className="form-control" /></div>
-                <div className="form-group"><label>Address</label><input name="address" value={form.address} onChange={handle} className="form-control" /></div>
-                <div className="form-row">
-                  <div className="form-group"><label>City</label><input name="city" value={form.city} onChange={handle} className="form-control" /></div>
-                  <div className="form-group"><label>State</label><input name="state" value={form.state} onChange={handle} className="form-control" /></div>
-                </div>
-                <div className="form-group"><label>ZIP</label><input name="zip" value={form.zip} onChange={handle} className="form-control" /></div>
-                <div className="form-group"><label>Notes</label><textarea name="notes" value={form.notes} onChange={handle} className="form-control" /></div>
-                <div className="modal-footer" style={{ padding:0, border:0, marginTop:'1rem' }}>
+                <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? <span className="spinner" /> : 'Save'}</button>
+                  <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? 'Saving...' : 'Save Client'}
+                  </button>
                 </div>
               </form>
             </div>
@@ -246,62 +413,68 @@ export default function AdminClients() {
         </div>
       )}
 
-      {/* Contract Generation Modal */}
+      {/* Generate Contract Modal */}
       {contractModal && (
         <div className="modal-overlay" onClick={() => setContractModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
             <div className="modal-header">
-              <h2>📄 Send Contract: {contractModal.first_name}</h2>
-              <button className="modal-close" onClick={() => setContractModal(null)}>×</button>
+              <h2>📄 Generate Contract for {contractModal.first_name} {contractModal.last_name}</h2>
+              <button className="close-btn" onClick={() => setContractModal(null)}>×</button>
             </div>
             <div className="modal-body">
-              {msg && <div className="alert alert-error">{msg}</div>}
+              {msg && <div className={`alert alert-${msg.includes('Error') ? 'error' : 'success'}`}>{msg}</div>}
               <form onSubmit={sendContract}>
                 <div className="form-group">
-                  <label>Contract Type</label>
-                  <select 
-                    className="form-control" 
-                    value={contractForm.type} 
-                    onChange={e => setContractForm({...contractForm, type: e.target.value})}
-                  >
-                    <option value="snow">Snow Removal Contract</option>
-                    <option value="lawn">Lawn Care Contract</option>
+                  <label>Contract Type *</label>
+                  <select name="type" value={contractForm.type} onChange={handleContractForm} className="form-control">
+                    <option value="snow">Snow Removal Service Agreement</option>
+                    <option value="lawn">Lawn Care Service Agreement</option>
                   </select>
                 </div>
-                <div className="form-group">
-                  <label>Monthly Rate ($) *</label>
-                  <input 
-                    type="number" 
-                    className="form-control" 
-                    value={contractForm.rate} 
-                    onChange={e => setContractForm({...contractForm, rate: e.target.value})} 
-                    required 
-                    placeholder="e.g. 225"
-                  />
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label>Start Date *</label>
+                    <input name="start_date" type="date" value={contractForm.start_date} onChange={handleContractForm} required className="form-control" />
+                  </div>
+                  <div className="form-group">
+                    <label>End Date *</label>
+                    <input name="end_date" type="date" value={contractForm.end_date} onChange={handleContractForm} required className="form-control" />
+                  </div>
                 </div>
+
                 <div className="form-group">
-                  <label>Start Date</label>
-                  <input 
-                    type="date" 
-                    className="form-control" 
-                    value={contractForm.start_date} 
-                    onChange={e => setContractForm({...contractForm, start_date: e.target.value})} 
-                    required 
-                  />
+                  <label>Service Frequency *</label>
+                  <select name="frequency" value={contractForm.frequency} onChange={handleContractForm} className="form-control">
+                    <option value="one-time">One-time</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="bi-weekly">Bi-weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="seasonal">Seasonal</option>
+                    <option value="as-needed">As-needed</option>
+                  </select>
                 </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label>Service Rate ($) *</label>
+                    <input name="rate" type="number" step="0.01" value={contractForm.rate} onChange={handleContractForm} required className="form-control" placeholder="e.g., 150.00" />
+                  </div>
+                  <div className="form-group">
+                    <label>Deposit Amount ($)</label>
+                    <input name="deposit" type="number" step="0.01" value={contractForm.deposit} onChange={handleContractForm} className="form-control" placeholder="Optional" />
+                  </div>
+                </div>
+
                 <div className="form-group">
-                  <label>Service Details / Notes</label>
-                  <textarea 
-                    className="form-control" 
-                    value={contractForm.details} 
-                    onChange={e => setContractForm({...contractForm, details: e.target.value})} 
-                    placeholder="Any specific property details..."
-                  />
+                  <label>Service Details</label>
+                  <textarea name="details" value={contractForm.details} onChange={handleContractForm} className="form-control" rows={4} placeholder="Describe specific services, equipment, scope, etc." />
                 </div>
-                <div className="modal-footer" style={{ padding:0, border:0, marginTop:'1rem' }}>
+
+                <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setContractModal(null)}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={loading}>
-                    {loading ? <span className="spinner" /> : '🚀 Generate & Send Link'}
+                    {loading ? 'Generating...' : '📧 Generate & Send Contract'}
                   </button>
                 </div>
               </form>

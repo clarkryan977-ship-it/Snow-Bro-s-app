@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const nodemailer = require('nodemailer');
+const { emailHeader, emailFooter } = require('../utils/emailHeader');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 async function nextEstimateNumber(db) {
@@ -26,25 +27,7 @@ function buildEstimateHTML(est, items) {
 <head><meta charset="utf-8"><title>Estimate ${est.estimate_number}</title></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
   <div style="max-width:680px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);">
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#0f2557 0%,#1d4ed8 100%);padding:28px 36px;color:#fff;">
-      <table style="width:100%;border-collapse:collapse;">
-        <tr>
-          <td style="vertical-align:middle;width:80px;">
-            <img src="https://prosnowbros.com/logo.jpg" alt="Snow Bro's" width="72" height="72" style="border-radius:50%;border:3px solid rgba(255,255,255,0.4);object-fit:cover;display:block;" />
-          </td>
-          <td style="vertical-align:middle;padding-left:16px;">
-            <div style="font-size:24px;font-weight:800;letter-spacing:-.5px;">Snow Bro's</div>
-            <div style="font-size:12px;opacity:.8;margin-top:3px;">1812 33rd St S, Moorhead, MN 56560</div>
-            <div style="font-size:12px;opacity:.8;">218-331-5145 &middot; Clarkryan977@gmail.com</div>
-          </td>
-          <td style="vertical-align:middle;text-align:right;">
-            <div style="font-size:22px;font-weight:700;letter-spacing:.5px;">ESTIMATE</div>
-            <div style="font-size:15px;opacity:.9;margin-top:2px;">${est.estimate_number}</div>
-          </td>
-        </tr>
-      </table>
-    </div>
+    ${emailHeader('ESTIMATE — ' + est.estimate_number)}
     <!-- Meta -->
     <div style="padding:24px 40px;background:#eff6ff;border-bottom:1px solid #bfdbfe;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
       <div>
@@ -89,16 +72,7 @@ function buildEstimateHTML(est, items) {
       </div>
       ${est.notes ? `<div style="margin-top:20px;padding:14px 16px;background:#f8fafc;border-left:4px solid #3b82f6;border-radius:4px;font-size:13px;color:#475569;"><strong>Notes:</strong> ${est.notes}</div>` : ''}
     </div>
-    <!-- Footer -->
-    <div style="padding:20px 36px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#94a3b8;">
-      Thank you for considering Snow Bro's! To accept this estimate or ask questions, reply to this email or call us.<br>
-      <strong style="color:#1e40af;">Snow Bro's</strong> &middot; 1812 33rd St S, Moorhead, MN 56560 &middot; 218-331-5145 &middot; Clarkryan977@gmail.com<br>
-      <div style="margin-top:10px;">
-        <a href="https://www.facebook.com/share/1HNXScvP62/" target="_blank" style="color:#1877F2;text-decoration:none;margin:0 6px;">Facebook</a>
-        <a href="https://nextdoor.com/page/snow-bros-snow-removal-moorhead-mn?utm_campaign=1774487768034&share_action_id=83d220bf-e515-44f1-a37e-e7b8dac41a4b" target="_blank" style="color:#00B246;text-decoration:none;margin:0 6px;">Nextdoor</a>
-        <a href="https://prosnowbros.com/" target="_blank" style="color:#2563eb;text-decoration:none;margin:0 6px;">prosnowbros.com</a>
-      </div>
-    </div>
+    ${emailFooter()}
   </div>
 </body>
 </html>`;
