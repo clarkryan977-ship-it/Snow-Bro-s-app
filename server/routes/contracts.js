@@ -195,17 +195,19 @@ function buildSnowRemovalHtml({
     <h3 class="section-title">7. Governing Law</h3>
     <p class="body-p">This Agreement is governed by the laws of the State of Minnesota.</p>
 
-    <div class="sig-block">
+     <div class="sig-block">
       <div>
         <div class="sig-line"></div>
         <div class="sig-label">Client Signature &amp; Date</div>
       </div>
       <div>
-        <div class="sig-line"></div>
+        <div style="margin-top:8px;font-family:'Brush Script MT',cursive;font-size:32px;color:#1e3a5f;line-height:1.1;">Ryan Clark</div>
+        <div class="sig-line" style="margin-top:4px;"></div>
         <div class="sig-label">Contractor Signature &amp; Date</div>
+        <div class="sig-label" style="margin-top:4px;font-weight:600;color:#374151;">Ryan Clark — Snow Bro's</div>
+        <div class="sig-label" style="margin-top:2px;">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
       </div>
     </div>`;
-
   return contractShell(
     `${yr} Snow Removal Service Agreement`,
     '#1d4ed8', '#eff6ff', '❄️ Snow Removal',
@@ -274,8 +276,11 @@ function buildLawnCareHtml({
         <div class="sig-label">Client Signature &amp; Date</div>
       </div>
       <div>
-        <div class="sig-line"></div>
+        <div style="margin-top:8px;font-family:'Brush Script MT',cursive;font-size:32px;color:#1e3a5f;line-height:1.1;">Ryan Clark</div>
+        <div class="sig-line" style="margin-top:4px;"></div>
         <div class="sig-label">Contractor Signature &amp; Date</div>
+        <div class="sig-label" style="margin-top:4px;font-weight:600;color:#374151;">Ryan Clark — Snow Bro's</div>
+        <div class="sig-label" style="margin-top:2px;">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
       </div>
     </div>`;
 
@@ -383,8 +388,11 @@ function buildLandscapeHtml({
         <div class="sig-label">Client Signature &amp; Date</div>
       </div>
       <div>
-        <div class="sig-line"></div>
+        <div style="margin-top:8px;font-family:'Brush Script MT',cursive;font-size:32px;color:#1e3a5f;line-height:1.1;">Ryan Clark</div>
+        <div class="sig-line" style="margin-top:4px;"></div>
         <div class="sig-label">Contractor Signature &amp; Date</div>
+        <div class="sig-label" style="margin-top:4px;font-weight:600;color:#374151;">Ryan Clark — Snow Bro's</div>
+        <div class="sig-label" style="margin-top:2px;">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
       </div>
     </div>`;
 
@@ -454,12 +462,14 @@ function buildJunkRemovalHtml({
       <div>
         <div class="sig-line"></div>
         <div class="sig-label">Client Signature &amp; Date</div>
-        <div class="sig-label" style="margin-top:6px">${clientName}</div>
+        <div class="sig-label" style="margin-top:4px;font-weight:600;color:#374151;">${clientName}</div>
       </div>
       <div>
-        <div class="sig-line"></div>
+        <div style="margin-top:8px;font-family:'Brush Script MT',cursive;font-size:32px;color:#1e3a5f;line-height:1.1;">Ryan Clark</div>
+        <div class="sig-line" style="margin-top:4px;"></div>
         <div class="sig-label">Contractor Signature &amp; Date</div>
-        <div class="sig-label" style="margin-top:6px">Ryan Clark — Snow Bro's</div>
+        <div class="sig-label" style="margin-top:4px;font-weight:600;color:#374151;">Ryan Clark — Snow Bro's</div>
+        <div class="sig-label" style="margin-top:2px;">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
       </div>
     </div>`;
 

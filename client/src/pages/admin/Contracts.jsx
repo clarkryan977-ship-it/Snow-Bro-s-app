@@ -607,6 +607,16 @@ export default function AdminContracts() {
     load();
   };
 
+  const resend = async (id, clientName) => {
+    if (!confirm(`Resend the signing link email to ${clientName}?`)) return;
+    try {
+      await api.post(`/contracts/${id}/resend`);
+      alert('✅ Signing link resent successfully.');
+    } catch (err) {
+      alert('Failed to resend: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
   const viewFile = id => window.open(`${window.location.origin}/api/contracts/${id}/view`, '_blank', 'noopener');
   const downloadSigned = id => window.open(`${window.location.origin}/api/contracts/${id}/signed-file`, '_blank', 'noopener');
 
@@ -687,6 +697,11 @@ export default function AdminContracts() {
                       <button onClick={() => viewFile(c.id)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#f9fafb', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
                         👁️ View
                       </button>
+                      {c.status !== 'signed' && c.original_name === 'Generated Contract' && (
+                        <button onClick={() => resend(c.id, c.client_name)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
+                          📧 Resend
+                        </button>
+                      )}
                       {c.status === 'signed' && c.signed_file_path && (
                         <button onClick={() => downloadSigned(c.id)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
                           ⬇ Signed
