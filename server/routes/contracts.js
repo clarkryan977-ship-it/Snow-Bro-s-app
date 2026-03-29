@@ -396,11 +396,87 @@ function buildLandscapeHtml({
   );
 }
 
+// ─── Template 4: Junk Removal / Construction Clean-Up Agreement ─────────────
+function buildJunkRemovalHtml({
+  clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
+  startDate, endDate, ratePerVisit, monthlyRate, paymentTerms, serviceDetails, year
+}) {
+  const yr = year || new Date().getFullYear();
+  const startFmt = fmtDate(startDate);
+  const endFmt   = fmtDate(endDate);
+  const flatRate = ratePerVisit ? `$${money(ratePerVisit)} flat rate` : null;
+  const hourlyRate = monthlyRate ? `$${money(monthlyRate)}/hr` : null;
+
+  const body = `
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-label">Client</div><div class="meta-value">${clientName}</div></div>
+      <div class="meta-item"><div class="meta-label">Service Date</div><div class="meta-value">${startFmt || 'TBD'}</div></div>
+      ${flatRate ? `<div class="meta-item"><div class="meta-label">Flat Rate</div><div class="meta-value">${flatRate}</div></div>` : ''}
+      ${hourlyRate ? `<div class="meta-item"><div class="meta-label">Hourly Rate</div><div class="meta-value">${hourlyRate}</div></div>` : ''}
+      <div class="meta-item"><div class="meta-label">Status</div><div class="meta-value"><span style="background:#fef9c3;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;">⏳ Pending Signature</span></div></div>
+    </div>
+
+    <h3 class="section-title">1. Parties</h3>
+    <div class="parties">${clientBlock(clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail)}</div>
+
+    <h3 class="section-title">2. Scope of Work</h3>
+    <p class="body-p">Contractor agrees to provide junk removal and/or construction clean-up services at the Client's property on the date(s) specified above. The scope of work includes:</p>
+    <div class="highlight-box">${serviceDetails || 'Haul-away of junk, debris, and construction waste. All items to be removed from designated area. Client responsible for ensuring access to the property.'}</div>
+
+    <h3 class="section-title">3. Service Date &amp; Access</h3>
+    <p class="body-p"><strong>Service Date:</strong> ${startFmt || 'To be scheduled'}</p>
+    ${endFmt && endFmt !== startFmt ? `<p class="body-p"><strong>Estimated Completion:</strong> ${endFmt}</p>` : ''}
+    <p class="body-p">Client agrees to provide clear access to the property and all areas where items are to be removed. Any hazardous materials (chemicals, asbestos, biohazards) are excluded from this agreement and must be disclosed prior to service.</p>
+
+    <h3 class="section-title">4. Compensation &amp; Payment Terms</h3>
+    <table class="data">
+      <thead><tr><th>Item</th><th>Amount</th></tr></thead>
+      <tbody>
+        ${flatRate ? `<tr><td>Flat Rate (all-inclusive)</td><td>${flatRate}</td></tr>` : ''}
+        ${hourlyRate ? `<tr><td>Hourly Rate</td><td>${hourlyRate}</td></tr>` : ''}
+        <tr><td>Payment Terms</td><td>${paymentTerms || 'Due upon completion of service'}</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="section-title">5. Disposal &amp; Recycling</h3>
+    <p class="body-p">Contractor will make reasonable efforts to recycle or donate items where feasible. All remaining items will be disposed of at a licensed facility. Disposal fees are included in the quoted rate unless otherwise noted.</p>
+
+    <h3 class="section-title">6. Cancellation &amp; Changes</h3>
+    <p class="body-p">Either party may cancel or reschedule with 24 hours written notice. Same-day cancellations may be subject to a $50 trip fee. Additional items not included in the original scope may be subject to additional charges, which will be communicated and agreed upon before proceeding.</p>
+
+    <h3 class="section-title">7. Liability</h3>
+    <p class="body-p">Contractor carries general liability insurance. Contractor is not responsible for pre-existing damage to driveways, lawns, or structures. Client warrants that all items designated for removal are owned by the Client or that the Client has authority to dispose of them.</p>
+
+    <h3 class="section-title">8. Governing Law</h3>
+    <p class="body-p">This agreement shall be governed by the laws of the State of Minnesota. Any disputes shall be resolved in Clay County, MN.</p>
+
+    <div class="sig-block">
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Client Signature &amp; Date</div>
+        <div class="sig-label" style="margin-top:6px">${clientName}</div>
+      </div>
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Contractor Signature &amp; Date</div>
+        <div class="sig-label" style="margin-top:6px">Ryan Clark — Snow Bro's</div>
+      </div>
+    </div>`;
+
+  return contractShell(
+    `${yr} Junk Removal / Construction Clean-Up Agreement`,
+    '#7c3aed', '#fdf4ff', '\uD83D\uDE9B Junk Removal',
+    'SNOW BRO\u2019S',
+    body
+  );
+}
+
 // ─── Router: pick the right template ────────────────────────────────────────
 function buildContractHtml(fields) {
   const t = fields.contractType || fields.contract_type || 'lawn_care';
-  if (t === 'snow_removal') return buildSnowRemovalHtml(fields);
-  if (t === 'landscape')    return buildLandscapeHtml(fields);
+  if (t === 'snow_removal')  return buildSnowRemovalHtml(fields);
+  if (t === 'landscape')     return buildLandscapeHtml(fields);
+  if (t === 'junk_removal')  return buildJunkRemovalHtml(fields);
   return buildLawnCareHtml(fields);
 }
 
@@ -413,6 +489,7 @@ router.get('/template', authenticateToken, requireAdmin, (req, res) => {
       { value: 'lawn_care',    label: '\uD83C\uDF3F Lawn Care' },
       { value: 'snow_removal', label: '\u2744\uFE0F Snow Removal' },
       { value: 'landscape',   label: '\uD83C\uDF31 Landscape' },
+      { value: 'junk_removal', label: '\uD83D\uDE9B Junk Removal / Construction Clean-Up' },
     ],
     frequencies: ['Weekly', 'Bi-weekly', 'Monthly', 'As needed'],
     defaults: {
@@ -439,6 +516,13 @@ router.get('/template', authenticateToken, requireAdmin, (req, res) => {
           { name: 'Mulch (cubic yard)',   qty: 3, unitCost: 38 },
           { name: 'Perennial plants',     qty: 12, unitCost: 18 },
         ]),
+      },
+      junk_removal: {
+        start_date: new Date().toISOString().slice(0, 10),
+        end_date: new Date().toISOString().slice(0, 10),
+        rate_per_visit: '150', monthly_rate: '',
+        service_details: 'Haul-away of junk, debris, and construction waste as described. All items to be removed from designated area. Client responsible for ensuring access.',
+        payment_terms: 'Due upon completion of service.',
       },
     },
   });
@@ -569,7 +653,7 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
 
     // Send email to client
     if (client.email && !client.email.includes('@snowbros.placeholder')) {
-      const contractTypeName = contract_type === 'snow_removal' ? 'Snow Removal' : contract_type === 'landscape' ? 'Landscape' : 'Lawn Care';
+      const contractTypeName = contract_type === 'snow_removal' ? 'Snow Removal' : contract_type === 'landscape' ? 'Landscape' : contract_type === 'junk_removal' ? 'Junk Removal / Construction Clean-Up' : 'Lawn Care';
       const emailHtml = wrapEmail(`
         <h2 style="color:#1e40af;margin-top:0;">Your ${contractTypeName} Service Contract</h2>
         <p>Hi ${client.first_name},</p>

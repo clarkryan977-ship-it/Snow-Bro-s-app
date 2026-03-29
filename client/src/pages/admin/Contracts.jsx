@@ -37,6 +37,13 @@ function TypeSelector({ onSelect }) {
       desc: 'One-time project with materials, labor, and payment milestones.',
       bg: '#fef9c3', border: '#fde68a', color: '#92400e',
     },
+    {
+      value: 'junk_removal',
+      icon: '🚛',
+      label: 'Junk Removal / Construction Clean-Up',
+      desc: 'One-time haul-away of junk, debris, or construction waste. Flat rate or hourly.',
+      bg: '#fdf4ff', border: '#e9d5ff', color: '#7c3aed',
+    },
   ];
   return (
     <div>
@@ -276,6 +283,40 @@ function LandscapeFields({ form, handle, lineItems, setLineItems }) {
   );
 }
 
+// ─── Step 2: Junk Removal Fields ────────────────────────────────────────────
+function JunkFields({ form, handle }) {
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={grp}>
+          <label style={lbl}>Service Date</label>
+          <input type="date" name="start_date" value={form.start_date} onChange={handle} style={inp} />
+        </div>
+        <div style={grp}>
+          <label style={lbl}>Estimated Completion Date</label>
+          <input type="date" name="end_date" value={form.end_date} onChange={handle} style={inp} />
+        </div>
+        <div style={grp}>
+          <label style={lbl}>Flat Rate ($) <span style={{ color: '#9ca3af', fontWeight: 400 }}>optional</span></label>
+          <input type="number" name="rate_per_visit" value={form.rate_per_visit} onChange={handle} min="0" step="0.01" style={inp} placeholder="e.g. 250" />
+        </div>
+        <div style={grp}>
+          <label style={lbl}>Hourly Rate ($/hr) <span style={{ color: '#9ca3af', fontWeight: 400 }}>optional</span></label>
+          <input type="number" name="monthly_rate" value={form.monthly_rate} onChange={handle} min="0" step="0.01" style={inp} placeholder="e.g. 85" />
+        </div>
+        <div style={{ gridColumn: '1/-1', ...grp }}>
+          <label style={lbl}>Payment Terms</label>
+          <input name="payment_terms" value={form.payment_terms} onChange={handle} style={inp} placeholder="e.g. Due upon completion" />
+        </div>
+        <div style={{ gridColumn: '1/-1', ...grp }}>
+          <label style={lbl}>Scope of Work / Items to Remove</label>
+          <textarea name="service_details" value={form.service_details} onChange={handle} rows={3} style={{ ...inp, resize: 'vertical' }} placeholder="Describe items to be removed, location, access notes…" />
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Generate Contract Modal ──────────────────────────────────────────────────
 function GenerateModal({ clients, onClose, onSuccess }) {
   const yr = new Date().getFullYear();
@@ -314,6 +355,13 @@ function GenerateModal({ clients, onClose, onSuccess }) {
       deposit_amount: '500', milestone1_desc: 'Upon 50% project completion',
       milestone1_amount: '500', final_payment_amount: '0',
       payment_terms: 'All payments due per schedule. Late payments subject to 1.5% monthly finance charge.',
+    },
+    junk_removal: {
+      title: `${yr} Junk Removal / Construction Clean-Up Agreement`,
+      client_id: '', start_date: new Date().toISOString().slice(0, 10), end_date: new Date().toISOString().slice(0, 10),
+      rate_per_visit: '150', monthly_rate: '',
+      service_details: 'Haul-away of junk, debris, and construction waste as described. All items to be removed from designated area. Client responsible for ensuring access.',
+      payment_terms: 'Due upon completion of service.',
     },
   };
 
@@ -363,7 +411,7 @@ function GenerateModal({ clients, onClose, onSuccess }) {
     }
   };
 
-  const typeLabel = { snow_removal: '❄️ Snow Removal', lawn_care: '🌿 Lawn Care', landscape: '🌱 Landscape' };
+  const typeLabel = { snow_removal: '❄️ Snow Removal', lawn_care: '🌿 Lawn Care', landscape: '🌱 Landscape', junk_removal: '🚛 Junk Removal' };
   const stepTitle = step === 'type' ? '📄 Generate Contract' : step === 'preview' ? '👁️ Contract Preview' : `✍️ ${typeLabel[contractType] || ''} Agreement`;
 
   return (
@@ -422,6 +470,7 @@ function GenerateModal({ clients, onClose, onSuccess }) {
               {contractType === 'snow_removal' && <SnowFields form={form} handle={handle} />}
               {contractType === 'lawn_care' && <LawnFields form={form} handle={handle} />}
               {contractType === 'landscape' && <LandscapeFields form={form} handle={handle} lineItems={lineItems} setLineItems={setLineItems} />}
+              {contractType === 'junk_removal' && <JunkFields form={form} handle={handle} />}
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
                 <button onClick={onClose} style={{ ...btn('#f9fafb', '#374151'), border: '1px solid #d1d5db' }}>Cancel</button>
@@ -564,6 +613,7 @@ export default function AdminContracts() {
   const typeBadge = type => {
     if (type === 'snow_removal') return { bg: '#eff6ff', color: '#1d4ed8', label: '❄️ Snow' };
     if (type === 'landscape')    return { bg: '#fef9c3', color: '#92400e', label: '🌱 Landscape' };
+    if (type === 'junk_removal') return { bg: '#fdf4ff', color: '#7c3aed', label: '🚛 Junk' };
     return { bg: '#f0fdf4', color: '#16a34a', label: '🌿 Lawn' };
   };
 
@@ -573,7 +623,7 @@ export default function AdminContracts() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>📄 Contracts</h1>
-          <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 14 }}>Generate Snow Removal, Lawn Care, or Landscape agreements and manage client contracts.</p>
+          <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 14 }}>Generate Snow Removal, Lawn Care, Landscape, or Junk Removal agreements and manage client contracts.</p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={() => setModal('generate')} style={btn('#16a34a')}>✍️ Generate Contract</button>

@@ -307,6 +307,7 @@ function RouteFormModal({ route, employees, onSave, onClose }) {
           <option value="lawn">🌿 Lawn Care</option>
           <option value="snow">❄️ Snow Removal</option>
           <option value="landscape">🌱 Landscape</option>
+          <option value="junk">🚛 Junk Removal / Construction Clean-Up</option>
           <option value="other">📋 Other</option>
         </select>
 

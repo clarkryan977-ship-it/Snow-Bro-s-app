@@ -639,6 +639,13 @@ async function initDB() {
     );
   }
 
+  // ── Ensure Junk Removal / Construction Clean-Up service exists ──
+  await db.query(
+    `INSERT INTO services (name, description, price)
+     SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM services WHERE name = $1)`,
+    ['Junk Removal / Construction Clean-Up', 'Haul-away of junk, debris, and construction waste. Residential and commercial clean-outs.', 150]
+  );
+
   // ── Seed Lisa Clark ──
   const { rows: lisaCount } = await db.query("SELECT COUNT(*) as c FROM clients WHERE email='lisaverbout@midco.net'");
   if (parseInt(lisaCount[0].c) === 0) {
