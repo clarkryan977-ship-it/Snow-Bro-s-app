@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { getPool } = require('../db/init');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // ── GET /api/availability?start=YYYY-MM-DD&end=YYYY-MM-DD
 // Public: returns blocked dates/times for the given range (used by booking form)
@@ -89,7 +89,7 @@ router.get('/month', async (req, res) => {
 
 // ── POST /api/availability/block  (admin only)
 // Block a date or time slot
-router.post('/block', requireAuth, requireAdmin, async (req, res) => {
+router.post('/block', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const db = getPool();
     const { block_date, start_time, end_time, all_day = true, reason = '' } = req.body;
@@ -120,7 +120,7 @@ router.post('/block', requireAuth, requireAdmin, async (req, res) => {
 
 // ── DELETE /api/availability/block/:id  (admin only)
 // Unblock a specific blocked time entry
-router.delete('/block/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/block/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const db = getPool();
     await db.query('DELETE FROM blocked_times WHERE id = $1', [req.params.id]);
@@ -132,7 +132,7 @@ router.delete('/block/:id', requireAuth, requireAdmin, async (req, res) => {
 
 // ── DELETE /api/availability/block/date/:date  (admin only)
 // Unblock all entries for a specific date
-router.delete('/block/date/:date', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/block/date/:date', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const db = getPool();
     const { rows } = await db.query(
@@ -147,7 +147,7 @@ router.delete('/block/date/:date', requireAuth, requireAdmin, async (req, res) =
 
 // ── PUT /api/availability/block/:id  (admin only)
 // Update a blocked time entry (e.g., change reason or time range)
-router.put('/block/:id', requireAuth, requireAdmin, async (req, res) => {
+router.put('/block/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const db = getPool();
     const { start_time, end_time, all_day, reason } = req.body;
