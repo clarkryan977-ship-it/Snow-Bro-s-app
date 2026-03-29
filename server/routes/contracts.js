@@ -975,6 +975,35 @@ router.get('/:id/view', async (req, res) => {
     const contract = __contract[0];
     if (!contract) return res.status(404).send('<h1>Contract not found</h1>');
 
+    // ── CASE 1: Generated contract (has contract_html from contractShell) ──────
+    // contractShell() always returns a complete <!DOCTYPE html> page with its own
+    // print button, styles, and signature section. Serve it DIRECTLY — never wrap.
+    if (contract.contract_html) {
+      let fullHtml = contract.contract_html;
+
+      // If the contract has been signed, inject the signature block before </body>
+      if (contract.status === 'signed' && contract.signature_data) {
+        const signatureBlock = `
+<div style="max-width:860px;margin:24px auto;padding:0 24px 48px">
+  <div style="margin-top:40px;padding:24px;border:2px solid #16a34a;border-radius:10px;background:#f0fdf4;">
+    <h3 style="color:#15803d;margin:0 0 12px;">✅ Electronic Signature</h3>
+    <p style="margin:4px 0;"><strong>Signed by:</strong> ${contract.signer_name || ''}</p>
+    <p style="margin:4px 0;"><strong>Date:</strong> ${contract.signed_at ? new Date(contract.signed_at).toLocaleString('en-US') : ''}</p>
+    ${contract.signature_type === 'drawn'
+      ? `<div style="margin-top:12px;"><img src="${contract.signature_data}" alt="Signature" style="max-width:300px;border:1px solid #d1fae5;border-radius:4px;background:#fff;"></div>`
+      : `<p style="margin-top:12px;font-family:cursive;font-size:28px;color:#1e3a5f;">${contract.signature_data}</p>`
+    }
+  </div>
+</div>`;
+        fullHtml = fullHtml.replace(/<\/body>\s*<\/html>\s*$/, signatureBlock + '\n</body>\n</html>');
+      }
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(fullHtml);
+    }
+
+    // ── CASE 2: Legacy uploaded-file contract (no contract_html) ──────────────
+    // Build a simple viewer wrapper around whatever body content we have.
     const contractTypeName = contract.contract_type === 'snow_removal' ? 'Snow Removal' : 'Lawn Care';
     const statusBadge = contract.status === 'signed'
       ? `<span style="background:#dcfce7;color:#16a34a;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700;">✅ Signed — ${contract.signer_name || ''} on ${contract.signed_at ? new Date(contract.signed_at).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}) : ''}</span>`
@@ -988,23 +1017,8 @@ router.get('/:id/view', async (req, res) => {
            ${contract.signature_type === 'drawn' ? `<div style="margin-top:12px;"><img src="${contract.signature_data}" alt="Signature" style="max-width:300px;border:1px solid #d1fae5;border-radius:4px;background:#fff;"></div>` : `<p style="margin-top:12px;font-family:cursive;font-size:28px;color:#1e3a5f;">${contract.signature_data}</p>`}
          </div>`
       : '';
-    // Generated contracts store a full HTML page in contract_html (from contractShell).
-    // Serve it directly to avoid double-wrapping which breaks the print button.
-    if (contract.contract_html && contract.contract_html.trimStart().startsWith('<!DOCTYPE')) {
-      let fullHtml = contract.contract_html;
-      // Append signature block before </body> if contract is signed
-      if (signatureBlock) {
-        fullHtml = fullHtml.replace('</body>', `<div style="max-width:860px;margin:24px auto;padding:0 24px 48px">${signatureBlock}</div></body>`);
-      }
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(fullHtml);
-    }
 
-    const contractBody = contract.contract_html && contract.contract_html !== ''
-      ? contract.contract_html
-      : `<p style="color:#6b7280;font-style:italic;">No contract content available.</p>`;
-
-    const html = `<!DOCTYPE html>`
+    const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -1021,25 +1035,11 @@ router.get('/:id/view', async (req, res) => {
     .contract-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,.10); padding: 48px 52px; margin-top: 24px; position: relative; overflow: hidden; }
     .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-30deg); font-size: 72px; font-weight: 900; color: rgba(30,58,95,.05); white-space: nowrap; pointer-events: none; user-select: none; z-index: 0; }
     .contract-content { position: relative; z-index: 1; }
-    .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 3px solid #1e3a5f; padding-bottom: 24px; }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .brand-icon { width: 52px; height: 52px; background: #1e3a5f; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; }
-    .brand-name { font-size: 22px; font-weight: 800; color: #1e3a5f; line-height: 1.1; }
-    .brand-sub { font-size: 12px; color: #64748b; }
-    .contract-meta { text-align: right; }
-    .contract-meta h1 { font-size: 20px; color: #1e3a5f; font-weight: 700; }
-    .contract-meta .type-badge { background: #eff6ff; color: #1d4ed8; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-top: 6px; display: inline-block; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 24px 0; }
     .meta-item { background: #f8fafc; border-radius: 8px; padding: 12px 16px; }
     .meta-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
     .meta-value { font-size: 14px; color: #1a1a2e; font-weight: 600; margin-top: 3px; }
     .body-section { margin-top: 28px; line-height: 1.7; font-size: 14px; color: #374151; }
-    .body-section h2, .body-section h3 { color: #1e3a5f; margin: 20px 0 8px; }
-    .body-section p { margin-bottom: 12px; }
-    .body-section ul, .body-section ol { padding-left: 20px; margin-bottom: 12px; }
-    .status-row { margin-top: 28px; }
-    /* Template body styles (from SHARED_CSS) */
-    ${SHARED_CSS}
     @media print {
       .print-bar { display: none !important; }
       body { background: #fff !important; }
@@ -1057,30 +1057,11 @@ router.get('/:id/view', async (req, res) => {
     <div class="contract-card">
       <div class="watermark">❄️ SNOW BRO'S</div>
       <div class="contract-content">
-        <div class="header-row">
-          <div class="brand">
-            <div class="brand-icon">❄️</div>
-            <div>
-              <div class="brand-name">Snow Bro's</div>
-              <div class="brand-sub">Professional Snow &amp; Lawn Services</div>
-            </div>
-          </div>
-          <div class="contract-meta">
-            <h1>${contract.title}</h1>
-            <span class="type-badge">${contractTypeName} Service Agreement</span>
-          </div>
-        </div>
         <div class="meta-grid">
           <div class="meta-item"><div class="meta-label">Client</div><div class="meta-value">${contract.client_name}</div></div>
-          <div class="meta-item"><div class="meta-label">Email</div><div class="meta-value">${contract.client_email || '—'}</div></div>
-          ${contract.start_date ? `<div class="meta-item"><div class="meta-label">Start Date</div><div class="meta-value">${contract.start_date}</div></div>` : ''}
-          ${contract.end_date ? `<div class="meta-item"><div class="meta-label">End Date</div><div class="meta-value">${contract.end_date}</div></div>` : ''}
-          ${contract.rate ? `<div class="meta-item"><div class="meta-label">Monthly Rate</div><div class="meta-value">$${contract.rate}/month</div></div>` : ''}
-          ${contract.deposit && contract.deposit !== '0' ? `<div class="meta-item"><div class="meta-label">Deposit</div><div class="meta-value">$${contract.deposit}</div></div>` : ''}
-          ${contract.frequency ? `<div class="meta-item"><div class="meta-label">Frequency</div><div class="meta-value">${contract.frequency}</div></div>` : ''}
           <div class="meta-item"><div class="meta-label">Status</div><div class="meta-value" style="margin-top:4px;">${statusBadge}</div></div>
         </div>
-        <div class="body-section">${contractBody}</div>
+        <div class="body-section"><p style="color:#6b7280;font-style:italic;">This contract was uploaded as a file. Use the Download button to view it.</p></div>
         ${signatureBlock}
       </div>
     </div>
