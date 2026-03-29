@@ -39,114 +39,369 @@ const upload = multer({
   },
 });
 
-// ── Contract HTML template builder ─────────────────────────────────────────────
-// Based on the 2026 Lawn Care Service Agreement (Lisa Clark template).
-// All dynamic values are substituted before saving.
-function buildContractHtml({
-  clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
-  startDate, endDate, rate, deposit, frequency, serviceDetails, contractType, year
-}) {
-  const contractTypeName = contractType === 'snow_removal' ? 'Snow Removal' : 'Lawn Care';
-  const yr  = year || new Date().getFullYear();
-  const freq = frequency || 'Weekly';
-  const dep  = parseFloat(deposit || 0).toFixed(2);
-  const rt   = parseFloat(rate || 0).toFixed(2);
-  const details = serviceDetails || `${freq} lawn mowing, trimming, and property maintenance.`;
+// ─── Shared CSS + HTML shell used by all three templates ────────────────────
+const SHARED_CSS = `
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f8;color:#1a1a2e;line-height:1.6}
+  .page-wrapper{max-width:860px;margin:0 auto;padding:24px 16px 48px}
+  .print-bar{background:#1e3a5f;color:#fff;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10}
+  .print-bar h2{font-size:15px;font-weight:700;margin:0}
+  .print-btn{background:#fff;color:#1e3a5f;border:none;padding:7px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px}
+  .contract-card{background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.12);padding:36px 40px;position:relative;overflow:hidden}
+  .watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:72px;font-weight:900;color:rgba(30,58,95,.04);white-space:nowrap;pointer-events:none;z-index:0;letter-spacing:4px}
+  .contract-content{position:relative;z-index:1}
+  .header-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;border-bottom:3px solid #1e3a5f;padding-bottom:20px;flex-wrap:wrap;gap:12px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand-icon{width:52px;height:52px;background:#1e3a5f;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0}
+  .brand-name{font-size:22px;font-weight:800;color:#1e3a5f;line-height:1.1}
+  .brand-sub{font-size:12px;color:#64748b;margin-top:2px}
+  .contract-meta{text-align:right}
+  .contract-meta h1{font-size:18px;color:#1e3a5f;font-weight:700;margin-bottom:6px}
+  .type-badge{padding:3px 12px;border-radius:12px;font-size:12px;font-weight:700;display:inline-block}
+  .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}
+  .meta-item{background:#f8fafc;border-radius:8px;padding:12px 16px;border-left:3px solid #1e3a5f}
+  .meta-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+  .meta-value{font-size:14px;color:#1a1a2e;font-weight:600;margin-top:3px}
+  .section-title{font-size:15px;font-weight:700;color:#1e3a5f;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin:24px 0 12px;text-transform:uppercase;letter-spacing:.04em}
+  .body-p{font-size:14px;margin:6px 0;color:#374151}
+  .parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0}
+  .party{background:#f8fafc;border-radius:8px;padding:14px 16px;font-size:13px;border-top:3px solid #1e3a5f}
+  .party-title{font-weight:700;color:#1e3a5f;font-size:13px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+  table.data{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  table.data th{background:#1e3a5f;color:#fff;padding:9px 12px;text-align:left;font-weight:600}
+  table.data td{padding:9px 12px;border-bottom:1px solid #e5e7eb}
+  table.data tr:nth-child(even) td{background:#f8fafc}
+  table.data tfoot td{background:#f0f4f8;font-weight:700;border-top:2px solid #1e3a5f}
+  .highlight-box{background:#eff6ff;border-left:4px solid #1d4ed8;padding:12px 16px;border-radius:0 8px 8px 0;margin:12px 0;font-size:14px}
+  .sig-block{margin-top:36px;padding-top:20px;border-top:2px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .sig-line{border-bottom:1px solid #374151;margin-top:32px;margin-bottom:6px}
+  .sig-label{font-size:12px;color:#64748b}
+  .footer-bar{background:#1e3a5f;color:#fff;text-align:center;padding:12px 24px;font-size:12px;margin-top:32px;border-radius:0 0 12px 12px}
+  @media print{.print-bar{display:none!important}body{background:#fff}.contract-card{box-shadow:none;padding:0}.page-wrapper{padding:0;max-width:100%}}
+  @media(max-width:600px){.parties,.meta-grid,.sig-block{grid-template-columns:1fr}.contract-card{padding:20px 16px}.header-row{flex-direction:column}}
+`;
 
-  const fmtDate = raw => {
-    if (!raw) return '';
-    const d = new Date(raw + 'T12:00:00');
-    return isNaN(d) ? raw : d.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
-  };
-  const startFmt = fmtDate(startDate);
-  const endFmt   = fmtDate(endDate);
-
-  const addrParts = [clientAddress];
-  if (clientCity && clientState) addrParts.push(`${clientCity}, ${clientState} ${clientZip || ''}`.trim());
-  const addrHtml = addrParts.filter(Boolean).join('<br/>');
-
+function contractShell(title, typeBadgeColor, typeBadgeBg, typeLabel, watermarkText, bodyHtml) {
   return `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>${yr} ${contractTypeName} Service Agreement</title>
-  <style>
-    body{font-family:Arial,sans-serif;line-height:1.6;color:#333;margin:0;padding:0}
-    .hdr{background:linear-gradient(135deg,#0f2557 0%,#1d4ed8 100%);color:#fff;padding:24px 32px}
-    .hdr h1{margin:0;font-size:26px;font-weight:800}
-    .hdr p{margin:4px 0 0;font-size:13px;opacity:.9}
-    .body{padding:28px 32px}
-    h2.section{font-size:15px;font-weight:700;color:#0f2557;border-bottom:2px solid #0f2557;padding-bottom:5px;margin:24px 0 10px}
-    .parties{display:flex;gap:20px;margin-bottom:8px}
-    .party{flex:1;background:#f8fafc;border-radius:8px;padding:14px 16px;font-size:14px}
-    .party strong{display:block;color:#0f2557;font-size:14px;font-weight:700;margin-bottom:6px}
-    table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
-    th,td{padding:9px 12px;text-align:left;border-bottom:1px solid #e5e7eb}
-    th{background:#f0f4f8;font-weight:700;color:#0f2557}
-    .highlight{color:#dc2626;font-weight:700;font-size:15px}
-    p.body-p{font-size:14px;margin:6px 0}
-    .ftr{background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 32px;text-align:center;font-size:12px;color:#666;margin-top:32px}
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title}</title>
+  <style>${SHARED_CSS}</style>
 </head>
 <body>
-  <div class="hdr">
-    <h1>Snow Bro's Lawn Care &amp; Snow Removal</h1>
-    <p>1812 33rd St S, Moorhead, MN 56560 &nbsp;|&nbsp; 218-331-5145 &nbsp;|&nbsp; clarkryan977@gmail.com</p>
+  <div class="print-bar">
+    <h2>📄 ${title}</h2>
+    <button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button>
   </div>
-  <div class="body">
-    <h1 style="text-align:center;text-transform:uppercase;color:#0f2557;margin:0 0 24px;font-size:22px">${yr} ${contractTypeName} Service Agreement</h1>
-
-    <h2 class="section">Agreement Parties</h2>
-    <div class="parties">
-      <div class="party">
-        <strong>Client</strong>
-        ${clientName}<br/>
-        ${addrHtml}${addrHtml ? '<br/>' : ''}
-        ${clientPhone ? `Phone: ${clientPhone}<br/>` : ''}
-        ${clientEmail ? `Email: ${clientEmail}` : ''}
+  <div class="page-wrapper">
+    <div class="contract-card">
+      <div class="watermark">${watermarkText}</div>
+      <div class="contract-content">
+        <div class="header-row">
+          <div class="brand">
+            <div class="brand-icon">❄️</div>
+            <div>
+              <div class="brand-name">Snow Bro's</div>
+              <div class="brand-sub">Professional Snow &amp; Lawn Services</div>
+            </div>
+          </div>
+          <div class="contract-meta">
+            <h1>${title}</h1>
+            <span class="type-badge" style="background:${typeBadgeBg};color:${typeBadgeColor}">${typeLabel}</span>
+          </div>
+        </div>
+        ${bodyHtml}
       </div>
-      <div class="party">
-        <strong>Contractor</strong>
-        Snow Bro's (Ryan Clark)<br/>
-        1812 33rd St S<br/>Moorhead, MN 56560<br/>
-        Phone: 218-331-5145<br/>Email: clarkryan977@gmail.com
-      </div>
+      <div class="footer-bar">Snow Bro's &bull; 1812 33rd St S, Moorhead MN 56560 &bull; 218-331-5145 &bull; clarkryan977@gmail.com</div>
     </div>
-
-    <h2 class="section">1. Services Provided</h2>
-    <p class="body-p"><strong>Service Type:</strong> ${contractTypeName}</p>
-    <p class="body-p"><strong>Frequency:</strong> ${freq}</p>
-    <p class="body-p"><strong>Details:</strong> ${details}</p>
-
-    <h2 class="section">2. Term of Agreement</h2>
-    ${startFmt ? `<p class="body-p"><strong>Effective Date:</strong> ${startFmt}</p>` : ''}
-    ${endFmt   ? `<p class="highlight">Agreement Termination Date: ${endFmt}</p>` : ''}
-    <p class="body-p">This Agreement commences on the Effective Date and terminates on the Termination Date above, unless earlier terminated by either party with 30 days written notice.</p>
-
-    <h2 class="section">3. Compensation &amp; Payment Terms</h2>
-    <table>
-      <tr><th>Service Rate</th><td>$${rt} per ${freq.toLowerCase()}</td></tr>
-      <tr><th>Deposit Required</th><td>$${dep}</td></tr>
-      <tr><th>Payment Terms</th><td>Due upon completion of each service</td></tr>
-    </table>
-
-    <h2 class="section">4. Cancellation Policy</h2>
-    <p class="body-p">Either party may terminate this agreement with 24 hours notice. Late cancellations may be subject to a service charge.</p>
-
-    <h2 class="section">5. Liability &amp; Indemnification</h2>
-    <p class="body-p">The Contractor will provide all necessary equipment and tools. The Contractor is an independent contractor and not an employee of the Client. The Contractor agrees to indemnify and hold harmless the Client against claims arising from the Contractor's gross negligence or willful misconduct.</p>
-
-    <h2 class="section">6. Service Area</h2>
-    <p class="body-p">Services are provided in Moorhead, MN and Fargo, ND and surrounding areas.</p>
-
-    <h2 class="section">7. Governing Law</h2>
-    <p class="body-p">This Agreement is governed by the laws of the State of Minnesota.</p>
-  </div>
-  <div class="ftr">
-    <strong>Snow Bro's Lawn Care &amp; Snow Removal</strong> &bull; 1812 33rd St S, Moorhead, MN 56560 &bull; 218-331-5145
   </div>
 </body>
 </html>`;
+}
+
+const fmtDate = raw => {
+  if (!raw) return '';
+  const d = new Date(raw + 'T12:00:00');
+  return isNaN(d) ? raw : d.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+};
+
+const money = v => parseFloat(v || 0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+function clientBlock(name, address, city, state, zip, phone, email) {
+  const addrLine = [address, city && state ? `${city}, ${state} ${zip||''}`.trim() : (city||state||'')].filter(Boolean).join(', ');
+  return `<div class="party">
+    <div class="party-title">Client</div>
+    <strong>${name}</strong><br/>
+    ${addrLine ? addrLine + '<br/>' : ''}
+    ${phone ? `📞 ${phone}<br/>` : ''}
+    ${email ? `✉️ ${email}` : ''}
+  </div>
+  <div class="party">
+    <div class="party-title">Contractor</div>
+    <strong>Snow Bro's (Ryan Clark)</strong><br/>
+    1812 33rd St S, Moorhead, MN 56560<br/>
+    📞 218-331-5145<br/>✉️ clarkryan977@gmail.com
+  </div>`;
+}
+
+// ─── Template 1: Snow Removal Agreement ─────────────────────────────────────
+function buildSnowRemovalHtml({
+  clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
+  startDate, endDate, ratePerVisit, monthlyRate, paymentTerms, serviceDetails, year
+}) {
+  const yr = year || new Date().getFullYear();
+  const startFmt = fmtDate(startDate);
+  const endFmt   = fmtDate(endDate);
+  const season   = startFmt && endFmt ? `${startFmt} – ${endFmt}` : (startFmt || endFmt || `${yr}–${yr+1} Winter Season`);
+
+  const body = `
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-label">Client</div><div class="meta-value">${clientName}</div></div>
+      <div class="meta-item"><div class="meta-label">Service Season</div><div class="meta-value">${season}</div></div>
+      ${ratePerVisit ? `<div class="meta-item"><div class="meta-label">Rate Per Visit</div><div class="meta-value">$${money(ratePerVisit)}</div></div>` : ''}
+      ${monthlyRate  ? `<div class="meta-item"><div class="meta-label">Monthly Rate</div><div class="meta-value">$${money(monthlyRate)}/month</div></div>` : ''}
+      <div class="meta-item"><div class="meta-label">Status</div><div class="meta-value"><span style="background:#fef9c3;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;">⏳ Pending Signature</span></div></div>
+    </div>
+
+    <h3 class="section-title">1. Parties</h3>
+    <div class="parties">${clientBlock(clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail)}</div>
+
+    <h3 class="section-title">2. Services</h3>
+    <p class="body-p">Contractor agrees to provide snow removal services at the Client's property during the service season specified above. Services include:</p>
+    <div class="highlight-box">${serviceDetails || 'Snow plowing of driveway and walkways. Salting/sanding of walkways and entry points. Services triggered by snowfall of 2 inches or more.'}</div>
+
+    <h3 class="section-title">3. Service Season &amp; Schedule</h3>
+    <p class="body-p"><strong>Season:</strong> ${season}</p>
+    <p class="body-p">Services will be performed as needed based on snowfall conditions, typically within 24 hours of a qualifying snowfall event. The Contractor will make reasonable efforts to service the property before 7:00 AM on business days.</p>
+
+    <h3 class="section-title">4. Compensation &amp; Payment Terms</h3>
+    <table class="data">
+      <thead><tr><th>Item</th><th>Amount</th></tr></thead>
+      <tbody>
+        ${ratePerVisit ? `<tr><td>Rate Per Visit</td><td>$${money(ratePerVisit)}</td></tr>` : ''}
+        ${monthlyRate  ? `<tr><td>Monthly Rate (flat)</td><td>$${money(monthlyRate)}/month</td></tr>` : ''}
+        <tr><td>Payment Terms</td><td>${paymentTerms || 'Due within 7 days of invoice'}</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="section-title">5. Cancellation &amp; Termination</h3>
+    <p class="body-p">Either party may terminate this agreement with 48 hours written notice. The Client is responsible for payment for all services rendered prior to termination.</p>
+
+    <h3 class="section-title">6. Liability</h3>
+    <p class="body-p">The Contractor shall not be liable for damage caused by pre-existing conditions, hidden obstacles under snow, or acts of nature. The Client agrees to mark any obstacles (sprinkler heads, curbs, garden edging) prior to the service season.</p>
+
+    <h3 class="section-title">7. Governing Law</h3>
+    <p class="body-p">This Agreement is governed by the laws of the State of Minnesota.</p>
+
+    <div class="sig-block">
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Client Signature &amp; Date</div>
+      </div>
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Contractor Signature &amp; Date</div>
+      </div>
+    </div>`;
+
+  return contractShell(
+    `${yr} Snow Removal Service Agreement`,
+    '#1d4ed8', '#eff6ff', '❄️ Snow Removal',
+    '❄️ SNOW BRO\'S',
+    body
+  );
+}
+
+// ─── Template 2: Lawn Care Agreement ────────────────────────────────────────
+function buildLawnCareHtml({
+  clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
+  startDate, endDate, frequency, monthlyRate, paymentTerms, serviceDetails, year
+}) {
+  const yr = year || new Date().getFullYear();
+  const startFmt = fmtDate(startDate);
+  const endFmt   = fmtDate(endDate);
+  const freq = frequency || 'Weekly';
+
+  const body = `
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-label">Client</div><div class="meta-value">${clientName}</div></div>
+      <div class="meta-item"><div class="meta-label">Frequency</div><div class="meta-value">${freq}</div></div>
+      ${startFmt ? `<div class="meta-item"><div class="meta-label">Start Date</div><div class="meta-value">${startFmt}</div></div>` : ''}
+      ${endFmt   ? `<div class="meta-item"><div class="meta-label">End Date</div><div class="meta-value">${endFmt}</div></div>` : ''}
+      ${monthlyRate ? `<div class="meta-item"><div class="meta-label">Monthly Rate</div><div class="meta-value">$${money(monthlyRate)}/month</div></div>` : ''}
+      <div class="meta-item"><div class="meta-label">Status</div><div class="meta-value"><span style="background:#fef9c3;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;">⏳ Pending Signature</span></div></div>
+    </div>
+
+    <h3 class="section-title">1. Parties</h3>
+    <div class="parties">${clientBlock(clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail)}</div>
+
+    <h3 class="section-title">2. Services</h3>
+    <p class="body-p">Contractor agrees to provide lawn care and maintenance services at the Client's property on a <strong>${freq}</strong> basis. Services include:</p>
+    <div class="highlight-box">${serviceDetails || 'Lawn mowing and edging. Trimming around obstacles and borders. Blowing clippings off driveways and walkways. Seasonal cleanup as needed.'}</div>
+
+    <h3 class="section-title">3. Term of Agreement</h3>
+    ${startFmt ? `<p class="body-p"><strong>Effective Date:</strong> ${startFmt}</p>` : ''}
+    ${endFmt   ? `<p class="body-p"><strong>Termination Date:</strong> ${endFmt}</p>` : ''}
+    <p class="body-p">This Agreement commences on the Effective Date and continues through the Termination Date, unless earlier terminated by either party with 30 days written notice.</p>
+
+    <h3 class="section-title">4. Compensation &amp; Payment Terms</h3>
+    <table class="data">
+      <thead><tr><th>Item</th><th>Amount</th></tr></thead>
+      <tbody>
+        ${monthlyRate ? `<tr><td>Monthly Rate</td><td>$${money(monthlyRate)}/month</td></tr>` : ''}
+        <tr><td>Service Frequency</td><td>${freq}</td></tr>
+        <tr><td>Payment Terms</td><td>${paymentTerms || 'Due on the 1st of each month'}</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="section-title">5. Cancellation Policy</h3>
+    <p class="body-p">Either party may cancel this agreement with 30 days written notice. Services skipped due to weather will be rescheduled at no additional charge. Missed visits due to Client access issues may be billed at the standard rate.</p>
+
+    <h3 class="section-title">6. Client Responsibilities</h3>
+    <p class="body-p">The Client agrees to: (a) ensure property access on scheduled service days; (b) remove obstacles such as toys, hoses, and pet waste prior to service; (c) notify the Contractor of any areas requiring special attention.</p>
+
+    <h3 class="section-title">7. Liability</h3>
+    <p class="body-p">The Contractor carries general liability insurance. The Contractor is not responsible for pre-existing lawn damage, underground utilities, or damage caused by undisclosed obstacles.</p>
+
+    <h3 class="section-title">8. Governing Law</h3>
+    <p class="body-p">This Agreement is governed by the laws of the State of Minnesota.</p>
+
+    <div class="sig-block">
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Client Signature &amp; Date</div>
+      </div>
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Contractor Signature &amp; Date</div>
+      </div>
+    </div>`;
+
+  return contractShell(
+    `${yr} Lawn Care Service Agreement`,
+    '#16a34a', '#f0fdf4', '🌿 Lawn Care',
+    'SNOW BRO\'S',
+    body
+  );
+}
+
+// ─── Template 3: Landscape Agreement ────────────────────────────────────────
+function buildLandscapeHtml({
+  clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
+  startDate, endDate, projectDescription, lineItems, laborHours, laborRate,
+  depositAmount, milestone1Desc, milestone1Amount, finalPaymentAmount,
+  paymentTerms, year
+}) {
+  const yr = year || new Date().getFullYear();
+  const startFmt = fmtDate(startDate);
+  const endFmt   = fmtDate(endDate);
+
+  // Parse line items — array of { name, qty, unitCost } or JSON string
+  let items = [];
+  try {
+    items = typeof lineItems === 'string' ? JSON.parse(lineItems) : (lineItems || []);
+  } catch { items = []; }
+
+  const materialTotal = items.reduce((sum, it) => sum + (parseFloat(it.qty||0) * parseFloat(it.unitCost||0)), 0);
+  const laborTotal    = parseFloat(laborHours||0) * parseFloat(laborRate||0);
+  const projectTotal  = materialTotal + laborTotal;
+
+  const itemRows = items.map(it => {
+    const total = parseFloat(it.qty||0) * parseFloat(it.unitCost||0);
+    return `<tr><td>${it.name||''}</td><td style="text-align:center">${it.qty||''}</td><td style="text-align:right">$${money(it.unitCost)}</td><td style="text-align:right">$${money(total)}</td></tr>`;
+  }).join('');
+
+  const dep  = parseFloat(depositAmount||0);
+  const mil1 = parseFloat(milestone1Amount||0);
+  const fin  = parseFloat(finalPaymentAmount||0);
+  const schedTotal = dep + mil1 + fin;
+
+  const body = `
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-label">Client</div><div class="meta-value">${clientName}</div></div>
+      ${startFmt ? `<div class="meta-item"><div class="meta-label">Project Start</div><div class="meta-value">${startFmt}</div></div>` : ''}
+      ${endFmt   ? `<div class="meta-item"><div class="meta-label">Estimated Completion</div><div class="meta-value">${endFmt}</div></div>` : ''}
+      <div class="meta-item"><div class="meta-label">Project Total</div><div class="meta-value" style="color:#1e3a5f;font-size:16px">$${money(projectTotal)}</div></div>
+      <div class="meta-item"><div class="meta-label">Status</div><div class="meta-value"><span style="background:#fef9c3;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;">⏳ Pending Signature</span></div></div>
+    </div>
+
+    <h3 class="section-title">1. Parties</h3>
+    <div class="parties">${clientBlock(clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail)}</div>
+
+    <h3 class="section-title">2. Project Scope &amp; Description</h3>
+    <div class="highlight-box">${projectDescription || 'Full landscape installation including grading, planting, and hardscape as described in the line items below.'}</div>
+    ${startFmt ? `<p class="body-p" style="margin-top:10px"><strong>Start Date:</strong> ${startFmt}</p>` : ''}
+    ${endFmt   ? `<p class="body-p"><strong>Estimated Completion:</strong> ${endFmt}</p>` : ''}
+
+    <h3 class="section-title">3. Materials &amp; Labor</h3>
+    ${items.length > 0 ? `
+    <p class="body-p"><strong>Materials:</strong></p>
+    <table class="data">
+      <thead><tr><th>Item / Material</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit Cost</th><th style="text-align:right">Total</th></tr></thead>
+      <tbody>${itemRows}</tbody>
+      <tfoot><tr><td colspan="3"><strong>Materials Subtotal</strong></td><td style="text-align:right"><strong>$${money(materialTotal)}</strong></td></tr></tfoot>
+    </table>` : ''}
+    ${(laborHours && laborRate) ? `
+    <p class="body-p" style="margin-top:14px"><strong>Labor:</strong></p>
+    <table class="data">
+      <thead><tr><th>Description</th><th style="text-align:center">Hours</th><th style="text-align:right">Rate/hr</th><th style="text-align:right">Total</th></tr></thead>
+      <tbody><tr><td>Landscape Labor</td><td style="text-align:center">${laborHours}</td><td style="text-align:right">$${money(laborRate)}/hr</td><td style="text-align:right">$${money(laborTotal)}</td></tr></tbody>
+    </table>` : ''}
+    <table class="data" style="margin-top:12px">
+      <tfoot><tr><td colspan="3" style="font-size:15px"><strong>PROJECT TOTAL</strong></td><td style="text-align:right;font-size:15px;color:#1e3a5f"><strong>$${money(projectTotal)}</strong></td></tr></tfoot>
+    </table>
+
+    <h3 class="section-title">4. Payment Schedule</h3>
+    <table class="data">
+      <thead><tr><th>Payment</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody>
+        ${dep  > 0 ? `<tr><td><strong>Deposit</strong></td><td>Due upon signing</td><td style="text-align:right">$${money(dep)}</td></tr>` : ''}
+        ${mil1 > 0 ? `<tr><td><strong>Progress Payment</strong></td><td>${milestone1Desc || 'Upon project milestone'}</td><td style="text-align:right">$${money(mil1)}</td></tr>` : ''}
+        ${fin  > 0 ? `<tr><td><strong>Final Payment</strong></td><td>Upon project completion</td><td style="text-align:right">$${money(fin)}</td></tr>` : ''}
+      </tbody>
+      ${schedTotal > 0 ? `<tfoot><tr><td colspan="2"><strong>Total</strong></td><td style="text-align:right"><strong>$${money(schedTotal)}</strong></td></tr></tfoot>` : ''}
+    </table>
+    <p class="body-p">${paymentTerms || 'All payments are due per the schedule above. Late payments are subject to a 1.5% monthly finance charge.'}</p>
+
+    <h3 class="section-title">5. Changes &amp; Substitutions</h3>
+    <p class="body-p">Any changes to the scope of work must be agreed upon in writing by both parties. Material substitutions of equal or greater value may be made by the Contractor if specified materials are unavailable, with Client notification.</p>
+
+    <h3 class="section-title">6. Warranty</h3>
+    <p class="body-p">The Contractor warrants all labor for a period of 30 days after project completion. Plant materials are warranted for 30 days under normal care conditions. This warranty does not cover damage from drought, flooding, pests, or Client neglect.</p>
+
+    <h3 class="section-title">7. Liability</h3>
+    <p class="body-p">The Contractor carries general liability insurance. The Client is responsible for marking all underground utilities prior to project start. The Contractor is not liable for damage to unmarked underground lines or pre-existing conditions.</p>
+
+    <h3 class="section-title">8. Governing Law</h3>
+    <p class="body-p">This Agreement is governed by the laws of the State of Minnesota.</p>
+
+    <div class="sig-block">
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Client Signature &amp; Date</div>
+      </div>
+      <div>
+        <div class="sig-line"></div>
+        <div class="sig-label">Contractor Signature &amp; Date</div>
+      </div>
+    </div>`;
+
+  return contractShell(
+    `${yr} Landscape Service Agreement`,
+    '#92400e', '#fef9c3', '🌱 Landscape',
+    'SNOW BRO\'S',
+    body
+  );
+}
+
+// ─── Router: pick the right template ────────────────────────────────────────
+function buildContractHtml(fields) {
+  const t = fields.contractType || fields.contract_type || 'lawn_care';
+  if (t === 'snow_removal') return buildSnowRemovalHtml(fields);
+  if (t === 'landscape')    return buildLandscapeHtml(fields);
+  return buildLawnCareHtml(fields);
 }
 
 // ── GET /template — default field values for the generate form ───────────────
@@ -154,36 +409,53 @@ router.get('/template', authenticateToken, requireAdmin, (req, res) => {
   const yr = new Date().getFullYear();
   res.json({
     year: yr,
-    defaultStart: `${yr}-04-01`,
-    defaultEnd:   `${yr}-11-01`,
-    defaultRate: '200',
-    defaultDeposit: '0',
-    defaultFrequency: 'Weekly',
-    defaultServiceDetails: 'Weekly lawn mowing, trimming, and property maintenance.',
     contractTypes: [
-      { value: 'lawn_care',    label: 'Lawn Care' },
-      { value: 'snow_removal', label: 'Snow Removal' },
+      { value: 'lawn_care',    label: '\uD83C\uDF3F Lawn Care' },
+      { value: 'snow_removal', label: '\u2744\uFE0F Snow Removal' },
+      { value: 'landscape',   label: '\uD83C\uDF31 Landscape' },
     ],
     frequencies: ['Weekly', 'Bi-weekly', 'Monthly', 'As needed'],
+    defaults: {
+      lawn_care: {
+        start_date: `${yr}-04-01`, end_date: `${yr}-11-01`,
+        monthly_rate: '200', frequency: 'Weekly',
+        service_details: 'Weekly lawn mowing, edging, trimming, and blowing off hard surfaces.',
+        payment_terms: 'Due on the 1st of each month.',
+      },
+      snow_removal: {
+        start_date: `${yr}-11-01`, end_date: `${yr+1}-04-01`,
+        rate_per_visit: '75', monthly_rate: '',
+        service_details: 'Snow plowing of driveway and walkways. Salting/sanding of entry points. Services triggered by 2+ inch snowfall.',
+        payment_terms: 'Due within 7 days of invoice.',
+      },
+      landscape: {
+        start_date: `${yr}-05-01`, end_date: `${yr}-06-30`,
+        project_description: 'Full landscape installation including grading, planting, and hardscape.',
+        labor_hours: '20', labor_rate: '65',
+        deposit_amount: '500', milestone1_desc: 'Upon 50% project completion', milestone1_amount: '500', final_payment_amount: '0',
+        payment_terms: 'All payments due per schedule. Late payments subject to 1.5% monthly finance charge.',
+        line_items: JSON.stringify([
+          { name: 'Topsoil (cubic yard)', qty: 5, unitCost: 45 },
+          { name: 'Mulch (cubic yard)',   qty: 3, unitCost: 38 },
+          { name: 'Perennial plants',     qty: 12, unitCost: 18 },
+        ]),
+      },
+    },
   });
 });
 
-// ── POST /preview — render HTML without saving (for live preview) ─────────────
+/// ── POST /preview — render HTML without saving (for live preview) ─────────────
 router.post('/preview', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const {
-      client_id, contract_type, rate, start_date, end_date,
-      deposit, frequency, service_details, client_name_override,
-    } = req.body;
-
-    let clientName = client_name_override || 'Client Name';
+    const body = req.body;
+    const contract_type = body.contract_type || 'lawn_care';
+    let clientName = body.client_name_override || 'Client Name';
     let clientAddress = '', clientCity = '', clientState = '', clientZip = '', clientPhone = '', clientEmail = '';
-
-    if (client_id) {
-      const { rows } = await req.db.query('SELECT * FROM clients WHERE id = $1', [client_id]);
+    if (body.client_id) {
+      const { rows } = await req.db.query('SELECT * FROM clients WHERE id = $1', [body.client_id]);
       const cl = rows[0];
       if (cl) {
-        clientName    = client_name_override || `${cl.first_name} ${cl.last_name}`;
+        clientName    = body.client_name_override || `${cl.first_name} ${cl.last_name}`;
         clientAddress = cl.address || '';
         clientCity    = cl.city    || '';
         clientState   = cl.state   || '';
@@ -192,15 +464,28 @@ router.post('/preview', authenticateToken, requireAdmin, async (req, res) => {
         clientEmail   = cl.email   || '';
       }
     }
-
     const html = buildContractHtml({
+      contractType: contract_type,
       clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
-      startDate: start_date, endDate: end_date,
-      rate, deposit, frequency, serviceDetails: service_details,
-      contractType: contract_type || 'lawn_care',
+      startDate: body.start_date, endDate: body.end_date,
       year: new Date().getFullYear(),
+      // Lawn Care fields
+      monthlyRate: body.monthly_rate || body.rate,
+      frequency: body.frequency,
+      serviceDetails: body.service_details,
+      paymentTerms: body.payment_terms,
+      // Snow Removal fields
+      ratePerVisit: body.rate_per_visit,
+      // Landscape fields
+      projectDescription: body.project_description,
+      lineItems: body.line_items,
+      laborHours: body.labor_hours,
+      laborRate: body.labor_rate,
+      depositAmount: body.deposit_amount,
+      milestone1Desc: body.milestone1_desc,
+      milestone1Amount: body.milestone1_amount,
+      finalPaymentAmount: body.final_payment_amount,
     });
-
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (err) {
@@ -211,10 +496,8 @@ router.post('/preview', authenticateToken, requireAdmin, async (req, res) => {
 // ── Admin: generate + create contract and send email ─────────────────────────
 router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const {
-      title, client_id, contract_type, service_category, rate,
-      start_date, end_date, deposit, frequency, service_details, contract_html
-    } = req.body;
+    const body = req.body;
+    const { title, client_id, contract_type } = body;
 
     if (!title || !client_id || !contract_type) {
       return res.status(400).json({ error: 'Title, client, and contract type required' });
@@ -228,8 +511,9 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     const signToken = uuidv4();
-    // Build the full contract HTML server-side using the Lisa Clark template
+    // Build the full contract HTML server-side using the correct template
     const generatedHtml = buildContractHtml({
+      contractType: contract_type,
       clientName: `${client.first_name} ${client.last_name}`,
       clientAddress: client.address || '',
       clientCity:    client.city    || '',
@@ -237,12 +521,34 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
       clientZip:     client.zip     || '',
       clientPhone:   client.phone   || '',
       clientEmail:   client.email   || '',
-      startDate: start_date, endDate: end_date,
-      rate, deposit, frequency: frequency || 'Weekly',
-      serviceDetails: service_details,
-      contractType: contract_type,
+      startDate: body.start_date, endDate: body.end_date,
       year: new Date().getFullYear(),
+      // Lawn Care
+      monthlyRate: body.monthly_rate || body.rate,
+      frequency: body.frequency,
+      serviceDetails: body.service_details,
+      paymentTerms: body.payment_terms,
+      // Snow Removal
+      ratePerVisit: body.rate_per_visit,
+      // Landscape
+      projectDescription: body.project_description,
+      lineItems: body.line_items,
+      laborHours: body.labor_hours,
+      laborRate: body.labor_rate,
+      depositAmount: body.deposit_amount,
+      milestone1Desc: body.milestone1_desc,
+      milestone1Amount: body.milestone1_amount,
+      finalPaymentAmount: body.final_payment_amount,
     });
+
+    // Store a summary rate/deposit for the contracts table
+    const rateForDb    = body.monthly_rate || body.rate || body.rate_per_visit || '';
+    const depositForDb = body.deposit_amount || body.deposit || '0';
+    const freqForDb    = body.frequency || '';
+    const detailsForDb = body.service_details || body.project_description || '';
+    const start_date   = body.start_date || '';
+    const end_date     = body.end_date   || '';
+
     const { rows: result } = await req.db.query(`
       INSERT INTO contracts
         (title, client_id, uploaded_by, contract_type, service_category, rate, start_date, end_date,
@@ -250,9 +556,9 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING id`,
       [
-        title, client_id, req.user.id, contract_type, service_category || '',
-        rate || '', start_date || '', end_date || '', deposit || '0',
-        frequency || 'Weekly', service_details || '',
+        title, client_id, req.user.id, contract_type, body.service_category || '',
+        rateForDb, start_date, end_date, depositForDb,
+        freqForDb, detailsForDb,
         signToken, generatedHtml, 'generated', 'Generated Contract', 'generated'
       ]
     );
@@ -263,7 +569,7 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
 
     // Send email to client
     if (client.email && !client.email.includes('@snowbros.placeholder')) {
-      const contractTypeName = contract_type === 'snow_removal' ? 'Snow Removal' : 'Lawn Care';
+      const contractTypeName = contract_type === 'snow_removal' ? 'Snow Removal' : contract_type === 'landscape' ? 'Landscape' : 'Lawn Care';
       const emailHtml = wrapEmail(`
         <h2 style="color:#1e40af;margin-top:0;">Your ${contractTypeName} Service Contract</h2>
         <p>Hi ${client.first_name},</p>
@@ -275,9 +581,9 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
           <tr style="background:#f8fafc;"><td style="padding:10px 14px;font-weight:600;color:#374151;width:40%;">Contract Type</td><td style="padding:10px 14px;color:#1e40af;">${contractTypeName}</td></tr>
           ${start_date ? `<tr><td style="padding:10px 14px;font-weight:600;color:#374151;border-top:1px solid #e5e7eb;">Start Date</td><td style="padding:10px 14px;color:#374151;border-top:1px solid #e5e7eb;">${start_date}</td></tr>` : ''}
           ${end_date ? `<tr style="background:#f8fafc;"><td style="padding:10px 14px;font-weight:600;color:#374151;border-top:1px solid #e5e7eb;">End Date</td><td style="padding:10px 14px;color:#374151;border-top:1px solid #e5e7eb;">${end_date}</td></tr>` : ''}
-          ${rate ? `<tr><td style="padding:10px 14px;font-weight:600;color:#374151;border-top:1px solid #e5e7eb;">Monthly Rate</td><td style="padding:10px 14px;color:#374151;border-top:1px solid #e5e7eb;">$${rate}/month</td></tr>` : ''}
-          ${deposit && deposit !== '0' ? `<tr style="background:#f8fafc;"><td style="padding:10px 14px;font-weight:600;color:#374151;border-top:1px solid #e5e7eb;">Deposit Due at Signing</td><td style="padding:10px 14px;color:#374151;border-top:1px solid #e5e7eb;">$${deposit}</td></tr>` : ''}
-          ${frequency ? `<tr><td style="padding:10px 14px;font-weight:600;color:#374151;border-top:1px solid #e5e7eb;">Service Frequency</td><td style="padding:10px 14px;color:#374151;border-top:1px solid #e5e7eb;">${frequency}</td></tr>` : ''}
+          ${rateForDb ? `<tr><td style="padding:10px 14px;font-weight:600;color:#374151;border-top:1px solid #e5e7eb;">Rate</td><td style="padding:10px 14px;color:#374151;border-top:1px solid #e5e7eb;">$${rateForDb}</td></tr>` : ''}
+          ${depositForDb && depositForDb !== '0' ? `<tr style="background:#f8fafc;"><td style="padding:10px 14px;font-weight:600;color:#374151;border-top:1px solid #e5e7eb;">Deposit Due at Signing</td><td style="padding:10px 14px;color:#374151;border-top:1px solid #e5e7eb;">$${depositForDb}</td></tr>` : ''}
+          ${freqForDb ? `<tr><td style="padding:10px 14px;font-weight:600;color:#374151;border-top:1px solid #e5e7eb;">Service Frequency</td><td style="padding:10px 14px;color:#374151;border-top:1px solid #e5e7eb;">${freqForDb}</td></tr>` : ''}
         </table>
         <div style="text-align:center;margin:32px 0;">
           <a href="${signingUrl}"
