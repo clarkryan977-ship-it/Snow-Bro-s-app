@@ -116,12 +116,13 @@ router.get('/my-routes', authenticateToken, async (req, res) => {
           COALESCE(rs.state,   c.state,   '') AS stop_state,
           COALESCE(rs.zip,     c.zip,     '') AS stop_zip,
           c.latitude, c.longitude,
-          b.service_type AS booking_service_type,
+          svc.name AS booking_service_type,
           b.status AS booking_status,
           b.notes AS booking_notes
         FROM route_stops rs
         LEFT JOIN clients c ON rs.client_id = c.id
         LEFT JOIN bookings b ON rs.booking_id = b.id
+        LEFT JOIN services svc ON b.service_id = svc.id
         WHERE rs.route_id = $1
         ORDER BY rs.position ASC
       `, [route.id]);
@@ -192,11 +193,12 @@ router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
         COALESCE(rs.state,   c.state,   '') AS stop_state,
         COALESCE(rs.zip,     c.zip,     '') AS stop_zip,
         c.latitude, c.longitude,
-        b.service_type AS booking_service_type,
+        svc.name AS booking_service_type,
         b.status AS booking_status
       FROM route_stops rs
       LEFT JOIN clients c ON rs.client_id = c.id
       LEFT JOIN bookings b ON rs.booking_id = b.id
+      LEFT JOIN services svc ON b.service_id = svc.id
       WHERE rs.route_id = $1
       ORDER BY rs.position ASC
     `, [req.params.id]);
@@ -243,11 +245,12 @@ router.get('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
         COALESCE(rs.state,   c.state,   '') AS stop_state,
         COALESCE(rs.zip,     c.zip,     '') AS stop_zip,
         c.latitude, c.longitude,
-        b.service_type AS booking_service_type,
+        svc.name AS booking_service_type,
         b.status AS booking_status
       FROM route_stops rs
       LEFT JOIN clients c ON rs.client_id = c.id
       LEFT JOIN bookings b ON rs.booking_id = b.id
+      LEFT JOIN services svc ON b.service_id = svc.id
       WHERE rs.route_id = $1
       ORDER BY rs.position ASC
     `, [req.params.id]);
