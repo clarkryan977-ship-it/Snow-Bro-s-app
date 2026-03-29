@@ -2,6 +2,21 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 
+/** Send current GPS position to the server. Silent on error. */
+function sendGPS() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      api.post('/gps/update', {
+        latitude:  pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      }).catch(() => {});
+    },
+    () => {},
+    { timeout: 10000, maximumAge: 30000 }
+  );
+}
+
 function formatElapsed(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -17,6 +32,7 @@ export default function ClockWidget() {
   const [showForm, setShowForm]   = useState(false);
   const [jobAddress, setJobAddress] = useState('');
   const timerRef = useRef(null);
+  const gpsRef   = useRef(null);
 
   const flash = (type, text) => {
     setMsg({ type, text });
@@ -50,11 +66,42 @@ export default function ClockWidget() {
     return () => clearInterval(timerRef.current);
   }, [status?.clocked_in]);
 
+  // GPS sharing while clocked in — send immediately then every 60 seconds
+  useEffect(() => {
+    if (status?.clocked_in) {
+      sendGPS();
+      gpsRef.current = setInterval(sendGPS, 60000);
+    } else {
+      clearInterval(gpsRef.current);
+    }
+    return () => clearInterval(gpsRef.current);
+  }, [status?.clocked_in]);
+
   const handleClockIn = async () => {
     setLoading(true);
     try {
+      // Request geolocation permission proactively before clock-in
+      let lat = null, lng = null;
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 })
+          );
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+        } catch {
+          // Permission denied or unavailable — still allow clock-in
+        }
+      }
+
       await api.post('/time/clock-in', { job_address: jobAddress || '' });
-      flash('success', 'Clocked in successfully!');
+
+      // Send first GPS ping immediately if we got a position
+      if (lat !== null && lng !== null) {
+        api.post('/gps/update', { latitude: lat, longitude: lng }).catch(() => {});
+      }
+
+      flash('success', '✅ Clocked in! GPS sharing is active.');
       setShowForm(false);
       setJobAddress('');
       await loadStatus();
@@ -68,7 +115,8 @@ export default function ClockWidget() {
     setLoading(true);
     try {
       await api.post('/time/clock-out', {});
-      flash('success', 'Clocked out successfully!');
+      flash('success', '✅ Clocked out successfully!');
+      clearInterval(gpsRef.current);
       await loadStatus();
     } catch (err) {
       flash('error', err.response?.data?.error || 'Failed to clock out');

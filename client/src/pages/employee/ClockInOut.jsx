@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../utils/api';
+import MapsButton from '../../utils/openInMaps.jsx';
 
 export default function ClockInOut() {
   const [status, setStatus] = useState(null);
@@ -201,7 +202,10 @@ export default function ClockInOut() {
           <div className="alert alert-info mb-2">Fill in job details before clocking in, or update them after.</div>
         )}
         <div className="form-group">
-          <label>📍 Job Address</label>
+          <label style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'.5rem' }}>
+            <span>📍 Job Address</span>
+            {form.job_address && <MapsButton address={form.job_address} label="Open in Maps" />}
+          </label>
           <input name="job_address" value={form.job_address} onChange={handle} className="form-control" placeholder="123 Main St, Springfield, IL 62701" />
         </div>
         <div className="form-group">

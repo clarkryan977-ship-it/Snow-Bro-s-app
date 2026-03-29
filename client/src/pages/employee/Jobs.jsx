@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../utils/api';
+import MapsButton from '../../utils/openInMaps.jsx';
 
 function fmtDuration(mins) {
   if (!mins) return '—';
@@ -139,7 +140,10 @@ export default function EmployeeJobs() {
                 {r.job_address && (
                   <div>
                     <div style={{ fontSize:'.72rem', color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', marginBottom:'.2rem' }}>📍 Address</div>
-                    <div style={{ fontSize:'.88rem' }}>{r.job_address}</div>
+                    <div style={{ fontSize:'.88rem', display:'flex', alignItems:'center', gap:'.5rem', flexWrap:'wrap' }}>
+                      {r.job_address}
+                      <MapsButton address={r.job_address} label="Navigate" />
+                    </div>
                   </div>
                 )}
                 {r.job_contact && (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../utils/api';
 import ClockWidget from '../../components/ClockWidget';
+import DispatchMap from '../../components/DispatchMap';
 import { subscribeToPush } from '../../utils/pushNotifications';
 
 export default function AdminDashboard() {
@@ -100,6 +101,9 @@ export default function AdminDashboard() {
 
       {/* ── Clock In / Out Widget ── */}
       <ClockWidget />
+
+      {/* ── Live Dispatch Map ── */}
+      <DispatchMap />
 
       {/* ── Stats ── */}
       <div className="stats-grid">
