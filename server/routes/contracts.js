@@ -380,6 +380,125 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ── View contract as rendered HTML page (no auth required — uses sign_token or id) ──────────────
+router.get('/:id/view', async (req, res) => {
+  try {
+    const { rows: __contract } = await req.db.query(`
+      SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email,
+             cl.address AS client_address, cl.city AS client_city, cl.state AS client_state, cl.zip AS client_zip
+      FROM contracts c JOIN clients cl ON c.client_id = cl.id
+      WHERE c.id = $1`, [req.params.id]);
+    const contract = __contract[0];
+    if (!contract) return res.status(404).send('<h1>Contract not found</h1>');
+
+    const contractTypeName = contract.contract_type === 'snow_removal' ? 'Snow Removal' : 'Lawn Care';
+    const statusBadge = contract.status === 'signed'
+      ? `<span style="background:#dcfce7;color:#16a34a;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700;">✅ Signed — ${contract.signer_name || ''} on ${contract.signed_at ? new Date(contract.signed_at).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}) : ''}</span>`
+      : `<span style="background:#fef9c3;color:#92400e;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700;">⏳ Pending Signature</span>`;
+
+    const signatureBlock = contract.status === 'signed' && contract.signature_data
+      ? `<div style="margin-top:40px;padding:24px;border:2px solid #16a34a;border-radius:10px;background:#f0fdf4;">
+           <h3 style="color:#15803d;margin:0 0 12px;">✅ Electronic Signature</h3>
+           <p style="margin:4px 0;"><strong>Signed by:</strong> ${contract.signer_name}</p>
+           <p style="margin:4px 0;"><strong>Date:</strong> ${contract.signed_at ? new Date(contract.signed_at).toLocaleString('en-US') : ''}</p>
+           ${contract.signature_type === 'drawn' ? `<div style="margin-top:12px;"><img src="${contract.signature_data}" alt="Signature" style="max-width:300px;border:1px solid #d1fae5;border-radius:4px;background:#fff;"></div>` : `<p style="margin-top:12px;font-family:cursive;font-size:28px;color:#1e3a5f;">${contract.signature_data}</p>`}
+         </div>`
+      : '';
+
+    const contractBody = contract.contract_html && contract.contract_html !== ''
+      ? contract.contract_html
+      : `<p style="color:#6b7280;font-style:italic;">No contract content available.</p>`;
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${contract.title} — Snow Bro's</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; color: #1a1a2e; }
+    .page-wrapper { max-width: 860px; margin: 0 auto; padding: 32px 24px 60px; }
+    .print-bar { background: #1e3a5f; color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+    .print-bar h2 { font-size: 16px; font-weight: 600; }
+    .print-btn { background: #fff; color: #1e3a5f; border: none; padding: 8px 20px; border-radius: 6px; font-weight: 700; font-size: 14px; cursor: pointer; }
+    .print-btn:hover { background: #e0f2fe; }
+    .contract-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,.10); padding: 48px 52px; margin-top: 24px; position: relative; overflow: hidden; }
+    .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-30deg); font-size: 72px; font-weight: 900; color: rgba(30,58,95,.05); white-space: nowrap; pointer-events: none; user-select: none; z-index: 0; }
+    .contract-content { position: relative; z-index: 1; }
+    .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 3px solid #1e3a5f; padding-bottom: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon { width: 52px; height: 52px; background: #1e3a5f; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+    .brand-name { font-size: 22px; font-weight: 800; color: #1e3a5f; line-height: 1.1; }
+    .brand-sub { font-size: 12px; color: #64748b; }
+    .contract-meta { text-align: right; }
+    .contract-meta h1 { font-size: 20px; color: #1e3a5f; font-weight: 700; }
+    .contract-meta .type-badge { background: #eff6ff; color: #1d4ed8; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-top: 6px; display: inline-block; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 24px 0; }
+    .meta-item { background: #f8fafc; border-radius: 8px; padding: 12px 16px; }
+    .meta-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+    .meta-value { font-size: 14px; color: #1a1a2e; font-weight: 600; margin-top: 3px; }
+    .body-section { margin-top: 28px; line-height: 1.7; font-size: 14px; color: #374151; }
+    .body-section h2, .body-section h3 { color: #1e3a5f; margin: 20px 0 8px; }
+    .body-section p { margin-bottom: 12px; }
+    .body-section ul, .body-section ol { padding-left: 20px; margin-bottom: 12px; }
+    .status-row { margin-top: 28px; }
+    @media print {
+      .print-bar { display: none !important; }
+      body { background: #fff; }
+      .contract-card { box-shadow: none; padding: 0; }
+      .page-wrapper { padding: 0; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-bar">
+    <h2>📄 ${contract.title}</h2>
+    <button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button>
+  </div>
+  <div class="page-wrapper">
+    <div class="contract-card">
+      <div class="watermark">❄️ SNOW BRO'S</div>
+      <div class="contract-content">
+        <div class="header-row">
+          <div class="brand">
+            <div class="brand-icon">❄️</div>
+            <div>
+              <div class="brand-name">Snow Bro's</div>
+              <div class="brand-sub">Professional Snow &amp; Lawn Services</div>
+            </div>
+          </div>
+          <div class="contract-meta">
+            <h1>${contract.title}</h1>
+            <span class="type-badge">${contractTypeName} Service Agreement</span>
+          </div>
+        </div>
+        <div class="meta-grid">
+          <div class="meta-item"><div class="meta-label">Client</div><div class="meta-value">${contract.client_name}</div></div>
+          <div class="meta-item"><div class="meta-label">Email</div><div class="meta-value">${contract.client_email || '—'}</div></div>
+          ${contract.start_date ? `<div class="meta-item"><div class="meta-label">Start Date</div><div class="meta-value">${contract.start_date}</div></div>` : ''}
+          ${contract.end_date ? `<div class="meta-item"><div class="meta-label">End Date</div><div class="meta-value">${contract.end_date}</div></div>` : ''}
+          ${contract.rate ? `<div class="meta-item"><div class="meta-label">Monthly Rate</div><div class="meta-value">$${contract.rate}/month</div></div>` : ''}
+          ${contract.deposit && contract.deposit !== '0' ? `<div class="meta-item"><div class="meta-label">Deposit</div><div class="meta-value">$${contract.deposit}</div></div>` : ''}
+          ${contract.frequency ? `<div class="meta-item"><div class="meta-label">Frequency</div><div class="meta-value">${contract.frequency}</div></div>` : ''}
+          <div class="meta-item"><div class="meta-label">Status</div><div class="meta-value" style="margin-top:4px;">${statusBadge}</div></div>
+        </div>
+        <div class="body-section">${contractBody}</div>
+        ${signatureBlock}
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    console.error('[CONTRACTS] View error:', err);
+    res.status(500).send('<h1>Error loading contract</h1><p>' + err.message + '</p>');
+  }
+});
+
 // ── Serve the original contract file ─────────────────────────────────────────
 router.get('/:id/file', authenticateToken, async (req, res) => {
   try {

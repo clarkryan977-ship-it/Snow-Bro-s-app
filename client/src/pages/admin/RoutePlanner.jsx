@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../../utils/api';
 
 // ─── Nominatim geocoding (OpenStreetMap, free, no key needed) ───
@@ -29,7 +29,6 @@ function nearestNeighborSort(stops, startLat, startLng) {
   const sorted = [];
   let curLat = startLat;
   let curLng = startLng;
-
   while (unvisited.length > 0) {
     let nearestIdx = 0;
     let nearestDist = Infinity;
@@ -48,11 +47,11 @@ function nearestNeighborSort(stops, startLat, startLng) {
   return sorted;
 }
 
-const DEFAULT_START = { lat: 46.8772, lng: -96.7898, label: 'Fargo, ND (default)' };
+const DEFAULT_START = { lat: 46.8772, lng: -96.7898 };
 
 export default function RoutePlanner() {
   const [bookings, setBookings] = useState([]);
-  const [route, setRoute] = useState([]); // stops in current route order
+  const [route, setRoute] = useState([]);
   const [loading, setLoading] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -62,18 +61,17 @@ export default function RoutePlanner() {
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [msg, setMsg] = useState('');
+  const [activeTab, setActiveTab] = useState('available'); // mobile tab: 'available' | 'route'
 
-  const showMsg = (text, ms = 3000) => {
+  const showMsg = (text, ms = 3500) => {
     setMsg(text);
     setTimeout(() => setMsg(''), ms);
   };
 
-  // Load bookings for selected date
   const loadBookings = useCallback(async () => {
     setLoading(true);
     try {
       const r = await api.get('/bookings');
-      // Filter by date and non-completed
       const filtered = r.data.filter(b =>
         b.preferred_date === filterDate && b.status !== 'completed'
       );
@@ -84,26 +82,16 @@ export default function RoutePlanner() {
 
   useEffect(() => { loadBookings(); }, [loadBookings]);
 
-  // Bookings not yet in route
   const available = bookings.filter(b => !route.some(r => r.id === b.id));
 
-  // Add booking to route
   const addToRoute = (booking) => {
-    setRoute(prev => [...prev, {
-      ...booking,
-      _lat: null,
-      _lng: null,
-      _geocoded: false,
-    }]);
+    setRoute(prev => [...prev, { ...booking, _lat: null, _lng: null, _geocoded: false }]);
     showMsg(`✅ Added ${booking.display_name || booking.client_name} to route`);
+    setActiveTab('route'); // switch to route tab on mobile after adding
   };
 
-  // Remove from route
-  const removeFromRoute = (id) => {
-    setRoute(prev => prev.filter(s => s.id !== id));
-  };
+  const removeFromRoute = (id) => setRoute(prev => prev.filter(s => s.id !== id));
 
-  // Move stop up/down
   const moveStop = (idx, dir) => {
     setRoute(prev => {
       const arr = [...prev];
@@ -114,7 +102,6 @@ export default function RoutePlanner() {
     });
   };
 
-  // ─── Drag & drop ───
   const onDragStart = (idx) => setDragIdx(idx);
   const onDragOver = (e, idx) => { e.preventDefault(); setDragOverIdx(idx); };
   const onDrop = (idx) => {
@@ -129,21 +116,16 @@ export default function RoutePlanner() {
     setDragOverIdx(null);
   };
 
-  // ─── Geocode all stops & auto-sort ───
   const autoSort = async () => {
     if (route.length === 0) { showMsg('Add stops to the route first'); return; }
     setGeocoding(true);
     showMsg('📍 Geocoding addresses via OpenStreetMap...', 10000);
-
-    // Geocode start address
     let startLat = DEFAULT_START.lat;
     let startLng = DEFAULT_START.lng;
     if (startAddress.trim()) {
       const geo = await geocodeAddress(startAddress, '', '', '');
       if (geo) { startLat = geo.lat; startLng = geo.lng; }
     }
-
-    // Geocode each stop
     const geocoded = await Promise.all(route.map(async (stop) => {
       if (stop._geocoded && stop._lat != null) return stop;
       const addr = stop.job_address || stop.address || '';
@@ -153,15 +135,12 @@ export default function RoutePlanner() {
       const geo = await geocodeAddress(addr, city, state, zip);
       return { ...stop, _lat: geo?.lat ?? null, _lng: geo?.lng ?? null, _geocoded: true };
     }));
-
-    // Nearest-neighbor sort
     const sorted = nearestNeighborSort(geocoded, startLat, startLng);
     setRoute(sorted);
     setGeocoding(false);
     showMsg(`🧭 Route optimized! ${sorted.length} stops sorted by proximity.`);
   };
 
-  // ─── Save route order to DB ───
   const saveOrder = async () => {
     if (route.length === 0) return;
     setSaving(true);
@@ -170,189 +149,230 @@ export default function RoutePlanner() {
       await api.patch('/bookings/route-order', { orders });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-      showMsg('💾 Route order saved! Employees will see jobs in this order.');
+      showMsg('💾 Route saved! Employees see jobs in this order.');
     } catch (e) {
-      showMsg('❌ Failed to save route order: ' + e.message);
+      showMsg('❌ Failed to save: ' + (e.response?.data?.error || e.message));
     }
     setSaving(false);
   };
 
-  // ─── Clear route ───
   const clearRoute = () => {
     if (!window.confirm('Clear all stops from the route?')) return;
     setRoute([]);
   };
-
-  // ─── Styles ───
-  const card = { background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,.1)', marginBottom: 20 };
-  const btn = (bg = '#2563eb') => ({
-    background: bg, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px',
-    fontWeight: 700, cursor: 'pointer', fontSize: 14, transition: 'opacity .15s',
-  });
-  const btnSm = (bg = '#2563eb') => ({ ...btn(bg), padding: '6px 12px', fontSize: 12 });
-  const input = { padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box' };
 
   const getAddress = (b) => {
     const parts = [b.job_address || b.address, b.job_city || b.city, b.job_state || b.state, b.job_zip || b.zip].filter(Boolean);
     return parts.join(', ') || 'No address on file';
   };
 
-  return (
-    <div style={{ padding: '2rem 1rem' }}>
-      <div className="container">
-        <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 8 }}>🗺️ Route Planner</h1>
-        <p style={{ color: '#6b7280', marginBottom: 24 }}>Build today's route, auto-sort by geography, drag to reorder, then save so employees see jobs in the right order.</p>
+  // ─── Inline styles ───
+  const S = {
+    page: { padding: '16px', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' },
+    card: { background: '#fff', borderRadius: 12, padding: '16px', boxShadow: '0 1px 6px rgba(0,0,0,.1)', marginBottom: 16 },
+    grid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))',
+      gap: 16,
+      alignItems: 'start',
+    },
+    msgBox: { background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#1e40af', fontWeight: 600, fontSize: 14 },
+    input: { padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box', minHeight: 44 },
+    // Buttons — min 44px tall for touch targets
+    btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' },
+    btnGreen: { background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' },
+    btnRed: { background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' },
+    btnPurple: { background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' },
+    btnGray: { background: '#6b7280', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36 },
+    btnSmRed: { background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36 },
+    btnSmGreen: { background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36 },
+    // Mobile tab bar
+    tabBar: { display: 'flex', borderRadius: 10, overflow: 'hidden', border: '1px solid #e5e7eb', marginBottom: 16 },
+    tab: (active) => ({
+      flex: 1, padding: '12px 8px', textAlign: 'center', fontWeight: 700, fontSize: 14, cursor: 'pointer', border: 'none',
+      background: active ? '#2563eb' : '#f8fafc', color: active ? '#fff' : '#374151', transition: 'all .15s',
+    }),
+  };
 
-        {msg && (
-          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 16px', marginBottom: 16, color: '#1e40af', fontWeight: 600 }}>
-            {msg}
+  const AvailablePanel = () => (
+    <div style={S.card}>
+      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>📋 Available Jobs</h3>
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Filter by Date</label>
+        <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} style={S.input} />
+      </div>
+      {loading ? (
+        <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>Loading bookings...</p>
+      ) : available.length === 0 ? (
+        <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
+          {bookings.length === 0 ? `No active bookings for ${filterDate}` : '✅ All bookings added to route'}
+        </p>
+      ) : (
+        available.map(b => (
+          <div key={b.id} style={{
+            padding: '12px 14px', borderRadius: 8, marginBottom: 8,
+            background: '#f8fafc', border: '1px solid #e5e7eb',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, wordBreak: 'break-word' }}>{b.display_name || b.client_name || 'Unknown'}</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{b.service_name || 'Service'} · {b.preferred_time || 'No time'}</div>
+                <div style={{ fontSize: 12, color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>📍 {getAddress(b)}</div>
+              </div>
+              <button onClick={() => addToRoute(b)} style={S.btnSmGreen}>+ Add</button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  const RoutePanel = () => (
+    <div style={S.card}>
+      {/* Header row */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚗 Route ({route.length} stops)</h3>
+        {route.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={clearRoute} style={S.btnSmRed}>✕ Clear</button>
+            <button onClick={saveOrder} disabled={saving} style={{ ...S.btnGray, background: saved ? '#22c55e' : '#7c3aed' }}>
+              {saving ? '...' : saved ? '✅ Saved!' : '💾 Save'}
+            </button>
           </div>
         )}
+      </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-
-          {/* ─── LEFT: Available bookings ─── */}
-          <div>
-            <div style={card}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>📋 Available Jobs</h3>
-
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Date</label>
-                  <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} style={input} />
-                </div>
-              </div>
-
-              {loading ? (
-                <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>Loading bookings...</p>
-              ) : available.length === 0 ? (
-                <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
-                  {bookings.length === 0 ? `No active bookings for ${filterDate}` : '✅ All bookings added to route'}
-                </p>
-              ) : (
-                available.map(b => (
-                  <div key={b.id} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-                    padding: '12px 14px', borderRadius: 8, marginBottom: 8,
-                    background: '#f8fafc', border: '1px solid #e5e7eb',
-                  }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{b.display_name || b.client_name || 'Unknown'}</div>
-                      <div style={{ fontSize: 12, color: '#6b7280' }}>{b.service_name || 'Service'} · {b.preferred_time || 'No time set'}</div>
-                      <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>📍 {getAddress(b)}</div>
-                    </div>
-                    <button onClick={() => addToRoute(b)} style={btnSm('#22c55e')}>+ Add</button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* ─── RIGHT: Route stops ─── */}
-          <div>
-            <div style={card}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚗 Today's Route ({route.length} stops)</h3>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {route.length > 0 && (
-                    <>
-                      <button onClick={clearRoute} style={btnSm('#ef4444')}>✕ Clear</button>
-                      <button onClick={saveOrder} disabled={saving} style={btnSm(saved ? '#22c55e' : '#7c3aed')}>
-                        {saving ? '...' : saved ? '✅ Saved!' : '💾 Save Order'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Start address for geo-sort */}
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>
-                  Starting Address (for auto-sort — leave blank to use Fargo, ND)
-                </label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    placeholder="e.g. 123 Main St, Fargo ND or shop address"
-                    value={startAddress}
-                    onChange={e => setStartAddress(e.target.value)}
-                    style={{ ...input, flex: 1 }}
-                  />
-                  <button onClick={autoSort} disabled={geocoding || route.length === 0} style={btnSm('#7c3aed')}>
-                    {geocoding ? '⏳' : '🧭 Auto-Sort'}
-                  </button>
-                </div>
-                <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 0' }}>
-                  Uses OpenStreetMap Nominatim geocoding + nearest-neighbor algorithm
-                </p>
-              </div>
-
-              {route.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
-                  <div style={{ fontSize: 40, marginBottom: 8 }}>🗺️</div>
-                  <p>Add jobs from the left panel to build today's route.</p>
-                </div>
-              ) : (
-                <div>
-                  {route.map((stop, idx) => (
-                    <div
-                      key={stop.id}
-                      draggable
-                      onDragStart={() => onDragStart(idx)}
-                      onDragOver={(e) => onDragOver(e, idx)}
-                      onDrop={() => onDrop(idx)}
-                      style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 10,
-                        padding: '12px 14px', borderRadius: 8, marginBottom: 8,
-                        background: dragOverIdx === idx ? '#eff6ff' : '#f0fdf4',
-                        border: `2px solid ${dragOverIdx === idx ? '#2563eb' : '#bbf7d0'}`,
-                        cursor: 'grab',
-                        opacity: dragIdx === idx ? 0.5 : 1,
-                        transition: 'all .15s',
-                      }}
-                    >
-                      {/* Stop number */}
-                      <div style={{
-                        minWidth: 32, height: 32, borderRadius: '50%',
-                        background: '#2563eb', color: '#fff',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 800, fontSize: 14, flexShrink: 0,
-                      }}>
-                        {idx + 1}
-                      </div>
-
-                      {/* Info */}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{stop.display_name || stop.client_name || 'Unknown'}</div>
-                        <div style={{ fontSize: 12, color: '#6b7280' }}>{stop.service_name || 'Service'} · {stop.preferred_time || 'No time'}</div>
-                        <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>📍 {getAddress(stop)}</div>
-                        {stop._lat && (
-                          <div style={{ fontSize: 11, color: '#22c55e', marginTop: 2 }}>
-                            ✅ Geocoded ({stop._lat.toFixed(4)}, {stop._lng.toFixed(4)})
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Controls */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <button onClick={() => moveStop(idx, -1)} disabled={idx === 0}
-                          style={{ ...btnSm('#6b7280'), padding: '4px 8px', opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
-                        <button onClick={() => moveStop(idx, 1)} disabled={idx === route.length - 1}
-                          style={{ ...btnSm('#6b7280'), padding: '4px 8px', opacity: idx === route.length - 1 ? 0.3 : 1 }}>▼</button>
-                        <button onClick={() => removeFromRoute(stop.id)}
-                          style={{ ...btnSm('#ef4444'), padding: '4px 8px' }}>✕</button>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', borderRadius: 8, fontSize: 13, color: '#374151' }}>
-                    <strong>💡 Tips:</strong> Drag stops to reorder, use ▲▼ arrows, or click "🧭 Auto-Sort" to optimize by geography.
-                    Click "💾 Save Order" to push the order to employees' Assigned Jobs page.
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+      {/* Start address + auto-sort */}
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+          Starting Address (for auto-sort)
+        </label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            placeholder="e.g. 123 Main St, Fargo ND (blank = Fargo)"
+            value={startAddress}
+            onChange={e => setStartAddress(e.target.value)}
+            style={{ ...S.input, flex: 1 }}
+          />
+          <button onClick={autoSort} disabled={geocoding} style={{ ...S.btnPrimary, padding: '10px 14px' }}>
+            {geocoding ? '⏳' : '🧭 Sort'}
+          </button>
         </div>
+        <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 0' }}>
+          Nearest-neighbor algorithm via OpenStreetMap
+        </p>
+      </div>
+
+      {route.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '32px 16px', color: '#9ca3af' }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🗺️</div>
+          <p>Add jobs from the Available Jobs panel to build today's route.</p>
+        </div>
+      ) : (
+        <div>
+          {route.map((stop, idx) => (
+            <div
+              key={stop.id}
+              draggable
+              onDragStart={() => onDragStart(idx)}
+              onDragOver={(e) => onDragOver(e, idx)}
+              onDrop={() => onDrop(idx)}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                padding: '12px 12px', borderRadius: 8, marginBottom: 8,
+                background: dragOverIdx === idx ? '#eff6ff' : '#f0fdf4',
+                border: `2px solid ${dragOverIdx === idx ? '#2563eb' : '#bbf7d0'}`,
+                cursor: 'grab',
+                opacity: dragIdx === idx ? 0.5 : 1,
+                transition: 'all .15s',
+                boxSizing: 'border-box',
+              }}
+            >
+              {/* Stop number circle */}
+              <div style={{
+                minWidth: 30, height: 30, borderRadius: '50%',
+                background: '#2563eb', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 800, fontSize: 13, flexShrink: 0,
+              }}>
+                {idx + 1}
+              </div>
+
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, wordBreak: 'break-word' }}>{stop.display_name || stop.client_name || 'Unknown'}</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{stop.service_name || 'Service'} · {stop.preferred_time || 'No time'}</div>
+                <div style={{ fontSize: 12, color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>📍 {getAddress(stop)}</div>
+                {stop._lat && (
+                  <div style={{ fontSize: 11, color: '#22c55e', marginTop: 2 }}>
+                    ✅ Geocoded
+                  </div>
+                )}
+              </div>
+
+              {/* Controls — stacked vertically */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                <button onClick={() => moveStop(idx, -1)} disabled={idx === 0}
+                  style={{ ...S.btnGray, padding: '5px 10px', opacity: idx === 0 ? 0.3 : 1, minHeight: 32 }}>▲</button>
+                <button onClick={() => moveStop(idx, 1)} disabled={idx === route.length - 1}
+                  style={{ ...S.btnGray, padding: '5px 10px', opacity: idx === route.length - 1 ? 0.3 : 1, minHeight: 32 }}>▼</button>
+                <button onClick={() => removeFromRoute(stop.id)}
+                  style={{ ...S.btnSmRed, padding: '5px 10px', minHeight: 32 }}>✕</button>
+              </div>
+            </div>
+          ))}
+
+          <div style={{ marginTop: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
+            <strong>💡 Tip:</strong> Drag stops to reorder, use ▲▼ arrows, or tap "🧭 Sort" to auto-optimize by geography.
+            Tap "💾 Save" to push the order to employees' Assigned Jobs page.
+          </div>
+
+          {/* Full-width save button at bottom for easy mobile access */}
+          <button
+            onClick={saveOrder}
+            disabled={saving}
+            style={{ ...S.btnPurple, width: '100%', marginTop: 12, background: saved ? '#22c55e' : '#7c3aed' }}
+          >
+            {saving ? 'Saving...' : saved ? '✅ Route Saved!' : '💾 Save Route Order'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={S.page}>
+      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>🗺️ Route Planner</h1>
+      <p style={{ color: '#6b7280', marginBottom: 16, fontSize: 14, lineHeight: 1.5 }}>
+        Build today's route, auto-sort by geography, reorder stops, then save so employees see jobs in the right order.
+      </p>
+
+      {msg && <div style={S.msgBox}>{msg}</div>}
+
+      {/* Mobile tab switcher — hidden on larger screens via CSS */}
+      <style>{`
+        @media (min-width: 700px) {
+          .route-tab-bar { display: none !important; }
+          .route-panel-available, .route-panel-route { display: block !important; }
+        }
+        @media (max-width: 699px) {
+          .route-panel-available { display: ${activeTab === 'available' ? 'block' : 'none'} !important; }
+          .route-panel-route { display: ${activeTab === 'route' ? 'block' : 'none'} !important; }
+        }
+      `}</style>
+
+      <div className="route-tab-bar" style={S.tabBar}>
+        <button style={S.tab(activeTab === 'available')} onClick={() => setActiveTab('available')}>
+          📋 Available Jobs ({available.length})
+        </button>
+        <button style={S.tab(activeTab === 'route')} onClick={() => setActiveTab('route')}>
+          🚗 Route ({route.length})
+        </button>
+      </div>
+
+      <div style={S.grid}>
+        <div className="route-panel-available"><AvailablePanel /></div>
+        <div className="route-panel-route"><RoutePanel /></div>
       </div>
     </div>
   );

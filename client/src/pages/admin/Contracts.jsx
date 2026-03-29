@@ -48,7 +48,7 @@ export default function AdminContracts() {
   };
 
   const viewFile = id => {
-    window.open(`/api/contracts/${id}/file`, '_blank');
+    window.open(`/api/contracts/${id}/view`, '_blank');
   };
 
   return (
