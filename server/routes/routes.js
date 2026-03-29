@@ -433,11 +433,14 @@ router.post('/sessions/:id/end', authenticateToken, requireAdmin, async (req, re
 router.get('/my-eta', authenticateToken, async (req, res) => {
   try {
     const clientId = req.user.id;
-    const { rows: clientRows } = await req.db.query('SELECT active FROM clients WHERE id = $1', [clientId]);
+    const { rows: clientRows } = await req.db.query(
+      'SELECT active, latitude, longitude FROM clients WHERE id = $1', [clientId]
+    );
     if (!clientRows[0]) return res.json({ found: false });
+    const clientLat = parseFloat(clientRows[0].latitude) || null;
+    const clientLng = parseFloat(clientRows[0].longitude) || null;
 
     const today = new Date().toISOString().slice(0, 10);
-    // Find today's routes
     const { rows: routes } = await req.db.query(
       `SELECT * FROM routes WHERE route_date = $1 ORDER BY route_start_time ASC NULLS LAST`,
       [today]
@@ -446,7 +449,6 @@ router.get('/my-eta', authenticateToken, async (req, res) => {
     let result = null;
 
     for (const route of routes) {
-      // Is this client on this route?
       const { rows: myStopRows } = await req.db.query(
         `SELECT rs.id, rs.position, rs.completed, rs.completed_at
          FROM route_stops rs
@@ -462,39 +464,64 @@ router.get('/my-eta', authenticateToken, async (req, res) => {
         ? (typeof route.route_start_time === 'string' ? route.route_start_time.slice(0, 5) : '06:00')
         : '06:00';
 
-      // Count total stops on this route
       const { rows: totalRows } = await req.db.query(
-        `SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1`,
-        [route.id]
+        `SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1`, [route.id]
       );
       const totalStops = totalRows[0].c;
 
-      // Count completed stops BEFORE my position (i.e. stops ahead that are done)
       const { rows: completedBeforeRows } = await req.db.query(
         `SELECT COUNT(*)::int AS c FROM route_stops
          WHERE route_id = $1 AND position < $2 AND completed = TRUE`,
         [route.id, myStop.position]
       );
       const completedBefore = completedBeforeRows[0].c;
-
-      // Stops still ahead of me (not yet done, position < mine)
       const stopsAhead = myStop.position - completedBefore;
 
-      // Count how many stops are done total (for progress display)
       const { rows: doneRows } = await req.db.query(
         `SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1 AND completed = TRUE`,
         [route.id]
       );
       const completedCount = doneRows[0].c;
 
-      // ETA = start time + (position * minutesPerStop)
-      // If some stops before me are done faster/slower we use position as proxy
       const minutesFromStart = myStop.position * minutesPerStop;
-      const etaTime = addMinutesToTime(startTime, minutesFromStart);
-
-      // Window: +/- 1 stop worth of time
+      const etaTime  = addMinutesToTime(startTime, minutesFromStart);
       const etaEarly = addMinutesToTime(startTime, minutesFromStart - minutesPerStop);
       const etaLate  = addMinutesToTime(startTime, minutesFromStart + minutesPerStop);
+
+      // ── GPS proximity from active session ──────────────────────────
+      let gpsDistanceMiles = null;
+      let gpsEtaMinutes   = null;
+      let crewNearby      = false;
+      let crewLat         = null;
+      let crewLng         = null;
+      let gpsUpdatedAt    = null;
+      let snowCondition   = null;
+
+      try {
+        const { rows: sessionRows } = await req.db.query(
+          `SELECT admin_lat, admin_lng, admin_gps_updated_at, snow_condition
+           FROM route_sessions
+           WHERE route_id = $1 AND status = 'active'
+           ORDER BY start_time DESC LIMIT 1`,
+          [route.id]
+        );
+        if (sessionRows.length > 0) {
+          const sess = sessionRows[0];
+          crewLat      = parseFloat(sess.admin_lat)  || null;
+          crewLng      = parseFloat(sess.admin_lng)  || null;
+          gpsUpdatedAt = sess.admin_gps_updated_at;
+          snowCondition = sess.snow_condition;
+
+          if (crewLat && crewLng && clientLat && clientLng) {
+            gpsDistanceMiles = Math.round(haversine(crewLat, crewLng, clientLat, clientLng) * 10) / 10;
+            crewNearby = gpsDistanceMiles <= 0.5;
+            // Drive time estimate based on snow conditions
+            const SNOW_SPEED = { light: 25, moderate: 20, heavy: 15, blizzard: 10 };
+            const mph = SNOW_SPEED[snowCondition] || 20;
+            gpsEtaMinutes = Math.round((gpsDistanceMiles / mph) * 60);
+          }
+        }
+      } catch (gpsErr) { /* GPS lookup failure is non-fatal */ }
 
       result = {
         found: true,
@@ -512,6 +539,15 @@ router.get('/my-eta', authenticateToken, async (req, res) => {
         minutes_per_stop: minutesPerStop,
         route_start_time: startTime,
         all_done: completedCount >= totalStops,
+        // GPS proximity fields
+        crew_lat: crewLat,
+        crew_lng: crewLng,
+        gps_updated_at: gpsUpdatedAt,
+        gps_distance_miles: gpsDistanceMiles,
+        gps_eta_minutes: gpsEtaMinutes,
+        crew_nearby: crewNearby,
+        snow_condition: snowCondition,
+        live_session_active: true,
       };
       break;
     }

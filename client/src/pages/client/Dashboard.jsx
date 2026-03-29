@@ -22,11 +22,10 @@ function EtaWidget() {
 
   useEffect(() => {
     load();
-    pollRef.current = setInterval(load, 60000); // refresh every 60 seconds
+    pollRef.current = setInterval(load, 60000);
     return () => clearInterval(pollRef.current);
   }, [load]);
 
-  // ── Determine display state ──────────────────────────────────────
   if (loading) {
     return (
       <div style={widgetStyle('#1e3a5f', '#2d4f7c')}>
@@ -52,6 +51,9 @@ function EtaWidget() {
     my_stop_completed, all_done, stops_ahead, eta: etaTime,
     eta_window, stop_number, total_stops, route_name, route_type,
     minutes_per_stop,
+    // GPS fields
+    crew_nearby, gps_distance_miles, gps_eta_minutes, gps_updated_at,
+    live_session_active, snow_condition,
   } = eta;
 
   // ── DONE ────────────────────────────────────────────────────────
@@ -72,18 +74,60 @@ function EtaWidget() {
     );
   }
 
-  // ── NEXT STOP ────────────────────────────────────────────────────
+  // ── GPS NEARBY (within 0.5 miles) — highest priority alert ──────
+  if (crew_nearby && gps_distance_miles !== null) {
+    const distLabel = gps_distance_miles < 0.1
+      ? 'right around the corner'
+      : `${gps_distance_miles} miles away`;
+    return (
+      <div style={widgetStyle('#7c2d12', '#dc2626')}>
+        <div style={{ fontSize: 44, marginBottom: 8 }}>🚨</div>
+        <div style={{ color: '#fbbf24', fontSize: 22, fontWeight: 900, lineHeight: 1.2 }}>
+          Your crew is nearby!
+        </div>
+        <div style={{ color: '#fff', fontSize: 18, fontWeight: 700, marginTop: 8 }}>
+          {gps_eta_minutes !== null && gps_eta_minutes <= 2
+            ? 'Arriving any minute!'
+            : gps_eta_minutes !== null
+              ? `~${gps_eta_minutes} min away (${distLabel})`
+              : `Crew is ${distLabel}`}
+        </div>
+        {gps_updated_at && (
+          <div style={{ color: 'rgba(255,255,255,.6)', fontSize: 12, marginTop: 8 }}>
+            📍 GPS updated {formatTimeAgo(gps_updated_at)}
+          </div>
+        )}
+        <div style={{ color: 'rgba(255,255,255,.5)', fontSize: 12, marginTop: 4 }}>
+          Stop {stop_number} of {total_stops} · {route_name}
+        </div>
+      </div>
+    );
+  }
+
+  // ── NEXT STOP (no GPS or GPS not nearby) ────────────────────────
   if (stops_ahead === 0) {
     return (
       <div style={widgetStyle('#1e3a5f', '#1d4ed8')}>
         <div style={{ fontSize: 44, marginBottom: 8 }}>🚨</div>
         <div style={{ color: '#fbbf24', fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>
-          {route_type === 'snow' ? 'Your driveway is NEXT!' : 'You\'re the next stop!'}
+          {route_type === 'snow' ? 'Your driveway is NEXT!' : "You're the next stop!"}
         </div>
-        <div style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginTop: 8 }}>
-          Arriving ~{etaTime}
-        </div>
-        {eta_window && (
+        {/* If GPS is live, show GPS-based ETA */}
+        {gps_eta_minutes !== null && live_session_active ? (
+          <div style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginTop: 8 }}>
+            ~{gps_eta_minutes} min away
+          </div>
+        ) : (
+          <div style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginTop: 8 }}>
+            Arriving ~{etaTime}
+          </div>
+        )}
+        {gps_distance_miles !== null && (
+          <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 14, marginTop: 4 }}>
+            📍 Crew is {gps_distance_miles} miles away
+          </div>
+        )}
+        {eta_window && !gps_eta_minutes && (
           <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 13, marginTop: 4 }}>
             Window: {eta_window}
           </div>
@@ -97,7 +141,9 @@ function EtaWidget() {
 
   // ── 1 STOP AHEAD ────────────────────────────────────────────────
   if (stops_ahead === 1) {
-    const minAway = minutes_per_stop || 15;
+    const minAway = gps_eta_minutes !== null && live_session_active
+      ? gps_eta_minutes
+      : (minutes_per_stop || 15);
     return (
       <div style={widgetStyle('#1e3a5f', '#2d4f7c')}>
         <div style={{ fontSize: 40, marginBottom: 8 }}>❄️</div>
@@ -110,6 +156,11 @@ function EtaWidget() {
         <div style={{ color: '#fff', fontSize: 18, fontWeight: 700, marginTop: 4 }}>
           Estimated arrival: {etaTime}
         </div>
+        {gps_distance_miles !== null && (
+          <div style={{ color: 'rgba(255,255,255,.65)', fontSize: 13, marginTop: 4 }}>
+            📍 Crew is {gps_distance_miles} miles away
+          </div>
+        )}
         {eta_window && (
           <div style={{ color: 'rgba(255,255,255,.6)', fontSize: 13, marginTop: 4 }}>
             Window: {eta_window}
@@ -123,8 +174,10 @@ function EtaWidget() {
   }
 
   // ── MULTIPLE STOPS AHEAD ─────────────────────────────────────────
-  const minAway = (stops_ahead * (minutes_per_stop || 15));
-  const hrAway  = minAway >= 60 ? `${Math.floor(minAway / 60)}h ${minAway % 60}m` : `${minAway} min`;
+  const minAway = gps_eta_minutes !== null && live_session_active
+    ? gps_eta_minutes
+    : (stops_ahead * (minutes_per_stop || 15));
+  const hrAway = minAway >= 60 ? `${Math.floor(minAway / 60)}h ${minAway % 60}m` : `${minAway} min`;
   return (
     <div style={widgetStyle('#1e3a5f', '#2d4f7c')}>
       <div style={{ fontSize: 40, marginBottom: 8 }}>❄️</div>
@@ -137,6 +190,12 @@ function EtaWidget() {
       <div style={{ color: '#fff', fontSize: 18, fontWeight: 700, marginTop: 4 }}>
         Estimated arrival: {etaTime}
       </div>
+      {gps_distance_miles !== null && (
+        <div style={{ color: 'rgba(255,255,255,.65)', fontSize: 13, marginTop: 4 }}>
+          📍 Crew is {gps_distance_miles} miles away
+          {snow_condition && ` · ${snow_condition} conditions`}
+        </div>
+      )}
       {eta_window && (
         <div style={{ color: 'rgba(255,255,255,.6)', fontSize: 13, marginTop: 4 }}>
           Window: {eta_window}
@@ -161,6 +220,14 @@ function widgetStyle(bg1, bg2) {
     marginBottom: 20,
     boxShadow: '0 4px 20px rgba(0,0,0,.18)',
   };
+}
+
+function formatTimeAgo(isoStr) {
+  if (!isoStr) return '';
+  const diff = Math.round((Date.now() - new Date(isoStr).getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────

@@ -495,6 +495,12 @@ export default function RoutePlanner() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const startAddressRef = useRef(null);
   const livePollRef = useRef(null);
+  const gpsIntervalRef = useRef(null);
+  const [sessionId, setSessionId] = useState(null);
+  const [snowCondition, setSnowCondition] = useState('moderate');
+  const [showSnowModal, setShowSnowModal] = useState(false);
+  const [crewLat, setCrewLat] = useState(null);
+  const [crewLng, setCrewLng] = useState(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -526,18 +532,36 @@ export default function RoutePlanner() {
       .finally(() => setLoadingStops(false));
   }, []);
 
-  // Auto-refresh in live mode every 15s
+  // Auto-refresh in live mode every 15s + GPS broadcasting every 30s
   useEffect(() => {
     if (liveMode && selectedRouteId) {
       livePollRef.current = setInterval(() => {
         loadRouteDetail(selectedRouteId);
         loadRoutes();
       }, 15000);
+      const sendGPS = () => {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(pos => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setCrewLat(lat);
+          setCrewLng(lng);
+          if (sessionId) {
+            api.patch('/routes/sessions/' + sessionId + '/gps', { latitude: lat, longitude: lng }).catch(() => {});
+          }
+        }, () => {}, { enableHighAccuracy: true, timeout: 10000 });
+      };
+      sendGPS();
+      gpsIntervalRef.current = setInterval(sendGPS, 30000);
     } else {
       clearInterval(livePollRef.current);
+      clearInterval(gpsIntervalRef.current);
     }
-    return () => clearInterval(livePollRef.current);
-  }, [liveMode, selectedRouteId, loadRouteDetail, loadRoutes]);
+    return () => {
+      clearInterval(livePollRef.current);
+      clearInterval(gpsIntervalRef.current);
+    };
+  }, [liveMode, selectedRouteId, sessionId, loadRouteDetail, loadRoutes]);
 
   const handleSelectRoute = (id) => {
     setSelectedRouteId(id);
@@ -737,7 +761,16 @@ export default function RoutePlanner() {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     {/* Live Mode toggle */}
                     <button
-                      onClick={() => setLiveMode(v => !v)}
+                      onClick={() => {
+                        if (liveMode) {
+                          setLiveMode(false);
+                          setSessionId(null);
+                          setCrewLat(null);
+                          setCrewLng(null);
+                        } else {
+                          setShowSnowModal(true);
+                        }
+                      }}
                       style={{
                         background: liveMode ? '#22c55e' : '#f0fdf4',
                         color: liveMode ? '#fff' : '#16a34a',
@@ -747,6 +780,11 @@ export default function RoutePlanner() {
                       }}>
                       {liveMode ? '🚦 Live Mode ON' : '🚦 Go Live'}
                     </button>
+                    {liveMode && crewLat && (
+                      <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
+                        📍 GPS active
+                      </span>
+                    )}
                     <button
                       onClick={() => {
                         const url = mapsRouteUrl(selectedRoute.stops || []);
@@ -824,6 +862,56 @@ export default function RoutePlanner() {
         </div>
       </div>
 
+      {/* Snow Condition Modal */}
+      {showSnowModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => setShowSnowModal(false)}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: 28, width: '100%', maxWidth: 380 }}
+            onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 6px', color: '#1e3a5f', fontSize: 18 }}>❄️ Start Live Route</h3>
+            <p style={{ margin: '0 0 18px', color: '#64748b', fontSize: 13 }}>Select current snow conditions. This adjusts the minutes-per-stop estimate clients see.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+              {[
+                { val: 'light',    label: '🌨 Light',    sub: 'Faster pace' },
+                { val: 'moderate', label: '❄️ Moderate', sub: 'Normal pace' },
+                { val: 'heavy',    label: '🌨❄️ Heavy',  sub: 'Slower pace' },
+                { val: 'blizzard', label: '🌪 Blizzard', sub: 'Much slower' },
+              ].map(opt => (
+                <button key={opt.val} onClick={() => setSnowCondition(opt.val)}
+                  style={{
+                    padding: '12px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
+                    border: '2px solid ' + (snowCondition === opt.val ? '#1e3a5f' : '#e2e8f0'),
+                    background: snowCondition === opt.val ? '#eff6ff' : '#fff',
+                    fontWeight: snowCondition === opt.val ? 700 : 400,
+                  }}>
+                  <div style={{ fontSize: 15 }}>{opt.label}</div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{opt.sub}</div>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowSnowModal(false)}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 14 }}>
+                Cancel
+              </button>
+              <button onClick={async () => {
+                  setShowSnowModal(false);
+                  try {
+                    const r = await api.post('/routes/sessions', {
+                      route_id: selectedRouteId,
+                      snow_condition: snowCondition,
+                    });
+                    setSessionId(r.data.session_id || r.data.id);
+                  } catch { /* session may already exist */ }
+                  setLiveMode(true);
+                }}
+                style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>
+                🚦 Start Live Mode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showForm && (
         <RouteFormModal
           route={editingRoute}
