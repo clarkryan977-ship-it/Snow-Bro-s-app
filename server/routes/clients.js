@@ -8,7 +8,7 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { rows: clients } = await req.db.query(
-      'SELECT id, first_name, last_name, email, phone, address, city, state, zip, notes, created_at, active, latitude, longitude, service_type FROM clients ORDER BY last_name, first_name'
+      'SELECT id, first_name, last_name, email, phone, address, city, state, zip, notes, created_at, active, latitude, longitude, service_type, (password_hash IS NOT NULL) AS has_password FROM clients ORDER BY last_name, first_name'
     );
     res.json(clients);
   } catch (err) {

@@ -39,6 +39,13 @@ export default function AdminClients() {
   // Per-row invite state: { [clientId]: 'idle' | 'sending' | 'sent' | 'error' }
   const [inviteState, setInviteState] = useState({});
 
+  // Toast notification state
+  const [toast, setToast] = useState(null); // { msg, type: 'success'|'error' }
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
   const load = () => api.get('/clients').then(r => setClients(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
 
@@ -104,17 +111,17 @@ export default function AdminClients() {
   // Portal invite
   const sendInvite = async (c) => {
     if (isPlaceholder(c.email)) {
-      alert('Update this client\'s real email address before sending an invite.');
+      showToast('Update this client\'s real email address before sending an invite.', 'error');
       return;
     }
-    if (!confirm(`Send portal invite to ${c.first_name} ${c.last_name} at ${c.email}?`)) return;
     setInviteState(s => ({ ...s, [c.id]: 'sending' }));
     try {
       await api.post(`/clients/${c.id}/invite`);
       setInviteState(s => ({ ...s, [c.id]: 'sent' }));
+      showToast(`Portal invite sent to ${c.first_name} ${c.last_name} (${c.email})`);
       setTimeout(() => setInviteState(s => ({ ...s, [c.id]: 'idle' })), 4000);
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to send invite');
+      showToast(err.response?.data?.error || 'Failed to send invite', 'error');
       setInviteState(s => ({ ...s, [c.id]: 'idle' }));
     }
   };
@@ -291,12 +298,57 @@ export default function AdminClients() {
 
   return (
     <div>
+      {/* Toast notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 20, right: 20, zIndex: 9999,
+          background: toast.type === 'error' ? '#dc2626' : '#16a34a',
+          color: '#fff', padding: '12px 20px', borderRadius: 10,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.18)', fontSize: 14, fontWeight: 600,
+          maxWidth: 380, lineHeight: 1.4,
+          animation: 'fadeIn .2s ease'
+        }}>
+          {toast.type === 'error' ? '❌ ' : '✅ '}{toast.msg}
+        </div>
+      )}
+
       <div className="flex-between page-header">
         <div>
           <h1>👥 Clients</h1>
           <p>Manage your client list.</p>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>+ Add Client</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={async () => {
+              try {
+                const token = localStorage.getItem('token');
+                const r = await fetch('/api/export/backup', { headers: { Authorization: 'Bearer ' + token } });
+                if (!r.ok) throw new Error('Export failed: ' + r.status);
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const cd = r.headers.get('content-disposition') || '';
+                const m = cd.match(/filename="([^"]+)"/);
+                a.download = m ? m[1] : 'snowbros-backup.zip';
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+                showToast('Backup downloaded successfully!');
+              } catch (e) {
+                showToast('Export failed: ' + e.message, 'error');
+              }
+            }}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8,
+              padding: '8px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer'
+            }}
+            title="Download a ZIP backup of all clients, employees, bookings, contracts and services as CSV files"
+          >
+            📦 Export Backup
+          </button>
+          <button className="btn btn-primary" onClick={openAdd}>+ Add Client</button>
+        </div>
       </div>
 
       {/* Stats bar */}
@@ -422,15 +474,15 @@ export default function AdminClients() {
                           className="btn btn-sm"
                           onClick={() => sendInvite(c)}
                           disabled={istate === 'sending'}
-                          title={c.active ? 'Resend portal invite' : 'Send portal invite (will activate account)'}
+                          title={c.has_password ? 'Resend portal invite (client already set up password)' : 'Send portal invite — client will set their own password'}
                           style={{
                             marginRight: 6,
-                            background: istate === 'sent' ? '#16a34a' : '#7c3aed',
+                            background: istate === 'sent' ? '#16a34a' : c.has_password ? '#6b7280' : '#7c3aed',
                             color: '#fff', border: 'none', borderRadius: 6,
                             padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer'
                           }}
                         >
-                          {istate === 'sending' ? '⏳ Sending…' : istate === 'sent' ? '✅ Sent!' : '✉️ Invite'}
+                          {istate === 'sending' ? '⏳ Sending…' : istate === 'sent' ? '✅ Sent!' : c.has_password ? '🔁 Resend Invite' : '✉️ Send Invite'}
                         </button>
                       ) : (
                         <button
