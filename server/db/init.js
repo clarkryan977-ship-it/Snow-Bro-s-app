@@ -588,22 +588,21 @@ async function initDB() {
     }
   }
 
-  // ── Seed / ensure admin@snowbros.com with correct password ──
-  // Always upsert so existing DB gets the right password hash
-  const adminHash = bcrypt.hashSync('Admin123', 10);
+  // ── Seed admin@snowbros.com (INSERT only — DO NOTHING on conflict so manual password changes survive redeploys) ──
+  const adminHash = bcrypt.hashSync('snowbros2024', 10);
   await db.query(
     `INSERT INTO employees (first_name,last_name,email,password_hash,role,active)
      VALUES ($1,$2,$3,$4,$5,1)
-     ON CONFLICT(email) DO UPDATE SET password_hash=$4, role=$5, active=1`,
+     ON CONFLICT(email) DO NOTHING`,
     ['Admin', 'User', 'admin@snowbros.com', adminHash, 'admin']
   );
 
-  // ── Seed Gabe Clark (gabeforrestclark@gmail.com) ──
+  // ── Seed Gabe Clark (INSERT only — DO NOTHING on conflict) ──
   const gabeHash = bcrypt.hashSync('GabeClark2024!', 10);
   await db.query(
     `INSERT INTO employees (first_name,last_name,email,phone,password_hash,role,title,active)
      VALUES ($1,$2,$3,$4,$5,$6,$7,1)
-     ON CONFLICT(email) DO UPDATE SET first_name=$1, last_name=$2, phone=$4, role=$6, title=$7, active=1`,
+     ON CONFLICT(email) DO NOTHING`,
     ['Gabe', 'Clark', 'gabeforrestclark@gmail.com', '218-331-5145', gabeHash, 'employee', 'Field Employee']
   );
 
