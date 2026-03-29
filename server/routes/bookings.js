@@ -45,12 +45,47 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     const { rows: bookings } = await req.db.query(`SELECT b.*, s.name as service_name,
         COALESCE(c.first_name || ' ' || c.last_name, b.client_name) as display_name,
         COALESCE(c.email, b.client_email) as display_email,
-        COALESCE(c.phone, b.client_phone) as display_phone
+        COALESCE(c.phone, b.client_phone) as display_phone,
+        COALESCE(b.address, c.address, '') as job_address,
+        COALESCE(b.city, c.city, '') as job_city,
+        COALESCE(b.state, c.state, '') as job_state,
+        COALESCE(b.zip, c.zip, '') as job_zip,
+        COALESCE(b.route_order, 9999) as route_order
       FROM bookings b
       LEFT JOIN services s ON b.service_id = s.id
       LEFT JOIN clients c ON b.client_id = c.id
       ORDER BY b.created_at DESC`);
     res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save route order for bookings (admin) — accepts array of {id, route_order}
+router.patch('/route-order', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { orders } = req.body; // [{id: 1, route_order: 1}, {id: 2, route_order: 2}, ...]
+    if (!Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: 'orders array required' });
+    }
+    for (const { id, route_order } of orders) {
+      await req.db.query('UPDATE bookings SET route_order = $1 WHERE id = $2', [route_order, id]);
+    }
+    res.json({ message: 'Route order saved', count: orders.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update booking address fields (admin)
+router.patch('/:id/address', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { address, city, state, zip } = req.body;
+    await req.db.query(
+      'UPDATE bookings SET address = $1, city = $2, state = $3, zip = $4 WHERE id = $5',
+      [address || '', city || '', state || '', zip || '', req.params.id]
+    );
+    res.json({ message: 'Address updated' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -416,6 +416,12 @@ async function initDB() {
     )
   `);
   await db.query(`ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE`).catch(() => {});
+  // Route order for bookings (employee Assigned Jobs page ordering)
+  await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS route_order INTEGER DEFAULT 9999`).catch(() => {});
+  await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS state TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS zip TEXT DEFAULT ''`).catch(() => {});
 
   // Live route sessions
   await db.query(`

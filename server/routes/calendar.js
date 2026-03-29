@@ -114,7 +114,7 @@ router.get('/my-jobs', authenticateToken, async (req, res) => {
       LEFT JOIN services s ON b.service_id = s.id
       LEFT JOIN clients c ON b.client_id = c.id
       WHERE b.assigned_employee_id = $1 AND b.status != 'completed'
-      ORDER BY b.preferred_date ASC, b.preferred_time ASC`, [req.user.id]);
+      ORDER BY COALESCE(b.route_order, 9999) ASC, b.preferred_date ASC, b.preferred_time ASC`, [req.user.id]);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
