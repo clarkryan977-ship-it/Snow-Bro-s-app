@@ -15,14 +15,48 @@ export default function EmployeeAssignedJobs() {
   };
   useEffect(() => { load(); }, []);
 
+  const [routeCompleteMsg, setRouteCompleteMsg] = useState(false);
+
+  const openMapsToAddress = (addr) => {
+    if (!addr) return;
+    const encoded = encodeURIComponent(addr);
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const url = isIOS
+      ? `maps://maps.apple.com/?daddr=${encoded}`
+      : `https://www.google.com/maps/dir/?api=1&destination=${encoded}`;
+    window.open(url, '_blank');
+  };
+
   const markDone = async (jobId) => {
     if (!confirm('Mark this job as completed?')) return;
     setCompleting(c => ({ ...c, [jobId]: true }));
     try {
       await api.patch(`/bookings/${jobId}/complete`);
-      setJobs(prev => prev.map(j =>
+      // Update local state
+      const updatedJobs = jobs.map(j =>
         j.id === jobId ? { ...j, status: 'completed' } : j
-      ));
+      );
+      setJobs(updatedJobs);
+
+      // Find the next incomplete job after the one just completed
+      const currentIndex = jobs.findIndex(j => j.id === jobId);
+      const remaining = updatedJobs.filter((j, idx) => idx > currentIndex && j.status !== 'completed');
+      const nextJob = remaining[0];
+
+      if (nextJob) {
+        const addr = [nextJob.address, nextJob.city, nextJob.state, nextJob.zip].filter(Boolean).join(', ');
+        if (addr) {
+          // Small delay so the UI updates first
+          setTimeout(() => openMapsToAddress(addr), 400);
+        }
+      } else {
+        // No more incomplete jobs — check if ALL jobs are now done
+        const anyRemaining = updatedJobs.some(j => j.status !== 'completed');
+        if (!anyRemaining) {
+          setRouteCompleteMsg(true);
+          setTimeout(() => setRouteCompleteMsg(false), 6000);
+        }
+      }
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to mark job as done');
     } finally {
@@ -188,6 +222,22 @@ export default function EmployeeAssignedJobs() {
           )}
         </div>
       </div>
+
+      {/* Route Complete Banner */}
+      {routeCompleteMsg && (
+        <div style={{
+          background: '#16a34a', color: '#fff', borderRadius: 10, padding: '1rem 1.5rem',
+          marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '.75rem',
+          fontSize: '1rem', fontWeight: 700, boxShadow: '0 4px 16px rgba(22,163,74,.35)',
+          animation: 'fadeIn .3s ease'
+        }}>
+          <span style={{ fontSize: '1.75rem' }}>🎉</span>
+          <div>
+            <div>Route Complete! All jobs done.</div>
+            <div style={{ fontWeight: 400, fontSize: '.85rem', opacity: .9 }}>Great work today — all assigned jobs are finished.</div>
+          </div>
+        </div>
+      )}
 
       {jobs.length === 0 && (
         <div className="card text-center" style={{ padding:'3rem' }}>
