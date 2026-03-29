@@ -34,6 +34,17 @@ function nearestNeighborOrder(stops) {
   return [...ordered, ...noGeo];
 }
 
+// Format minutes offset from a base time string "HH:MM" into "H:MM AM/PM"
+function addMinutesToTime(baseTime, minutes) {
+  const [h, m] = (baseTime || '06:00').split(':').map(Number);
+  const total = h * 60 + m + Math.round(minutes);
+  const hh = Math.floor(total / 60) % 24;
+  const mm = total % 60;
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+  const h12 = hh % 12 || 12;
+  return `${h12}:${String(mm).padStart(2, '0')} ${ampm}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  ROUTE SETTINGS
 // ═══════════════════════════════════════════════════════════════════
@@ -81,19 +92,14 @@ router.put('/clients/:id/coords', authenticateToken, requireAdmin, async (req, r
 // ═══════════════════════════════════════════════════════════════════
 //  EMPLOYEE: MY ROUTES (routes assigned to the logged-in employee)
 // ═══════════════════════════════════════════════════════════════════
-// GET /routes/my-routes?date=YYYY-MM-DD  (employee only)
 router.get('/my-routes', authenticateToken, async (req, res) => {
   try {
     const empId = req.user.id;
-    // Default to today if no date provided
     const today = new Date().toISOString().slice(0, 10);
     const date = req.query.date || today;
     const sql = `SELECT * FROM routes WHERE assigned_employee_ids IS NOT NULL AND route_date = $1 ORDER BY name ASC`;
-    const params = [date];
+    const { rows: allRoutes } = await req.db.query(sql, [date]);
 
-    const { rows: allRoutes } = await req.db.query(sql, params);
-
-    // Filter to routes that include this employee
     const myRoutes = allRoutes.filter(r => {
       try {
         const ids = JSON.parse(r.assigned_employee_ids || '[]');
@@ -101,7 +107,6 @@ router.get('/my-routes', authenticateToken, async (req, res) => {
       } catch { return false; }
     });
 
-    // Attach stops for each route
     for (const route of myRoutes) {
       const { rows: stops } = await req.db.query(`
         SELECT rs.*,
@@ -131,7 +136,6 @@ router.get('/my-routes', authenticateToken, async (req, res) => {
 //  NAMED ROUTES CRUD (admin)
 // ═══════════════════════════════════════════════════════════════════
 
-// GET /routes — list all routes (with stop count and assigned employee names)
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { date } = req.query;
@@ -141,15 +145,15 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     sql += ` ORDER BY route_date DESC NULLS LAST, name ASC`;
 
     const { rows: routes } = await req.db.query(sql, params);
-
-    // Attach stop count and employee names
     const { rows: employees } = await req.db.query(`SELECT id, first_name, last_name FROM employees ORDER BY first_name`);
     const empMap = {};
     employees.forEach(e => { empMap[e.id] = `${e.first_name} ${e.last_name}`; });
 
     for (const r of routes) {
       const { rows: cnt } = await req.db.query('SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1', [r.id]);
+      const { rows: doneCnt } = await req.db.query('SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1 AND completed = TRUE', [r.id]);
       r.stop_count = cnt[0].c;
+      r.completed_count = doneCnt[0].c;
       try {
         const ids = JSON.parse(r.assigned_employee_ids || '[]');
         r.assigned_employees = ids.map(id => ({ id, name: empMap[id] || empMap[String(id)] || `Employee #${id}` }));
@@ -159,22 +163,21 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /routes — create a new named route
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, type, route_date, description, assigned_employee_ids } = req.body;
+    const { name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time } = req.body;
     if (!name) return res.status(400).json({ error: 'Route name is required' });
     const empIds = JSON.stringify(Array.isArray(assigned_employee_ids) ? assigned_employee_ids : []);
     const { rows } = await req.db.query(
-      `INSERT INTO routes (name, type, route_date, description, assigned_employee_ids)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [name, type || 'lawn', route_date || null, description || '', empIds]
+      `INSERT INTO routes (name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [name, type || 'snow', route_date || null, description || '', empIds,
+       parseInt(minutes_per_stop) || 15, route_start_time || '06:00']
     );
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET /routes/:id — get a single route with all stops
 router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { rows: routeRows } = await req.db.query('SELECT * FROM routes WHERE id = $1', [req.params.id]);
@@ -204,21 +207,21 @@ router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /routes/:id — update route metadata (name, date, type, description, assigned employees)
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, type, route_date, description, assigned_employee_ids } = req.body;
+    const { name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time } = req.body;
     const empIds = JSON.stringify(Array.isArray(assigned_employee_ids) ? assigned_employee_ids : []);
     await req.db.query(
-      `UPDATE routes SET name=$1, type=$2, route_date=$3, description=$4, assigned_employee_ids=$5, updated_at=NOW()
-       WHERE id=$6`,
-      [name, type || 'lawn', route_date || null, description || '', empIds, req.params.id]
+      `UPDATE routes SET name=$1, type=$2, route_date=$3, description=$4, assigned_employee_ids=$5,
+       minutes_per_stop=$6, route_start_time=$7, updated_at=NOW()
+       WHERE id=$8`,
+      [name, type || 'snow', route_date || null, description || '', empIds,
+       parseInt(minutes_per_stop) || 15, route_start_time || '06:00', req.params.id]
     );
     res.json({ message: 'Route updated' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /routes/:id — delete a route and all its stops
 router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await req.db.query('DELETE FROM routes WHERE id = $1', [req.params.id]);
@@ -230,7 +233,6 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
 //  ROUTE STOPS
 // ═══════════════════════════════════════════════════════════════════
 
-// GET /routes/:id/stops
 router.get('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { rows } = await req.db.query(`
@@ -253,17 +255,14 @@ router.get('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /routes/:id/stops — add a stop (client or booking)
 router.post('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { client_id, booking_id, frequency, notes, stop_label, address, city, state, zip } = req.body;
     if (!client_id) return res.status(400).json({ error: 'client_id required' });
 
-    // Check stop limit (200 per route)
     const { rows: cnt } = await req.db.query('SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1', [req.params.id]);
     if (cnt[0].c >= 200) return res.status(400).json({ error: 'Route is at the 200-stop limit' });
 
-    // Check for duplicate
     let dupCheck = 'SELECT id FROM route_stops WHERE route_id = $1 AND client_id = $2';
     const dupParams = [req.params.id, client_id];
     if (booking_id) { dupCheck += ' AND booking_id = $3'; dupParams.push(booking_id); }
@@ -281,7 +280,6 @@ router.post('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /routes/:routeId/stops/:stopId
 router.delete('/:routeId/stops/:stopId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { rows: stopRows } = await req.db.query(
@@ -298,7 +296,6 @@ router.delete('/:routeId/stops/:stopId', authenticateToken, requireAdmin, async 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /routes/:routeId/stops/:stopId — update notes/frequency
 router.put('/:routeId/stops/:stopId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { frequency, notes, stop_label } = req.body;
@@ -310,7 +307,27 @@ router.put('/:routeId/stops/:stopId', authenticateToken, requireAdmin, async (re
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /routes/:id/reorder — save new stop order
+// ─── Mark stop complete / uncomplete ─────────────────────────────
+router.patch('/:routeId/stops/:stopId/complete', authenticateToken, async (req, res) => {
+  try {
+    await req.db.query(
+      `UPDATE route_stops SET completed = TRUE, completed_at = NOW() WHERE id = $1 AND route_id = $2`,
+      [req.params.stopId, req.params.routeId]
+    );
+    res.json({ message: 'Stop marked complete' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.patch('/:routeId/stops/:stopId/uncomplete', authenticateToken, async (req, res) => {
+  try {
+    await req.db.query(
+      `UPDATE route_stops SET completed = FALSE, completed_at = NULL WHERE id = $1 AND route_id = $2`,
+      [req.params.stopId, req.params.routeId]
+    );
+    res.json({ message: 'Stop unmarked' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.put('/:id/reorder', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { stop_ids } = req.body;
@@ -322,7 +339,6 @@ router.put('/:id/reorder', authenticateToken, requireAdmin, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /routes/:id/optimize — nearest-neighbor geo-sort
 router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { start_lat, start_lng } = req.body;
@@ -336,7 +352,6 @@ router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) =
       ORDER BY rs.position ASC
     `, [req.params.id]);
 
-    // If start coords provided, use them; otherwise use first stop with coords
     let startLat = parseFloat(start_lat) || 0;
     let startLng = parseFloat(start_lng) || 0;
     if (!startLat || !startLng) {
@@ -344,7 +359,6 @@ router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) =
       if (first) { startLat = first.latitude; startLng = first.longitude; }
     }
 
-    // Nearest-neighbor from start
     const geoStops = stops.filter(s => s.latitude && s.longitude);
     const noGeo    = stops.filter(s => !s.latitude || !s.longitude);
     const ordered  = [];
@@ -369,7 +383,7 @@ router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) =
 });
 
 // ═══════════════════════════════════════════════════════════════════
-//  LIVE ROUTE SESSIONS (GPS tracking + ETA)
+//  LIVE ROUTE SESSIONS (GPS tracking)
 // ═══════════════════════════════════════════════════════════════════
 router.post('/sessions/start', authenticateToken, requireAdmin, async (req, res) => {
   try {
@@ -414,57 +428,94 @@ router.post('/sessions/:id/end', authenticateToken, requireAdmin, async (req, re
 });
 
 // ═══════════════════════════════════════════════════════════════════
-//  CLIENT ETA LOOKUP
+//  CLIENT ETA LOOKUP  (revised — uses per-stop completion)
 // ═══════════════════════════════════════════════════════════════════
 router.get('/my-eta', authenticateToken, async (req, res) => {
   try {
     const clientId = req.user.id;
     const { rows: clientRows } = await req.db.query('SELECT active FROM clients WHERE id = $1', [clientId]);
-    if (!clientRows[0] || clientRows[0].active !== 1) return res.json({ found: false });
-
-    const { rows: settingsRows } = await req.db.query('SELECT key, value FROM route_settings');
-    const settings = {};
-    settingsRows.forEach(r => { settings[r.key] = r.value; });
+    if (!clientRows[0]) return res.json({ found: false });
 
     const today = new Date().toISOString().slice(0, 10);
-    const { rows: routes } = await req.db.query(`SELECT * FROM routes WHERE route_date = $1`, [today]);
+    // Find today's routes
+    const { rows: routes } = await req.db.query(
+      `SELECT * FROM routes WHERE route_date = $1 ORDER BY route_start_time ASC NULLS LAST`,
+      [today]
+    );
+
     let result = null;
 
     for (const route of routes) {
-      const { rows: sessionRows } = await req.db.query(
-        `SELECT * FROM route_sessions WHERE route_id=$1 AND status='active' ORDER BY created_at DESC LIMIT 1`,
-        [route.id]
-      );
-      const session = sessionRows[0];
-      const { rows: stopRows } = await req.db.query(
-        `SELECT rs.position, c.latitude, c.longitude
-         FROM route_stops rs JOIN clients c ON rs.client_id = c.id
-         WHERE rs.route_id=$1 AND rs.client_id=$2`,
+      // Is this client on this route?
+      const { rows: myStopRows } = await req.db.query(
+        `SELECT rs.id, rs.position, rs.completed, rs.completed_at
+         FROM route_stops rs
+         WHERE rs.route_id = $1 AND rs.client_id = $2
+         LIMIT 1`,
         [route.id, clientId]
       );
-      if (stopRows.length > 0) {
-        const match = stopRows[0];
-        const jobsPerHour = session ? session.jobs_per_hour : (parseFloat(settings.eta_jobs_per_hour) || 2);
-        const numCrews    = session ? session.num_crews     : (parseInt(settings.eta_num_crews) || 1);
-        const startTime   = settings.eta_start_time || '08:00';
-        const minutesPerJob = 60 / jobsPerHour;
-        const [startH, startM] = startTime.split(':').map(Number);
-        const jobInSeq = Math.floor(match.position / numCrews);
-        const totalMins = startH * 60 + startM + jobInSeq * minutesPerJob;
-        const etaH = Math.floor(totalMins / 60) % 24;
-        const etaM = Math.floor(totalMins % 60);
-        result = {
-          found: true,
-          route_name: route.name,
-          stop_number: match.position + 1,
-          eta: `${String(etaH).padStart(2, '0')}:${String(etaM).padStart(2, '0')}`,
-          crew_number: (match.position % numCrews) + 1,
-          stops_ahead: Math.max(0, match.position - (session?.current_stop || 0)),
-          session_active: !!session,
-        };
-        break;
-      }
+      if (myStopRows.length === 0) continue;
+
+      const myStop = myStopRows[0];
+      const minutesPerStop = parseInt(route.minutes_per_stop) || 15;
+      const startTime = route.route_start_time
+        ? (typeof route.route_start_time === 'string' ? route.route_start_time.slice(0, 5) : '06:00')
+        : '06:00';
+
+      // Count total stops on this route
+      const { rows: totalRows } = await req.db.query(
+        `SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1`,
+        [route.id]
+      );
+      const totalStops = totalRows[0].c;
+
+      // Count completed stops BEFORE my position (i.e. stops ahead that are done)
+      const { rows: completedBeforeRows } = await req.db.query(
+        `SELECT COUNT(*)::int AS c FROM route_stops
+         WHERE route_id = $1 AND position < $2 AND completed = TRUE`,
+        [route.id, myStop.position]
+      );
+      const completedBefore = completedBeforeRows[0].c;
+
+      // Stops still ahead of me (not yet done, position < mine)
+      const stopsAhead = myStop.position - completedBefore;
+
+      // Count how many stops are done total (for progress display)
+      const { rows: doneRows } = await req.db.query(
+        `SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1 AND completed = TRUE`,
+        [route.id]
+      );
+      const completedCount = doneRows[0].c;
+
+      // ETA = start time + (position * minutesPerStop)
+      // If some stops before me are done faster/slower we use position as proxy
+      const minutesFromStart = myStop.position * minutesPerStop;
+      const etaTime = addMinutesToTime(startTime, minutesFromStart);
+
+      // Window: +/- 1 stop worth of time
+      const etaEarly = addMinutesToTime(startTime, minutesFromStart - minutesPerStop);
+      const etaLate  = addMinutesToTime(startTime, minutesFromStart + minutesPerStop);
+
+      result = {
+        found: true,
+        route_id: route.id,
+        route_name: route.name,
+        route_type: route.type || 'snow',
+        stop_number: myStop.position + 1,
+        total_stops: totalStops,
+        stops_ahead: Math.max(0, stopsAhead),
+        completed_count: completedCount,
+        my_stop_completed: myStop.completed === true || myStop.completed === 't',
+        completed_at: myStop.completed_at,
+        eta: etaTime,
+        eta_window: `${etaEarly} – ${etaLate}`,
+        minutes_per_stop: minutesPerStop,
+        route_start_time: startTime,
+        all_done: completedCount >= totalStops,
+      };
+      break;
     }
+
     res.json(result || { found: false, message: 'No service scheduled today' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

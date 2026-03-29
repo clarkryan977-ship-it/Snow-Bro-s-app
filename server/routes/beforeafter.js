@@ -1,18 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { makeUploader, getFileInfo, deleteFile } = require('../utils/cloudinaryUpload');
 
-const uploadDir = path.join(process.env.UPLOADS_ROOT || path.join(__dirname, '../uploads'), 'beforeafter');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(file.originalname)}`)
-});
-const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+const upload = makeUploader('snowbros/beforeafter', 'beforeafter', 15);
 
 // ── GET before/after photos for a booking ────────────────────────────────────
 router.get('/booking/:bookingId', authenticateToken, async (req, res) => {
@@ -59,11 +50,12 @@ router.post('/booking/:bookingId', authenticateToken, upload.single('photo'), as
     const bookingId = req.params.bookingId;
     const { rows: bk } = await req.db.query('SELECT id FROM bookings WHERE id = $1', [bookingId]);
     if (!bk[0]) return res.status(404).json({ error: 'Booking not found' });
-    const filePath = `/uploads/beforeafter/${req.file.filename}`;
+
+    const { url: filePath, filename } = getFileInfo(req.file, 'beforeafter');
     const { rows: inserted } = await req.db.query(
       `INSERT INTO before_after_photos (booking_id, employee_id, photo_type, filename, original_name, file_path, caption)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [bookingId, req.user.id, photo_type, req.file.filename, req.file.originalname, filePath, caption || '']
+      [bookingId, req.user.id, photo_type, filename, req.file.originalname, filePath, caption || '']
     );
     res.status(201).json(inserted[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -75,11 +67,12 @@ router.post('/record/:recordId', authenticateToken, upload.single('photo'), asyn
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const { photo_type, caption } = req.body;
     if (!['before', 'after'].includes(photo_type)) return res.status(400).json({ error: 'photo_type must be before or after' });
-    const filePath = `/uploads/beforeafter/${req.file.filename}`;
+
+    const { url: filePath, filename } = getFileInfo(req.file, 'beforeafter');
     const { rows: inserted } = await req.db.query(
       `INSERT INTO before_after_photos (time_record_id, employee_id, photo_type, filename, original_name, file_path, caption)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [req.params.recordId, req.user.id, photo_type, req.file.filename, req.file.originalname, filePath, caption || '']
+      [req.params.recordId, req.user.id, photo_type, filename, req.file.originalname, filePath, caption || '']
     );
     res.status(201).json(inserted[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -115,8 +108,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     if (req.user.role !== 'admin' && photo.employee_id !== req.user.id) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    const fullPath = path.join(uploadDir, photo.filename);
-    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    await deleteFile(photo.filename, 'beforeafter');
     await req.db.query('DELETE FROM before_after_photos WHERE id = $1', [req.params.id]);
     res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }

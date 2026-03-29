@@ -1,350 +1,166 @@
 import { Link } from 'react-router-dom';
 import SocialLinks from '../components/SocialLinks';
-import FirstTimeDiscountBanner from '../components/FirstTimeDiscountBanner';
 
 const GOOGLE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJTl55Hg2qT4cR3iZyb4-KV1Q';
+
+const SERVICES = [
+  { icon: '❄️', name: 'Snow Removal' },
+  { icon: '🌿', name: 'Lawn Mowing' },
+  { icon: '🌱', name: 'Aeration & Dethatching' },
+  { icon: '🍂', name: 'Spring & Fall Cleanup', note: 'From $65' },
+  { icon: '✂️', name: 'Tree & Shrub Trimming' },
+  { icon: '🧂', name: 'Ice Management' },
+  { icon: '🅿️', name: 'Parking Lot Plowing' },
+  { icon: '🚛', name: 'Junk Removal' },
+  { icon: '🍃', name: 'Gutter Cleaning' },
+];
+
+const WHY = [
+  { icon: '⭐', title: 'Rated 4.9 on Google', desc: 'Hundreds of happy customers in Fargo-Moorhead.' },
+  { icon: '🤝', title: 'Locally Owned', desc: 'Serving Moorhead MN & Fargo ND since 2022.' },
+  { icon: '📅', title: 'Flexible Scheduling', desc: 'One-time, recurring, or seasonal contracts.' },
+  { icon: '🏢', title: 'Residential & Commercial', desc: 'Homes, businesses, HOAs, and parking lots.' },
+];
 
 export default function Home() {
   return (
     <div>
-      {/* Hero */}
+      {/* ── Hero ─────────────────────────────────────────────────── */}
       <div style={{
-        background: 'linear-gradient(135deg, var(--navy) 0%, var(--blue-700) 100%)',
-        color: '#fff', padding: '3.5rem 1rem 3rem', textAlign: 'center'
+        background: 'linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 100%)',
+        color: '#fff', padding: '3rem 1rem 2.5rem', textAlign: 'center',
       }}>
         <img
           src="/logo.jpg"
-          alt="Snow Bro's — Lawn Care &amp; Snow Removal Moorhead MN"
+          alt="Snow Bro's"
           style={{
-            width: 'clamp(140px, 35vw, 220px)',
-            height: 'clamp(140px, 35vw, 220px)',
-            borderRadius: '50%',
-            objectFit: 'cover',
-            border: '4px solid rgba(255,255,255,0.5)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-            marginBottom: '1.25rem',
-            display: 'block',
-            margin: '0 auto 1.25rem'
+            width: 'clamp(110px, 28vw, 180px)', height: 'clamp(110px, 28vw, 180px)',
+            borderRadius: '50%', objectFit: 'cover',
+            border: '4px solid rgba(255,255,255,.45)',
+            boxShadow: '0 8px 32px rgba(0,0,0,.3)',
+            display: 'block', margin: '0 auto 1.25rem',
           }}
         />
-        <h1 style={{ fontSize: 'clamp(1.8rem, 5vw, 2.8rem)', fontWeight: 800, marginBottom: '.5rem', color: '#fff' }}>
+        <h1 style={{ fontSize: 'clamp(1.9rem, 5vw, 2.8rem)', fontWeight: 800, margin: '0 0 .4rem', color: '#fff' }}>
           Snow Bro's
         </h1>
-        <p style={{ fontSize: '.9rem', opacity: .75, marginBottom: '.25rem' }}>
-          1812 33rd St S, Moorhead, MN 56560
+        <p style={{ fontSize: '1.05rem', fontWeight: 600, opacity: .95, margin: '0 auto .35rem', maxWidth: 520 }}>
+          Professional Lawn Care &amp; Snow Removal
         </p>
-        <p style={{ fontSize: '1.1rem', opacity: .95, maxWidth: '580px', margin: '.75rem auto .5rem', fontWeight: 600 }}>
-          Professional Lawn Care &amp; Snow Removal — Moorhead, MN &amp; Fargo, ND
+        <p style={{ fontSize: '.9rem', opacity: .7, margin: '0 0 1.75rem' }}>
+          Moorhead, MN &amp; Fargo, ND · Residential &amp; Commercial
         </p>
-        <p style={{ fontSize: '1rem', opacity: .85, maxWidth: '560px', margin: '0 auto 2rem' }}>
-          Serving residential homeowners and commercial properties in the Fargo-Moorhead area — mowing, snow removal, aeration, gutter cleaning, parking lot maintenance, and more.
-        </p>
-        {/* Residential / Commercial badges */}
-        <div style={{ display: 'flex', gap: '.75rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1.75rem' }}>
-          <span style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', borderRadius: '2rem', padding: '.35rem 1rem', fontSize: '.88rem', fontWeight: 600 }}>
-            🏠 Residential
-          </span>
-          <span style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', borderRadius: '2rem', padding: '.35rem 1rem', fontSize: '.88rem', fontWeight: 600 }}>
-            🏢 Commercial
-          </span>
-          <span style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', borderRadius: '2rem', padding: '.35rem 1rem', fontSize: '.88rem', fontWeight: 600 }}>
-            🏘️ HOA &amp; Multi-Family
-          </span>
-          <span style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', borderRadius: '2rem', padding: '.35rem 1rem', fontSize: '.88rem', fontWeight: 600 }}>
-            📍 Moorhead MN &amp; Fargo ND
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Link to="/book" className="btn btn-lg" style={{ background: '#fff', color: 'var(--navy)', fontWeight: 700 }}>
-            📅 Book a Service
+
+        {/* Primary CTAs */}
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          <Link to="/book-request"
+            style={{ background: '#fff', color: '#1e3a5f', padding: '.85rem 2rem', borderRadius: 10, fontWeight: 800, fontSize: '1rem', textDecoration: 'none', boxShadow: '0 4px 16px rgba(0,0,0,.2)', whiteSpace: 'nowrap' }}>
+            📨 Request a Service
           </Link>
-          <a href="https://cash.app/$snowbros218" target="_blank" rel="noopener noreferrer" className="btn btn-lg btn-cashapp" style={{ textDecoration: 'none' }}>
-            💲 Pay with Cash App
-          </a>
-          <Link to="/register" className="btn btn-lg btn-outline" style={{ borderColor: 'rgba(255,255,255,.6)', color: '#fff' }}>
-            Create Account
+          <Link to="/book"
+            style={{ background: 'rgba(255,255,255,.15)', color: '#fff', padding: '.85rem 2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', textDecoration: 'none', border: '2px solid rgba(255,255,255,.5)', whiteSpace: 'nowrap' }}>
+            📅 Book Online
           </Link>
         </div>
+        <p style={{ fontSize: '.82rem', opacity: .55, margin: 0 }}>No account needed to request service</p>
       </div>
 
-      {/* Google Review CTA Banner */}
-      <div style={{
-        background: 'linear-gradient(90deg, #f9a825 0%, #fbc02d 100%)',
-        padding: '1rem 1rem',
-        textAlign: 'center',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '1rem',
-        flexWrap: 'wrap'
-      }}>
-        <span style={{ fontWeight: 700, color: '#1a1a1a', fontSize: '1rem' }}>
+      {/* ── Google Review Banner ──────────────────────────────────── */}
+      <div style={{ background: '#f9a825', padding: '.85rem 1rem', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700, color: '#1a1a1a', fontSize: '.95rem' }}>
           ⭐⭐⭐⭐⭐ Rated 4.9 on Google — Happy with our service?
         </span>
-        <a
-          href={GOOGLE_REVIEW_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            background: '#1a1a1a',
-            color: '#fff',
-            padding: '.5rem 1.25rem',
-            borderRadius: '2rem',
-            fontWeight: 700,
-            fontSize: '.9rem',
-            textDecoration: 'none',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '.4rem',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-          }}
-        >
-          ⭐ Leave us a Google Review
+        <a href={GOOGLE_REVIEW_URL} target="_blank" rel="noopener noreferrer"
+          style={{ background: '#1a1a1a', color: '#fff', padding: '.45rem 1.1rem', borderRadius: '2rem', fontWeight: 700, fontSize: '.88rem', textDecoration: 'none' }}>
+          Leave a Review
         </a>
       </div>
 
-      {/* First-time discount promo */}
-      <div className="container" style={{ paddingTop: '2rem', paddingBottom: 0 }}>
-        <FirstTimeDiscountBanner />
-      </div>
-
-      {/* Residential Services */}
-      <div className="container" style={{ padding: '3rem 1rem 1.5rem' }}>
-        <h2 style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 700, marginBottom: '.5rem' }}>🏠 Residential Lawn Care &amp; Snow Removal</h2>
-        <p style={{ textAlign: 'center', color: 'var(--gray-500)', marginBottom: '2rem' }}>Quality lawn care for Moorhead MN &amp; Fargo ND homeowners, every season</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
-          {[
-            { icon: '🌿', name: 'Grass Mowing' },
-            { icon: '✂️', name: 'Tree Trimming' },
-            { icon: '🌱', name: 'Dethatching' },
-            { icon: '💨', name: 'Aeration' },
-            { icon: '❄️', name: 'Snow Removal' },
-            { icon: '🍂', name: 'Gutter Cleaning' },
-            { icon: '🌸', name: 'Spring Cleanup', price: 'Starting at $65' },
-            { icon: '🍁', name: 'Fall Cleanup', price: 'Starting at $65' },
-            { icon: '🚛', name: 'Junk Removal / Construction Clean-Up' },
-          ].map(s => (
-            <div key={s.name} className="card" style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
-              <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>{s.icon}</div>
-              <div style={{ fontWeight: 600, fontSize: '.95rem' }}>{s.name}</div>
-              {s.price && <div style={{ fontSize: '.8rem', color: 'var(--green-600, #16a34a)', fontWeight: 600, marginTop: '.3rem' }}>{s.price}</div>}
+      {/* ── Services grid ────────────────────────────────────────── */}
+      <div className="container" style={{ padding: '2.5rem 1rem 1.5rem' }}>
+        <h2 style={{ textAlign: 'center', fontSize: '1.35rem', fontWeight: 700, marginBottom: '.4rem' }}>What We Do</h2>
+        <p style={{ textAlign: 'center', color: '#64748b', marginBottom: '1.75rem', fontSize: '.9rem' }}>
+          Residential &amp; commercial services, every season
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
+          {SERVICES.map(s => (
+            <div key={s.name} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem 1rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.75rem', marginBottom: '.4rem' }}>{s.icon}</div>
+              <div style={{ fontWeight: 600, fontSize: '.9rem', color: '#1e3a5f' }}>{s.name}</div>
+              {s.note && <div style={{ fontSize: '.75rem', color: '#16a34a', fontWeight: 600, marginTop: '.2rem' }}>{s.note}</div>}
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Commercial Services */}
-      <div style={{ background: 'var(--navy)', padding: '3rem 1rem' }}>
-        <div className="container">
-          <h2 style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 700, marginBottom: '.5rem', color: '#fff' }}>🏢 Commercial Lawn Care &amp; Snow Removal</h2>
-          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.7)', marginBottom: '2rem' }}>
-            Reliable commercial property maintenance for businesses, HOAs, and commercial properties in Moorhead MN and Fargo ND
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
-            {[
-              { icon: '🅿️', name: 'Parking Lot Snow Removal', desc: 'Keep commercial lots clear and safe all winter with scheduled plowing and salting in Fargo-Moorhead.' },
-              { icon: '🏢', name: 'Commercial Lawn Care', desc: 'Regular mowing, edging, and trimming contracts for offices and retail properties in Moorhead MN and Fargo ND.' },
-              { icon: '🏘️', name: 'HOA Services', desc: 'Full-season lawn and snow maintenance for homeowners associations and communities.' },
-              { icon: '🌳', name: 'Property Maintenance', desc: 'Comprehensive grounds keeping — mulching, bed maintenance, and seasonal clean-ups.' },
-              { icon: '🧂', name: 'Ice Management', desc: 'De-icing and salting services for walkways, entrances, and parking areas.' },
-              { icon: '📋', name: 'Service Contracts', desc: 'Flexible seasonal and annual contracts tailored to your commercial property needs.' },
-              { icon: '🌸', name: 'Spring Cleanup', desc: 'Commercial spring yard cleanup — debris removal, bed cleanup, and property prep. Starting at $65.', price: 'Starting at $65' },
-              { icon: '🍁', name: 'Fall Cleanup', desc: 'Commercial fall cleanup — leaf removal, debris clearing, and winter prep. Starting at $65.', price: 'Starting at $65' },
-              { icon: '🚛', name: 'Junk Removal / Construction Clean-Up', desc: 'Haul-away of junk, debris, and construction waste. Residential and commercial clean-outs in Fargo-Moorhead.' },
-            ].map(s => (
-              <div key={s.name} style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: '12px',
-                padding: '1.5rem',
-                color: '#fff'
-              }}>
-                <div style={{ fontSize: '2rem', marginBottom: '.6rem' }}>{s.icon}</div>
-                <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '.4rem' }}>{s.name}</div>
-                <div style={{ fontSize: '.85rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.5 }}>{s.desc}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <Link to="/book" className="btn btn-lg" style={{ background: '#fff', color: 'var(--navy)', fontWeight: 700 }}>
-              📋 Request a Commercial Quote
-            </Link>
-          </div>
+        <div style={{ textAlign: 'center', marginTop: '1.75rem' }}>
+          <Link to="/book-request"
+            style={{ display: 'inline-block', background: '#1e3a5f', color: '#fff', padding: '.8rem 2rem', borderRadius: 10, fontWeight: 700, fontSize: '1rem', textDecoration: 'none' }}>
+            📨 Request a One-Time Service
+          </Link>
         </div>
       </div>
 
-      {/* Why Choose Us */}
-      <div style={{ background: 'var(--blue-50)', borderTop: '1px solid var(--blue-100)', padding: '3rem 1rem' }}>
+      {/* ── Why Choose Us ────────────────────────────────────────── */}
+      <div style={{ background: '#f0f7ff', borderTop: '1px solid #bfdbfe', borderBottom: '1px solid #bfdbfe', padding: '2.5rem 1rem' }}>
         <div className="container">
-          <h2 style={{ textAlign: 'center', fontSize: '1.4rem', fontWeight: 700, marginBottom: '.5rem' }}>Why Choose Snow Bro's?</h2>
-          <p style={{ textAlign: 'center', color: 'var(--gray-500)', marginBottom: '2rem' }}>
-            Moorhead MN &amp; Fargo ND's trusted lawn care and snow removal team
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
-            {[
-              { icon: '✅', title: 'Residential & Commercial', desc: 'From single-family homes to large commercial properties in Moorhead MN and Fargo ND — we do it all.' },
-              { icon: '📅', title: 'Flexible Scheduling', desc: 'One-time, recurring, or seasonal contracts to fit your lawn care and snow removal needs.' },
-              { icon: '🤝', title: 'Locally Owned', desc: 'Proudly serving Moorhead MN, Fargo ND, and surrounding Fargo-Moorhead communities since 2022.' },
-              { icon: '⭐', title: 'Trusted & Reviewed', desc: 'Rated 4.9 stars on Google — hundreds of satisfied residential and commercial clients.' },
-            ].map(item => (
-              <div key={item.title} className="card" style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
-                <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>{item.icon}</div>
-                <div style={{ fontWeight: 700, marginBottom: '.4rem' }}>{item.title}</div>
-                <div style={{ fontSize: '.85rem', color: 'var(--gray-500)', lineHeight: 1.5 }}>{item.desc}</div>
+          <h2 style={{ textAlign: 'center', fontSize: '1.3rem', fontWeight: 700, marginBottom: '1.5rem' }}>Why Snow Bro's?</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '1rem' }}>
+            {WHY.map(w => (
+              <div key={w.title} style={{ background: '#fff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '1.25rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', marginBottom: '.4rem' }}>{w.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: '.95rem', marginBottom: '.3rem', color: '#1e3a5f' }}>{w.title}</div>
+                <div style={{ fontSize: '.83rem', color: '#64748b', lineHeight: 1.5 }}>{w.desc}</div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* NWS Snow Forecast & Accumulation Banner */}
-      <div style={{
-        background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
-        padding: '2rem 1rem',
-        textAlign: 'center',
-        borderTop: '1px solid var(--blue-100)'
-      }}>
-        <div className="container">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-            <div style={{ fontSize: '2.5rem' }}>❄️</div>
-            <div style={{ flex: 1, minWidth: '200px' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '1.1rem', color: '#fff', marginBottom: '.3rem' }}>Local Snow Information</h3>
-              <p style={{ fontSize: '.9rem', color: 'rgba(255,255,255,0.8)' }}>Check the National Weather Service for Moorhead, MN snow forecasts and recent accumulation data.</p>
-            </div>
+      {/* ── Quick links ──────────────────────────────────────────── */}
+      <div style={{ background: '#fff', padding: '2.5rem 1rem' }}>
+        <div className="container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.5rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.75rem', marginBottom: '.4rem' }}>💳</div>
+            <div style={{ fontWeight: 700, marginBottom: '.3rem' }}>Pay Online</div>
+            <div style={{ fontSize: '.83rem', color: '#64748b', marginBottom: '1rem' }}>Cash App, Venmo, or Zelle</div>
+            <Link to="/pay" style={{ display: 'block', background: '#1e3a5f', color: '#fff', padding: '.6rem 0', borderRadius: 8, textDecoration: 'none', fontWeight: 700, fontSize: '.9rem' }}>Pay Now</Link>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a
-              href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8739&textField2=-96.7678"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                background: '#fff',
-                color: '#1e3a8a',
-                padding: '.6rem 1.5rem',
-                borderRadius: '2rem',
-                fontWeight: 700,
-                fontSize: '.95rem',
-                textDecoration: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '.4rem',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              📋 Snow Forecast
-            </a>
-            <a
-              href="https://www.nohrsc.noaa.gov/nsa/index.html?region=mn&var=wteq&season=2024-2025"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                background: '#fff',
-                color: '#1e3a8a',
-                padding: '.6rem 1.5rem',
-                borderRadius: '2rem',
-                fontWeight: 700,
-                fontSize: '.95rem',
-                textDecoration: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '.4rem',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              📊 24-Hour Accumulation
-            </a>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.5rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.75rem', marginBottom: '.4rem' }}>📸</div>
+            <div style={{ fontWeight: 700, marginBottom: '.3rem' }}>Our Work</div>
+            <div style={{ fontSize: '.83rem', color: '#64748b', marginBottom: '1rem' }}>Before &amp; after photos</div>
+            <Link to="/gallery" style={{ display: 'block', background: '#1e3a5f', color: '#fff', padding: '.6rem 0', borderRadius: 8, textDecoration: 'none', fontWeight: 700, fontSize: '.9rem' }}>View Gallery</Link>
+          </div>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.5rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.75rem', marginBottom: '.4rem' }}>👤</div>
+            <div style={{ fontWeight: 700, marginBottom: '.3rem' }}>Client Portal</div>
+            <div style={{ fontSize: '.83rem', color: '#64748b', marginBottom: '1rem' }}>Contracts, invoices &amp; ETA</div>
+            <Link to="/client-login" style={{ display: 'block', background: '#1e3a5f', color: '#fff', padding: '.6rem 0', borderRadius: 8, textDecoration: 'none', fontWeight: 700, fontSize: '.9rem' }}>Sign In</Link>
           </div>
         </div>
       </div>
 
-      {/* CTA row */}
-      <div style={{ background: '#fff', borderTop: '1px solid var(--blue-100)', padding: '2.5rem 1rem' }}>
-        <div className="container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
-          <div className="card" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>📅</div>
-            <h3 style={{ fontWeight: 700, marginBottom: '.4rem' }}>Book Online</h3>
-            <p style={{ fontSize: '.88rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>Schedule residential or commercial lawn care or snow removal in minutes.</p>
-            <Link to="/book" className="btn btn-primary btn-block">Book Now</Link>
-          </div>
-          <div className="card" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>💳</div>
-            <h3 style={{ fontWeight: 700, marginBottom: '.4rem' }}>Pay Online</h3>
-            <p style={{ fontSize: '.88rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>Pay via Cash App ($snowbros218), Venmo, or Zelle — fast and easy.</p>
-            <Link to="/pay" className="btn btn-primary btn-block">Pay Now</Link>
-          </div>
-          <div className="card" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>📸</div>
-            <h3 style={{ fontWeight: 700, marginBottom: '.4rem' }}>Our Work</h3>
-            <p style={{ fontSize: '.88rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>See photos of completed lawn care and snow removal jobs.</p>
-            <Link to="/gallery" className="btn btn-primary btn-block">View Gallery</Link>
-          </div>
-          <div className="card" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>⭐</div>
-            <h3 style={{ fontWeight: 700, marginBottom: '.4rem' }}>Google Reviews</h3>
-            <p style={{ fontSize: '.88rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>Rated 4.9 ⭐ on Google. See what Moorhead MN &amp; Fargo ND customers say.</p>
-            <a href={GOOGLE_REVIEW_URL} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-block" style={{ textDecoration: 'none' }}>
-              ⭐ Leave a Google Review
-            </a>
-          </div>
-          <div className="card" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>👤</div>
-            <h3 style={{ fontWeight: 700, marginBottom: '.4rem' }}>Client Portal</h3>
-            <p style={{ fontSize: '.88rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>View contracts, invoices, and service history.</p>
-            <Link to="/login" className="btn btn-primary btn-block">Sign In</Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <footer style={{ background: 'var(--navy)', color: 'rgba(255,255,255,0.7)', textAlign: 'center', padding: '2.5rem 1rem', fontSize: '.85rem' }}>
-        <img src="/logo.jpg" alt="Snow Bro's Lawn Care & Snow Removal Moorhead MN" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', marginBottom: '.75rem', border: '2px solid rgba(255,255,255,0.3)', display: 'block', margin: '0 auto .75rem' }} />
-        {/* NAP — Name, Address, Phone */}
-        <div style={{ fontWeight: 700, color: '#fff', fontSize: '1.1rem', marginBottom: '.25rem' }}>Snow Bro's</div>
-        <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '.82rem', marginBottom: '.25rem' }}>Residential &amp; Commercial Lawn Care &amp; Snow Removal</div>
-        <div style={{ color: 'rgba(255,255,255,0.7)', marginBottom: '.1rem' }}>Serving Moorhead, MN &amp; Fargo, ND</div>
-        <address style={{ fontStyle: 'normal', color: 'rgba(255,255,255,0.7)', marginBottom: '.25rem' }}>1812 33rd St S, Moorhead, MN 56560</address>
-        <div style={{ marginTop: '.25rem' }}>
-          <a href="tel:2183315145" style={{ color: 'rgba(255,255,255,0.8)', textDecoration: 'none' }}>218-331-5145</a>
+      {/* ── Footer ───────────────────────────────────────────────── */}
+      <footer style={{ background: '#1e3a5f', color: 'rgba(255,255,255,.7)', textAlign: 'center', padding: '2rem 1rem', fontSize: '.85rem' }}>
+        <img src="/logo.jpg" alt="Snow Bro's" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', display: 'block', margin: '0 auto .75rem', border: '2px solid rgba(255,255,255,.3)' }} />
+        <div style={{ fontWeight: 700, color: '#fff', fontSize: '1rem', marginBottom: '.2rem' }}>Snow Bro's</div>
+        <div style={{ marginBottom: '.2rem' }}>1812 33rd St S, Moorhead, MN 56560</div>
+        <div>
+          <a href="tel:2183315145" style={{ color: 'rgba(255,255,255,.8)', textDecoration: 'none' }}>218-331-5145</a>
           {' · '}
-          <a href="mailto:Clarkryan977@gmail.com" style={{ color: 'rgba(255,255,255,0.8)', textDecoration: 'none' }}>Clarkryan977@gmail.com</a>
+          <a href="mailto:Clarkryan977@gmail.com" style={{ color: 'rgba(255,255,255,.8)', textDecoration: 'none' }}>Clarkryan977@gmail.com</a>
         </div>
-        {/* Google Review Button */}
-        <div style={{ marginTop: '1.25rem' }}>
-          <a
-            href={GOOGLE_REVIEW_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '.4rem',
-              background: '#fbc02d',
-              color: '#1a1a1a',
-              padding: '.5rem 1.25rem',
-              borderRadius: '2rem',
-              fontWeight: 700,
-              fontSize: '.88rem',
-              textDecoration: 'none',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-            }}
-          >
-            ⭐ Leave us a Google Review
+        <div style={{ marginTop: '1rem' }}>
+          <a href={GOOGLE_REVIEW_URL} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '.4rem', background: '#fbc02d', color: '#1a1a1a', padding: '.45rem 1.1rem', borderRadius: '2rem', fontWeight: 700, fontSize: '.85rem', textDecoration: 'none' }}>
+            ⭐ Leave a Google Review
           </a>
         </div>
-        {/* Social links */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.25rem', marginBottom: '.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
           <SocialLinks dark={true} />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '.5rem', fontSize: '.8rem', flexWrap: 'wrap' }}>
-          <a href="https://www.facebook.com/share/1HNXScvP62/" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Facebook</a>
-          <a href="https://nextdoor.com/page/snow-bros-snow-removal-moorhead-mn?utm_campaign=1774487768034&share_action_id=83d220bf-e515-44f1-a37e-e7b8dac41a4b" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Nextdoor</a>
-          <a href="https://prosnowbros.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>prosnowbros.com</a>
+        <div style={{ marginTop: '.75rem', fontSize: '.75rem', opacity: .4 }}>
+          © {new Date().getFullYear()} Snow Bro's · Moorhead, MN &amp; Fargo, ND
         </div>
-        <div style={{ marginTop: '.75rem', fontSize: '.78rem', opacity: .4 }}>© {new Date().getFullYear()} Snow Bro's. All rights reserved. Moorhead, MN &amp; Fargo, ND</div>
       </footer>
     </div>
   );

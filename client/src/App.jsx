@@ -15,6 +15,7 @@ const Pay = lazy(() => import('./pages/Pay'));
 const Gallery = lazy(() => import('./pages/Gallery'));
 const PublicReviews = lazy(() => import('./pages/Reviews'));
 // const ETALookup = lazy(() => import('./pages/ETALookup'));
+const BookRequest = lazy(() => import('./pages/BookRequest'));
 const SignContract = lazy(() => import('./pages/SignContract'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PortalSetup = lazy(() => import('./pages/PortalSetup'));
@@ -42,6 +43,7 @@ const AdminRoutePlanner = lazy(() => import('./pages/admin/RoutePlanner'));
 const AdminPayroll = lazy(() => import('./pages/admin/Payroll'));
 const AdminAvailabilityCalendar = lazy(() => import('./pages/admin/AvailabilityCalendar'));
 const AdminEmployeeDocuments = lazy(() => import('./pages/admin/EmployeeDocuments'));
+const AdminBookingRequests = lazy(() => import('./pages/admin/BookingRequests'));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import('./pages/employee/Dashboard'));
@@ -182,6 +184,7 @@ export default function App() {
             <Route path="/sign-contract/:token" element={<SignContract />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
             <Route path="/portal-setup/:token" element={<PortalSetup />} />
+            <Route path="/book-request" element={<BookRequest />} />
           </Route>
 
           {/* Admin + Manager routes */}
@@ -209,6 +212,7 @@ export default function App() {
               <Route path="/admin/payroll" element={<AdminPayroll />} />
               <Route path="/admin/availability" element={<AdminAvailabilityCalendar />} />
               <Route path="/admin/documents" element={<AdminEmployeeDocuments />} />
+              <Route path="/admin/booking-requests" element={<AdminBookingRequests />} />
             </Route>
           </Route>
 

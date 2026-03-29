@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { wrapEmail, BUSINESS } = require('../utils/emailHeader');
 const { sendMail } = require('../utils/mailer');
-
+const { makeUploader, getFileInfo, deleteFile: deleteCloudFile, CLOUD_CONFIGURED } = require('../utils/cloudinaryUpload');
 const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
   ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
   : 'https://snowbros-production.up.railway.app';
@@ -16,28 +16,10 @@ const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
 const UPLOADS_ROOT = process.env.UPLOADS_ROOT || path.join(__dirname, '../uploads');
 const CONTRACTS_DIR = path.join(UPLOADS_ROOT, 'contracts');
 const SIGNED_DIR    = path.join(UPLOADS_ROOT, 'signed');
-
-// Ensure directories exist
+// Ensure directories exist (still needed for local-disk fallback)
 [CONTRACTS_DIR, SIGNED_DIR].forEach(d => { try { fs.mkdirSync(d, { recursive: true }); } catch (_) {} });
-
-// Multer storage for manual uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, CONTRACTS_DIR),
-  filename:    (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  },
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.pdf', '.doc', '.docx', '.txt', '.png', '.jpg', '.jpeg'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) cb(null, true);
-    else cb(new Error('Unsupported file type'));
-  },
-});
+// Multer upload — uses Cloudinary when env vars are set, local disk otherwise
+const upload = makeUploader('snowbros/contracts', 'contracts', 20);
 
 // ─── Shared CSS + HTML shell used by all three templates ────────────────────
 const SHARED_CSS = `
@@ -728,12 +710,13 @@ router.post('/upload', authenticateToken, requireAdmin, upload.single('file'), a
     const { title, description, client_id } = req.body;
     if (!title || !client_id) return res.status(400).json({ error: 'Title and client required' });
 
+    const { url: filePath, filename } = getFileInfo(req.file, 'contracts');
     const { rows: result } = await req.db.query(`
       INSERT INTO contracts
         (title, description, client_id, filename, original_name, file_path, uploaded_by, contract_type)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'uploaded')
       RETURNING id`,
-      [title, description || '', client_id, req.file.filename, req.file.originalname, req.file.path, req.user.id]
+      [title, description || '', client_id, filename, req.file.originalname, filePath, req.user.id]
     );
 
     res.status(201).json({ id: result[0].id, message: 'Contract uploaded' });
@@ -1087,6 +1070,10 @@ router.get('/:id/file', authenticateToken, async (req, res) => {
     
     if (req.user.role === 'client' && contract.client_id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+    // If file_path is a Cloudinary URL (or any http URL), redirect to it
+    if (contract.file_path && contract.file_path.startsWith('http')) {
+      return res.redirect(contract.file_path);
     }
     res.setHeader('Content-Disposition', `inline; filename="${contract.original_name}"`);
     res.sendFile(contract.file_path);

@@ -511,6 +511,29 @@ async function initDB() {
   await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''`).catch(() => {});
   await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS state TEXT DEFAULT ''`).catch(() => {});
   await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS zip TEXT DEFAULT ''`).catch(() => {});
+  // ETA tracking: per-stop completion + route timing fields
+  await db.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS minutes_per_stop INTEGER DEFAULT 15`).catch(() => {});
+  await db.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS route_start_time TIME DEFAULT '06:00'`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT FALSE`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`).catch(() => {});
+  // One-time booking requests from public (no account required)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS booking_requests (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      city TEXT DEFAULT '',
+      state TEXT DEFAULT '',
+      zip TEXT DEFAULT '',
+      service_type TEXT NOT NULL,
+      preferred_date TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      status TEXT DEFAULT 'new',
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `).catch(() => {});
 
   // ── Indexes ──
   const indexes = [

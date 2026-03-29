@@ -7,6 +7,7 @@ const links = [
   { to: '/admin/calendar', label: '📅 Calendar' },
   { to: '/admin/availability', label: '🗓️ Availability' },
   { to: '/admin/bookings', label: '📋 Bookings' },
+  { to: '/admin/booking-requests', label: '📨 Booking Requests' },
   { to: '/admin/recurring', label: '🔄 Recurring' },
   { section: 'Clients' },
   { to: '/admin/clients', label: '👥 Clients' },
