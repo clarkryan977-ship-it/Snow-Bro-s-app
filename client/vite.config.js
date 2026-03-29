@@ -48,6 +48,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg,woff2}'],
+        // Prevent the service worker NavigationRoute from intercepting /api/*
+        // requests (e.g. contract view URLs opened in a new tab) and serving
+        // index.html instead of the actual API response.
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/.*/i,

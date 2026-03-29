@@ -44,11 +44,13 @@ export default function AdminContracts() {
   };
 
   const downloadSigned = id => {
-    window.open(`/api/contracts/${id}/signed-file`, '_blank');
+    window.open(`${window.location.origin}/api/contracts/${id}/signed-file`, '_blank', 'noopener');
   };
 
   const viewFile = id => {
-    window.open(`/api/contracts/${id}/view`, '_blank');
+    // Use absolute URL so the PWA service worker NavigationRoute does not
+    // intercept this as a SPA navigation and serve index.html instead.
+    window.open(`${window.location.origin}/api/contracts/${id}/view`, '_blank', 'noopener');
   };
 
   return (
