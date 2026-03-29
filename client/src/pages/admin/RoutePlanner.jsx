@@ -61,7 +61,7 @@ export default function RoutePlanner() {
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [msg, setMsg] = useState('');
-  const [activeTab, setActiveTab] = useState('available'); // mobile tab: 'available' | 'route'
+  const [activeTab, setActiveTab] = useState('available');
 
   const showMsg = (text, ms = 3500) => {
     setMsg(text);
@@ -87,7 +87,7 @@ export default function RoutePlanner() {
   const addToRoute = (booking) => {
     setRoute(prev => [...prev, { ...booking, _lat: null, _lng: null, _geocoded: false }]);
     showMsg(`✅ Added ${booking.display_name || booking.client_name} to route`);
-    setActiveTab('route'); // switch to route tab on mobile after adding
+    setActiveTab('route');
   };
 
   const removeFromRoute = (id) => setRoute(prev => prev.filter(s => s.id !== id));
@@ -166,34 +166,15 @@ export default function RoutePlanner() {
     return parts.join(', ') || 'No address on file';
   };
 
-  // ─── Inline styles ───
   const S = {
-    page: { padding: '16px', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' },
-    card: { background: '#fff', borderRadius: 12, padding: '16px', boxShadow: '0 1px 6px rgba(0,0,0,.1)', marginBottom: 16 },
-    grid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
-      gap: 16,
-      alignItems: 'start',
-      width: '100%',
-      boxSizing: 'border-box',
-    },
+    card: { background: '#fff', borderRadius: 12, padding: '16px', boxShadow: '0 1px 6px rgba(0,0,0,.1)', marginBottom: 16, boxSizing: 'border-box', width: '100%' },
     msgBox: { background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#1e40af', fontWeight: 600, fontSize: 14 },
     input: { padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box', minHeight: 44 },
-    // Buttons — min 44px tall for touch targets
     btnPrimary: { background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' },
-    btnGreen: { background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' },
-    btnRed: { background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' },
     btnPurple: { background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' },
     btnGray: { background: '#6b7280', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36 },
     btnSmRed: { background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36 },
     btnSmGreen: { background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36 },
-    // Mobile tab bar
-    tabBar: { display: 'flex', borderRadius: 10, overflow: 'hidden', border: '1px solid #e5e7eb', marginBottom: 16 },
-    tab: (active) => ({
-      flex: 1, padding: '12px 8px', textAlign: 'center', fontWeight: 700, fontSize: 14, cursor: 'pointer', border: 'none',
-      background: active ? '#2563eb' : '#f8fafc', color: active ? '#fff' : '#374151', transition: 'all .15s',
-    }),
   };
 
   const AvailablePanel = () => (
@@ -231,9 +212,8 @@ export default function RoutePlanner() {
 
   const RoutePanel = () => (
     <div style={S.card}>
-      {/* Header row */}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚗 Route ({route.length} stops)</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚗 Today's Route ({route.length} stops)</h3>
         {route.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={clearRoute} style={S.btnSmRed}>✕ Clear</button>
@@ -244,7 +224,6 @@ export default function RoutePlanner() {
         )}
       </div>
 
-      {/* Start address + auto-sort */}
       <div style={{ marginBottom: 14 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>
           Starting Address (for auto-sort)
@@ -268,7 +247,7 @@ export default function RoutePlanner() {
       {route.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '32px 16px', color: '#9ca3af' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🗺️</div>
-          <p>Add jobs from the Available Jobs panel to build today's route.</p>
+          <p>Add jobs from Available Jobs to build today's route.</p>
         </div>
       ) : (
         <div>
@@ -290,7 +269,6 @@ export default function RoutePlanner() {
                 boxSizing: 'border-box',
               }}
             >
-              {/* Stop number circle */}
               <div style={{
                 minWidth: 30, height: 30, borderRadius: '50%',
                 background: '#2563eb', color: '#fff',
@@ -299,20 +277,12 @@ export default function RoutePlanner() {
               }}>
                 {idx + 1}
               </div>
-
-              {/* Info */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, wordBreak: 'break-word' }}>{stop.display_name || stop.client_name || 'Unknown'}</div>
                 <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{stop.service_name || 'Service'} · {stop.preferred_time || 'No time'}</div>
                 <div style={{ fontSize: 12, color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>📍 {getAddress(stop)}</div>
-                {stop._lat && (
-                  <div style={{ fontSize: 11, color: '#22c55e', marginTop: 2 }}>
-                    ✅ Geocoded
-                  </div>
-                )}
+                {stop._lat && <div style={{ fontSize: 11, color: '#22c55e', marginTop: 2 }}>✅ Geocoded</div>}
               </div>
-
-              {/* Controls — stacked vertically */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
                 <button onClick={() => moveStop(idx, -1)} disabled={idx === 0}
                   style={{ ...S.btnGray, padding: '5px 10px', opacity: idx === 0 ? 0.3 : 1, minHeight: 32 }}>▲</button>
@@ -329,7 +299,6 @@ export default function RoutePlanner() {
             Tap "💾 Save" to push the order to employees' Assigned Jobs page.
           </div>
 
-          {/* Full-width save button at bottom for easy mobile access */}
           <button
             onClick={saveOrder}
             disabled={saving}
@@ -343,41 +312,106 @@ export default function RoutePlanner() {
   );
 
   return (
-    <div style={S.page}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>🗺️ Route Planner</h1>
-      <p style={{ color: '#6b7280', marginBottom: 16, fontSize: 14, lineHeight: 1.5 }}>
-        Build today's route, auto-sort by geography, reorder stops, then save so employees see jobs in the right order.
-      </p>
-
-      {msg && <div style={S.msgBox}>{msg}</div>}
-
-      {/* Mobile tab switcher — hidden on larger screens via CSS */}
+    <>
+      {/* Scoped CSS — flex column on mobile, side-by-side on desktop */}
       <style>{`
-        .route-grid { overflow-x: hidden; }
-        @media (min-width: 700px) {
-          .route-tab-bar { display: none !important; }
-          .route-panel-available, .route-panel-route { display: block !important; }
+        .rp-wrap {
+          padding: 16px;
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow-x: hidden;
         }
-        @media (max-width: 699px) {
-          .route-grid { grid-template-columns: 1fr !important; }
-          .route-panel-available { display: ${activeTab === 'available' ? 'block' : 'none'} !important; }
-          .route-panel-route { display: ${activeTab === 'route' ? 'block' : 'none'} !important; }
+        .rp-tab-bar {
+          display: flex;
+          border-radius: 10px;
+          overflow: hidden;
+          border: 1px solid #e5e7eb;
+          margin-bottom: 16px;
+        }
+        .rp-tab-btn {
+          flex: 1;
+          padding: 12px 8px;
+          text-align: center;
+          font-weight: 700;
+          font-size: 14px;
+          cursor: pointer;
+          border: none;
+          transition: all .15s;
+        }
+        /* Mobile: flex column, both panels full width, tab bar visible */
+        .rp-panels {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+          width: 100%;
+        }
+        .rp-panel {
+          width: 100%;
+          box-sizing: border-box;
+        }
+        /* Desktop (≥768px): side by side, tab bar hidden */
+        @media (min-width: 768px) {
+          .rp-tab-bar { display: none; }
+          .rp-panels {
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 16px;
+          }
+          .rp-panel {
+            flex: 1;
+            min-width: 0;
+          }
+          .rp-panel-available { display: block !important; }
+          .rp-panel-route { display: block !important; }
         }
       `}</style>
 
-      <div className="route-tab-bar" style={S.tabBar}>
-        <button style={S.tab(activeTab === 'available')} onClick={() => setActiveTab('available')}>
-          📋 Available Jobs ({available.length})
-        </button>
-        <button style={S.tab(activeTab === 'route')} onClick={() => setActiveTab('route')}>
-          🚗 Route ({route.length})
-        </button>
-      </div>
+      <div className="rp-wrap">
+        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>🗺️ Route Planner</h1>
+        <p style={{ color: '#6b7280', marginBottom: 16, fontSize: 14, lineHeight: 1.5 }}>
+          Build today's route, auto-sort by geography, reorder stops, then save so employees see jobs in the right order.
+        </p>
 
-      <div style={S.grid} className="route-grid">
-        <div className="route-panel-available"><AvailablePanel /></div>
-        <div className="route-panel-route"><RoutePanel /></div>
+        {msg && (
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#1e40af', fontWeight: 600, fontSize: 14 }}>
+            {msg}
+          </div>
+        )}
+
+        {/* Mobile tab bar */}
+        <div className="rp-tab-bar">
+          <button
+            className="rp-tab-btn"
+            style={{ background: activeTab === 'available' ? '#2563eb' : '#f8fafc', color: activeTab === 'available' ? '#fff' : '#374151' }}
+            onClick={() => setActiveTab('available')}
+          >
+            📋 Available ({available.length})
+          </button>
+          <button
+            className="rp-tab-btn"
+            style={{ background: activeTab === 'route' ? '#2563eb' : '#f8fafc', color: activeTab === 'route' ? '#fff' : '#374151' }}
+            onClick={() => setActiveTab('route')}
+          >
+            🚗 Route ({route.length})
+          </button>
+        </div>
+
+        {/* Panels — stacked on mobile, side-by-side on desktop */}
+        <div className="rp-panels">
+          <div
+            className="rp-panel rp-panel-available"
+            style={{ display: activeTab === 'available' ? 'block' : 'none' }}
+          >
+            <AvailablePanel />
+          </div>
+          <div
+            className="rp-panel rp-panel-route"
+            style={{ display: activeTab === 'route' ? 'block' : 'none' }}
+          >
+            <RoutePanel />
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
