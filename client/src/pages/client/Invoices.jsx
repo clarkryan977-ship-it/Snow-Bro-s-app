@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import PaymentSection from '../../components/PaymentSection';
+import PrintInvoiceButton from '../../components/PrintableInvoice';
 
 const STATUS_COLORS = { draft:'badge-gray', sent:'badge-blue', paid:'badge-green', overdue:'badge-red' };
 
@@ -57,7 +58,10 @@ export default function ClientInvoices() {
           <div className="modal" style={{ maxWidth:620 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Invoice {viewInv.invoice_number}</h2>
-              <button className="modal-close" onClick={() => setViewInv(null)}>×</button>
+              <div style={{ display:'flex', gap:'.5rem', alignItems:'center' }}>
+                <PrintInvoiceButton invoice={viewInv} label="🖨️ Print" />
+                <button className="modal-close" onClick={() => setViewInv(null)}>×</button>
+              </div>
             </div>
             <div className="modal-body">
               <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'1rem', flexWrap:'wrap', gap:'.5rem' }}>

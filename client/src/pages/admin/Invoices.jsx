@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import api from '../../utils/api';
 import PaymentSection from '../../components/PaymentSection';
 import BusinessHeader from '../../components/BusinessHeader';
+import PrintInvoiceButton, { printInvoice } from '../../components/PrintableInvoice';
 
 const EMPTY_ITEM = { description: '', quantity: 1, unit_price: '' };
 const STATUS_COLORS = { draft:'badge-gray', sent:'badge-blue', paid:'badge-green', overdue:'badge-red' };
@@ -141,7 +142,10 @@ export default function AdminInvoices() {
           <div className="modal" style={{ maxWidth:680 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Invoice {viewInv.invoice_number}</h2>
-              <button className="modal-close" onClick={() => setViewInv(null)}>×</button>
+              <div style={{ display:'flex', gap:'.5rem', alignItems:'center' }}>
+                <PrintInvoiceButton invoice={viewInv} />
+                <button className="modal-close" onClick={() => setViewInv(null)}>×</button>
+              </div>
             </div>
             <div className="modal-body" style={{ padding: 0 }}>
               <BusinessHeader style={{ borderRadius: 0 }} />
