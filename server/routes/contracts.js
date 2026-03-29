@@ -988,12 +988,23 @@ router.get('/:id/view', async (req, res) => {
            ${contract.signature_type === 'drawn' ? `<div style="margin-top:12px;"><img src="${contract.signature_data}" alt="Signature" style="max-width:300px;border:1px solid #d1fae5;border-radius:4px;background:#fff;"></div>` : `<p style="margin-top:12px;font-family:cursive;font-size:28px;color:#1e3a5f;">${contract.signature_data}</p>`}
          </div>`
       : '';
+    // Generated contracts store a full HTML page in contract_html (from contractShell).
+    // Serve it directly to avoid double-wrapping which breaks the print button.
+    if (contract.contract_html && contract.contract_html.trimStart().startsWith('<!DOCTYPE')) {
+      let fullHtml = contract.contract_html;
+      // Append signature block before </body> if contract is signed
+      if (signatureBlock) {
+        fullHtml = fullHtml.replace('</body>', `<div style="max-width:860px;margin:24px auto;padding:0 24px 48px">${signatureBlock}</div></body>`);
+      }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(fullHtml);
+    }
 
     const contractBody = contract.contract_html && contract.contract_html !== ''
       ? contract.contract_html
       : `<p style="color:#6b7280;font-style:italic;">No contract content available.</p>`;
 
-    const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>`
 <html lang="en">
 <head>
   <meta charset="UTF-8">
