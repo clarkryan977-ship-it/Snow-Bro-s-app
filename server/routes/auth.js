@@ -224,4 +224,60 @@ router.post('/change-password', authenticateToken, async (req, res) => {
   }
 });
 
+// Validate portal-setup token (GET — used by the frontend to show the set-password form)
+router.get('/portal-setup/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { rows } = await req.db.query(
+      'SELECT prt.*, c.first_name, c.last_name, c.email FROM password_reset_tokens prt JOIN clients c ON c.id = prt.client_id WHERE prt.token = $1 AND prt.used = 0 AND prt.expires_at > NOW()',
+      [token]
+    );
+    if (!rows[0]) return res.status(400).json({ error: 'This invite link is invalid or has expired. Ask your admin to resend the invite.' });
+    const r = rows[0];
+    res.json({ valid: true, first_name: r.first_name, last_name: r.last_name, email: r.email });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Complete portal setup — client sets password, account is activated, JWT returned
+router.post('/portal-setup/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+    if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const { rows } = await req.db.query(
+      'SELECT prt.*, c.first_name, c.last_name, c.email FROM password_reset_tokens prt JOIN clients c ON c.id = prt.client_id WHERE prt.token = $1 AND prt.used = 0 AND prt.expires_at > NOW()',
+      [token]
+    );
+    if (!rows[0]) return res.status(400).json({ error: 'This invite link is invalid or has expired. Ask your admin to resend the invite.' });
+
+    const r = rows[0];
+    const password_hash = bcrypt.hashSync(password, 12);
+
+    // Save password, activate account
+    await req.db.query(
+      'UPDATE clients SET password_hash=$1, active=1 WHERE id=$2',
+      [password_hash, r.client_id]
+    );
+    // Mark token used
+    await req.db.query('UPDATE password_reset_tokens SET used=1 WHERE id=$1', [r.id]);
+
+    // Issue JWT so the client is immediately logged in
+    const jwtToken = jwt.sign(
+      { id: r.client_id, email: r.email, role: 'client', name: `${r.first_name} ${r.last_name}` },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    res.json({
+      token: jwtToken,
+      user: { id: r.client_id, email: r.email, role: 'client', name: `${r.first_name} ${r.last_name}` },
+      message: 'Account activated! Welcome to the Snow Bro\'s portal.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

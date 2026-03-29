@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../../utils/api';
 
 const EMPTY = { first_name:'', last_name:'', email:'', phone:'', address:'', city:'', state:'', zip:'', notes:'', password:'' };
@@ -15,26 +15,37 @@ const BUSINESS_INFO = {
   website: "https://snowbros-production.up.railway.app"
 };
 
+const isPlaceholder = email => email && email.endsWith('@snowbros.placeholder');
+
 export default function AdminClients() {
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
-  const [modal, setModal] = useState(null); // null | 'add' | client obj
-  const [contractModal, setContractModal] = useState(null); // null | client obj
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'active' | 'inactive' | 'placeholder'
+  const [modal, setModal] = useState(null);
+  const [contractModal, setContractModal] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [contractForm, setContractForm] = useState({
-    type: 'snow',
-    frequency: 'weekly',
+    type: 'snow', frequency: 'weekly',
     start_date: new Date().toISOString().split('T')[0],
-    end_date: '', // No default — must be explicitly set
-    rate: '',
-    deposit: '',
-    details: ''
+    end_date: '', rate: '', deposit: '', details: ''
   });
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Inline email editing state: { clientId, value, saving, error }
+  const [emailEdit, setEmailEdit] = useState(null);
+  const emailInputRef = useRef(null);
+
+  // Per-row invite state: { [clientId]: 'idle' | 'sending' | 'sent' | 'error' }
+  const [inviteState, setInviteState] = useState({});
+
   const load = () => api.get('/clients').then(r => setClients(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
+
+  // Focus email input when opened
+  useEffect(() => {
+    if (emailEdit && emailInputRef.current) emailInputRef.current.focus();
+  }, [emailEdit]);
 
   const openAdd  = () => { setForm(EMPTY); setModal('add'); setMsg(null); };
   const openEdit = c  => { setForm({ ...c, password: '' }); setModal(c); setMsg(null); };
@@ -58,23 +69,62 @@ export default function AdminClients() {
     load();
   };
 
+  // Fixed: use dedicated PATCH endpoint so we don't need all fields
   const toggleActive = async (id, currentActive) => {
     try {
-      await api.put(`/clients/${id}`, { active: !currentActive });
+      await api.patch(`/clients/${id}/active`, { active: !currentActive });
       load();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to update status');
+    }
+  };
+
+  // Inline email edit handlers
+  const startEmailEdit = (c) => {
+    setEmailEdit({ clientId: c.id, value: c.email, saving: false, error: null });
+  };
+  const cancelEmailEdit = () => setEmailEdit(null);
+  const saveEmail = async () => {
+    if (!emailEdit) return;
+    const { clientId, value } = emailEdit;
+    if (!value || !value.includes('@')) {
+      setEmailEdit(e => ({ ...e, error: 'Enter a valid email address' }));
+      return;
+    }
+    setEmailEdit(e => ({ ...e, saving: true, error: null }));
+    try {
+      await api.patch(`/clients/${clientId}/email`, { email: value });
+      await load();
+      setEmailEdit(null);
+    } catch (err) {
+      setEmailEdit(e => ({ ...e, saving: false, error: err.response?.data?.error || 'Failed to update email' }));
+    }
+  };
+
+  // Portal invite
+  const sendInvite = async (c) => {
+    if (isPlaceholder(c.email)) {
+      alert('Update this client\'s real email address before sending an invite.');
+      return;
+    }
+    if (!confirm(`Send portal invite to ${c.first_name} ${c.last_name} at ${c.email}?`)) return;
+    setInviteState(s => ({ ...s, [c.id]: 'sending' }));
+    try {
+      await api.post(`/clients/${c.id}/invite`);
+      setInviteState(s => ({ ...s, [c.id]: 'sent' }));
+      setTimeout(() => setInviteState(s => ({ ...s, [c.id]: 'idle' })), 4000);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to send invite');
+      setInviteState(s => ({ ...s, [c.id]: 'idle' }));
+    }
   };
 
   const openContract = c => {
     setContractModal(c);
-    // NO default end date — admin must explicitly choose
     setContractForm({
-      type: 'snow',
-      frequency: 'weekly',
+      type: 'snow', frequency: 'weekly',
       start_date: new Date().toISOString().split('T')[0],
-      end_date: '', // Empty — required field
-      rate: '',
-      deposit: '',
+      end_date: '', rate: '', deposit: '',
       details: c.service_type === 'commercial' ? 'Commercial property maintenance' : 'Residential property maintenance'
     });
     setMsg(null);
@@ -92,8 +142,6 @@ export default function AdminClients() {
       const client = contractModal;
       const isSnow = contractForm.type === 'snow';
       const title = isSnow ? 'Snow Removal Service Agreement' : 'Lawn Care Service Agreement';
-      
-      // Build contract HTML with professional header and all editable fields
       const contractHtml = `
 <!DOCTYPE html>
 <html>
@@ -123,10 +171,8 @@ export default function AdminClients() {
     <p>${BUSINESS_INFO.address}, ${BUSINESS_INFO.city}, ${BUSINESS_INFO.state} ${BUSINESS_INFO.zip}</p>
     <p>${BUSINESS_INFO.phone} • ${BUSINESS_INFO.email}</p>
   </div>
-
   <div class="content">
     <h1 style="text-align: center; text-transform: uppercase; margin-bottom: 24px;">${title}</h1>
-
     <div class="section">
       <h2>Agreement Parties</h2>
       <div class="parties">
@@ -148,53 +194,45 @@ export default function AdminClients() {
         </div>
       </div>
     </div>
-
     <div class="section">
       <h2>1. Services Provided</h2>
-      <p>${isSnow 
+      <p>${isSnow
         ? "Snow removal services will be performed after snowfall accumulation reaches 2 inches or more, unless service is specifically requested by the Client. The Contractor reserves 12 hours from the end of the snowfall event to reach the Client's property."
         : "Lawn care services including mowing, trimming, and property maintenance as scheduled."
       }</p>
       <p><strong>Service Frequency:</strong> ${contractForm.frequency}</p>
       <p><strong>Service Details:</strong> ${contractForm.details || 'Standard service agreement.'}</p>
     </div>
-
     <div class="section">
       <h2>2. Term of Agreement</h2>
       <p><strong>Effective Date:</strong> ${new Date(contractForm.start_date).toLocaleDateString()}</p>
       <p><strong style="color: #dc2626; font-size: 16px;">Agreement Termination Date: ${new Date(contractForm.end_date).toLocaleDateString()}</strong></p>
       <p>This Service Agreement will commence on the Effective Date above and will terminate on the Agreement Termination Date specified above, unless earlier terminated by either party with 30 days written notice.</p>
     </div>
-
     <div class="section">
-      <h2>3. Compensation & Payment Terms</h2>
+      <h2>3. Compensation &amp; Payment Terms</h2>
       <table>
         <tr><th>Service Rate</th><td>$${contractForm.rate || '0.00'} per ${contractForm.frequency}</td></tr>
         ${contractForm.deposit ? `<tr><th>Deposit Required</th><td>$${contractForm.deposit}</td></tr>` : ''}
         <tr><th>Payment Terms</th><td>Due upon completion of service</td></tr>
       </table>
     </div>
-
     <div class="section">
       <h2>4. Cancellation Policy</h2>
       <p>Either party may terminate this agreement with 24 hours notice. Late cancellations may be subject to a service charge.</p>
     </div>
-
     <div class="section">
-      <h2>5. Liability & Indemnification</h2>
-      <p>The Contractor will provide all necessary equipment and tools. The Contractor is an independent contractor and not an employee of the Client. The Contractor agrees to indemnify and hold harmless the Client against claims arising from the Contractor's gross negligence or willful misconduct.</p>
+      <h2>5. Liability &amp; Indemnification</h2>
+      <p>The Contractor will provide all necessary equipment and tools. The Contractor is an independent contractor and not an employee of the Client.</p>
     </div>
-
     <div class="section">
       <h2>6. Service Area</h2>
       <p>Services are provided in Moorhead, MN and Fargo, ND and surrounding areas.</p>
     </div>
-
     <div class="section">
       <h2>7. Governing Law</h2>
       <p>This Agreement will be governed by and construed in accordance with the laws of the State of Minnesota.</p>
     </div>
-
     <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #ddd;">
       <p style="margin-bottom: 40px;">By signing below, both parties agree to the terms and conditions of this Service Agreement.</p>
       <div style="display: flex; justify-content: space-between;">
@@ -213,30 +251,21 @@ export default function AdminClients() {
       </div>
     </div>
   </div>
-
   <div class="footer">
     <strong>${BUSINESS_INFO.name}</strong> • ${BUSINESS_INFO.address}, ${BUSINESS_INFO.city}, ${BUSINESS_INFO.state} ${BUSINESS_INFO.zip}<br/>
     ${BUSINESS_INFO.phone} • ${BUSINESS_INFO.email} • ${BUSINESS_INFO.website}
   </div>
 </body>
-</html>
-      `;
+</html>`;
 
       const res = await api.post('/contracts/generate', {
-        title,
-        client_id: client.id,
-        contract_type: 'generated',
+        title, client_id: client.id, contract_type: 'generated',
         service_category: isSnow ? 'snow' : 'lawn',
-        rate: contractForm.rate,
-        start_date: contractForm.start_date,
-        end_date: contractForm.end_date,
-        deposit: contractForm.deposit || '0',
-        frequency: contractForm.frequency,
-        service_details: contractForm.details || '',
-        contract_html: contractHtml,
-        send_email: true
+        rate: contractForm.rate, start_date: contractForm.start_date,
+        end_date: contractForm.end_date, deposit: contractForm.deposit || '0',
+        frequency: contractForm.frequency, service_details: contractForm.details || '',
+        contract_html: contractHtml, send_email: true
       });
-
       const signUrl = `${window.location.origin}/sign-contract/${res.data.sign_token}`;
       alert(`Contract generated and sent to ${client.email}!\n\nSigning link:\n${signUrl}`);
       setContractModal(null);
@@ -247,73 +276,179 @@ export default function AdminClients() {
     }
   };
 
-  const filtered = clients.filter(c =>
-    `${c.first_name} ${c.last_name} ${c.email}`.toLowerCase().includes(search.toLowerCase())
-  );
-
+  const placeholderCount = clients.filter(c => isPlaceholder(c.email)).length;
   const activeCount = clients.filter(c => c.active).length;
   const inactiveCount = clients.length - activeCount;
+
+  const filtered = clients.filter(c => {
+    const matchSearch = `${c.first_name} ${c.last_name} ${c.email}`.toLowerCase().includes(search.toLowerCase());
+    if (!matchSearch) return false;
+    if (filterStatus === 'active') return c.active;
+    if (filterStatus === 'inactive') return !c.active;
+    if (filterStatus === 'placeholder') return isPlaceholder(c.email);
+    return true;
+  });
 
   return (
     <div>
       <div className="flex-between page-header">
-        <div><h1>👥 Clients</h1><p>Manage your client list.</p></div>
+        <div>
+          <h1>👥 Clients</h1>
+          <p>Manage your client list.</p>
+        </div>
         <button className="btn btn-primary" onClick={openAdd}>+ Add Client</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-        <div style={{ padding: '8px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#166534' }}>
-          {activeCount} Active
-        </div>
-        <div style={{ padding: '8px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#991b1b' }}>
-          {inactiveCount} Inactive
-        </div>
-        <div style={{ padding: '8px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontWeight: 600, color: '#475569' }}>
-          {clients.length} Total
-        </div>
+      {/* Stats bar */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button onClick={() => setFilterStatus('all')} style={{ padding: '8px 16px', background: filterStatus === 'all' ? '#1d4ed8' : '#f8fafc', color: filterStatus === 'all' ? '#fff' : '#475569', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          All ({clients.length})
+        </button>
+        <button onClick={() => setFilterStatus('active')} style={{ padding: '8px 16px', background: filterStatus === 'active' ? '#16a34a' : '#f0fdf4', color: filterStatus === 'active' ? '#fff' : '#166534', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          ✅ Active ({activeCount})
+        </button>
+        <button onClick={() => setFilterStatus('inactive')} style={{ padding: '8px 16px', background: filterStatus === 'inactive' ? '#dc2626' : '#fef2f2', color: filterStatus === 'inactive' ? '#fff' : '#991b1b', border: '1px solid #fecaca', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          ❌ Inactive ({inactiveCount})
+        </button>
+        {placeholderCount > 0 && (
+          <button onClick={() => setFilterStatus('placeholder')} style={{ padding: '8px 16px', background: filterStatus === 'placeholder' ? '#d97706' : '#fffbeb', color: filterStatus === 'placeholder' ? '#fff' : '#92400e', border: '1px solid #fde68a', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            ⚠️ Placeholder Emails ({placeholderCount})
+          </button>
+        )}
       </div>
 
       <div className="card mb-2">
-        <input className="form-control" placeholder="Search clients…" value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="form-control" placeholder="Search clients by name or email…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="card">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Status</th><th>Name</th><th>Email</th><th>Phone</th><th>City</th><th>Actions</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>City</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--gray-400)', padding:'2rem' }}>No clients found</td></tr>}
-              {filtered.map(c => (
-                <tr key={c.id} style={{ background: c.active ? '#f0fdf4' : '#fef2f2', borderLeft: `4px solid ${c.active ? '#22c55e' : '#ef4444'}` }}>
-                  <td>
-                    <button
-                      onClick={() => toggleActive(c.id, c.active)}
-                      style={{
-                        background: c.active ? '#22c55e' : '#ef4444',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 12,
-                        padding: '4px 12px',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        minWidth: 70,
-                      }}
-                    >
-                      {c.active ? 'Active' : 'Inactive'}
-                    </button>
-                  </td>
-                  <td><strong>{c.first_name} {c.last_name}</strong></td>
-                  <td>{c.email}</td>
-                  <td>{c.phone}</td>
-                  <td>{c.city}</td>
-                  <td>
-                    <button className="btn btn-sm btn-secondary" onClick={() => openEdit(c)} style={{ marginRight: 8 }}>Edit</button>
-                    <button className="btn btn-sm btn-info" onClick={() => openContract(c)} style={{ marginRight: 8 }}>📄 Contract</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>Delete</button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--gray-400)', padding: '2rem' }}>No clients found</td></tr>
+              )}
+              {filtered.map(c => {
+                const placeholder = isPlaceholder(c.email);
+                const istate = inviteState[c.id] || 'idle';
+                const isEditingEmail = emailEdit && emailEdit.clientId === c.id;
+
+                return (
+                  <tr key={c.id} style={{ background: placeholder ? '#fffbeb' : c.active ? '#f0fdf4' : '#fef2f2', borderLeft: `4px solid ${placeholder ? '#f59e0b' : c.active ? '#22c55e' : '#ef4444'}` }}>
+                    {/* Status toggle */}
+                    <td>
+                      <button
+                        onClick={() => toggleActive(c.id, c.active)}
+                        title={c.active ? 'Click to deactivate' : 'Click to activate'}
+                        style={{
+                          background: c.active ? '#22c55e' : '#ef4444',
+                          color: '#fff', border: 'none', borderRadius: 12,
+                          padding: '4px 12px', fontSize: 12, fontWeight: 700,
+                          cursor: 'pointer', minWidth: 70,
+                        }}
+                      >
+                        {c.active ? 'Active' : 'Inactive'}
+                      </button>
+                    </td>
+
+                    {/* Name */}
+                    <td><strong>{c.first_name} {c.last_name}</strong></td>
+
+                    {/* Email — inline editable */}
+                    <td style={{ minWidth: 220 }}>
+                      {isEditingEmail ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <input
+                              ref={emailInputRef}
+                              type="email"
+                              value={emailEdit.value}
+                              onChange={e => setEmailEdit(ed => ({ ...ed, value: e.target.value }))}
+                              onKeyDown={e => { if (e.key === 'Enter') saveEmail(); if (e.key === 'Escape') cancelEmailEdit(); }}
+                              style={{ flex: 1, padding: '4px 8px', border: '2px solid #1d4ed8', borderRadius: 4, fontSize: 13 }}
+                              disabled={emailEdit.saving}
+                            />
+                            <button onClick={saveEmail} disabled={emailEdit.saving} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+                              {emailEdit.saving ? '…' : '✓'}
+                            </button>
+                            <button onClick={cancelEmailEdit} disabled={emailEdit.saving} style={{ background: '#6b7280', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+                              ✕
+                            </button>
+                          </div>
+                          {emailEdit.error && <span style={{ color: '#dc2626', fontSize: 11 }}>{emailEdit.error}</span>}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {placeholder ? (
+                            <span
+                              title="Placeholder email — click to update"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, padding: '2px 8px', fontSize: 12, color: '#92400e', cursor: 'pointer' }}
+                              onClick={() => startEmailEdit(c)}
+                            >
+                              ⚠️ {c.email} <span style={{ fontSize: 10, opacity: 0.7 }}>✏️ edit</span>
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 13 }}>{c.email}</span>
+                          )}
+                          {!placeholder && (
+                            <button
+                              onClick={() => startEmailEdit(c)}
+                              title="Edit email"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', padding: '0 2px' }}
+                            >✏️</button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    <td>{c.phone}</td>
+                    <td>{c.city}</td>
+
+                    {/* Actions */}
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {/* Portal Invite */}
+                      {!placeholder ? (
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => sendInvite(c)}
+                          disabled={istate === 'sending'}
+                          title={c.active ? 'Resend portal invite' : 'Send portal invite (will activate account)'}
+                          style={{
+                            marginRight: 6,
+                            background: istate === 'sent' ? '#16a34a' : '#7c3aed',
+                            color: '#fff', border: 'none', borderRadius: 6,
+                            padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                          }}
+                        >
+                          {istate === 'sending' ? '⏳ Sending…' : istate === 'sent' ? '✅ Sent!' : '✉️ Invite'}
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => startEmailEdit(c)}
+                          title="Update email before sending invite"
+                          style={{ marginRight: 6, background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          ⚠️ Fix Email
+                        </button>
+                      )}
+                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(c)} style={{ marginRight: 6 }}>Edit</button>
+                      <button className="btn btn-sm btn-info" onClick={() => openContract(c)} style={{ marginRight: 6 }}>📄 Contract</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>Delete</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -328,7 +463,7 @@ export default function AdminClients() {
               <button className="close-btn" onClick={close}>×</button>
             </div>
             <div className="modal-body">
-              {msg && <div className={`alert alert-${msg.includes('Error') ? 'error' : 'success'}`}>{msg}</div>}
+              {msg && <div className={`alert alert-${msg.includes('Error') || msg.includes('error') ? 'error' : 'success'}`}>{msg}</div>}
               <form onSubmit={save}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
@@ -340,8 +475,16 @@ export default function AdminClients() {
                     <input name="last_name" value={form.last_name} onChange={handle} required className="form-control" />
                   </div>
                   <div className="form-group">
-                    <label>Email *</label>
-                    <input name="email" type="email" value={form.email} onChange={handle} required className="form-control" />
+                    <label>
+                      Email *
+                      {isPlaceholder(form.email) && (
+                        <span style={{ marginLeft: 8, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, padding: '1px 6px', fontSize: 11, color: '#92400e' }}>
+                          ⚠️ Placeholder — update to real email
+                        </span>
+                      )}
+                    </label>
+                    <input name="email" type="email" value={form.email} onChange={handle} required className="form-control"
+                      style={isPlaceholder(form.email) ? { borderColor: '#f59e0b', borderWidth: 2 } : {}} />
                   </div>
                   <div className="form-group">
                     <label>Phone</label>
@@ -395,7 +538,7 @@ export default function AdminClients() {
               <button className="close-btn" onClick={() => setContractModal(null)}>×</button>
             </div>
             <div className="modal-body">
-              {msg && <div className={`alert alert-${msg.includes('Error') ? 'error' : 'success'}`}>{msg}</div>}
+              {msg && <div className={`alert alert-${msg.includes('Error') || msg.includes('error') ? 'error' : 'success'}`}>{msg}</div>}
               <form onSubmit={sendContract}>
                 <div className="form-group">
                   <label>Contract Type *</label>
@@ -404,7 +547,6 @@ export default function AdminClients() {
                     <option value="lawn">Lawn Care Service Agreement</option>
                   </select>
                 </div>
-
                 <div className="form-group">
                   <label style={{ fontSize: '16px', fontWeight: '700', color: '#1e40af', marginBottom: '12px' }}>📅 Agreement Term</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -414,12 +556,12 @@ export default function AdminClients() {
                     </div>
                     <div className="form-group">
                       <label style={{ fontWeight: '700', color: '#dc2626' }}>End Date * (Required)</label>
-                      <input name="end_date" type="date" value={contractForm.end_date} onChange={handleContractForm} required className="form-control" style={{ borderColor: contractForm.end_date ? '#22c55e' : '#dc2626', borderWidth: '2px' }} />
+                      <input name="end_date" type="date" value={contractForm.end_date} onChange={handleContractForm} required className="form-control"
+                        style={{ borderColor: contractForm.end_date ? '#22c55e' : '#dc2626', borderWidth: '2px' }} />
                       <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>Admin must explicitly choose the contract termination date</small>
                     </div>
                   </div>
                 </div>
-
                 <div className="form-group">
                   <label>Service Frequency *</label>
                   <select name="frequency" value={contractForm.frequency} onChange={handleContractForm} className="form-control">
@@ -431,7 +573,6 @@ export default function AdminClients() {
                     <option value="as-needed">As-needed</option>
                   </select>
                 </div>
-
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label>Service Rate ($) *</label>
@@ -442,12 +583,10 @@ export default function AdminClients() {
                     <input name="deposit" type="number" step="0.01" value={contractForm.deposit} onChange={handleContractForm} className="form-control" placeholder="Optional" />
                   </div>
                 </div>
-
                 <div className="form-group">
                   <label>Service Details</label>
                   <textarea name="details" value={contractForm.details} onChange={handleContractForm} className="form-control" rows={4} placeholder="Describe specific services, equipment, scope, etc." />
                 </div>
-
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setContractModal(null)}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={loading}>

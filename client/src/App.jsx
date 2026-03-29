@@ -17,6 +17,7 @@ const PublicReviews = lazy(() => import('./pages/Reviews'));
 // const ETALookup = lazy(() => import('./pages/ETALookup'));
 const SignContract = lazy(() => import('./pages/SignContract'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const PortalSetup = lazy(() => import('./pages/PortalSetup'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
@@ -180,6 +181,7 @@ export default function App() {
             {/* <Route path="/eta" element={<ETALookup />} /> */}
             <Route path="/sign-contract/:token" element={<SignContract />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/portal-setup/:token" element={<PortalSetup />} />
           </Route>
 
           {/* Admin + Manager routes */}
