@@ -159,6 +159,10 @@ router.post('/:id/send', authenticateToken, requireAdmin, async (req, res) => {
         </tfoot>
       </table>
       ${inv.notes ? `<p style="color:#6b7280;font-size:13px;"><em>${inv.notes}</em></p>` : ''}
+      <div style="text-align:center;margin:24px 0;">
+        <a href="${BASE_URL}/client/invoices" style="display:inline-block;background:#1e40af;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;">📄 View Invoice in Your Portal</a>
+        <p style="margin:8px 0 0;color:#6b7280;font-size:12px;">Log in at <a href="${BASE_URL}/login" style="color:#1e40af;">${BASE_URL}/login</a> to view, download, or print this invoice.</p>
+      </div>
       <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:16px 20px;border-radius:0 8px 8px 0;margin:20px 0;">
         <p style="margin:0;font-weight:700;color:#15803d;">Payment Options</p>
         <p style="margin:6px 0 0;color:#374151;font-size:13px;">Cash App: <strong>$SnowBros</strong> &nbsp;|&nbsp; Venmo: <strong>@SnowBros</strong> &nbsp;|&nbsp; Zelle: <strong>${BUSINESS.phone}</strong></p>

@@ -1,20 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import PaymentSection from '../../components/PaymentSection';
 import BusinessHeader from '../../components/BusinessHeader';
-import PrintInvoiceButton, { printInvoice } from '../../components/PrintableInvoice';
+import PrintInvoiceButton from '../../components/PrintableInvoice';
 
 const EMPTY_ITEM = { description: '', quantity: 1, unit_price: '' };
 const STATUS_COLORS = { draft:'badge-gray', sent:'badge-blue', paid:'badge-green', overdue:'badge-red' };
 
 export default function AdminInvoices() {
-  const [invoices, setInvoices] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [modal, setModal] = useState(null); // null | 'create' | invoice obj
-  const [viewInv, setViewInv] = useState(null);
-  const [form, setForm] = useState({ client_id:'', items:[{ ...EMPTY_ITEM }], tax_rate:0, notes:'' });
-  const [msg, setMsg] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [invoices, setInvoices]   = useState([]);
+  const [clients, setClients]     = useState([]);
+  const [modal, setModal]         = useState(null); // null | 'create'
+  const [viewInv, setViewInv]     = useState(null);
+  const [form, setForm]           = useState({ client_id:'', items:[{ ...EMPTY_ITEM }], tax_rate:0, notes:'' });
+  const [msg, setMsg]             = useState(null);
+  const [loading, setLoading]     = useState(false);
+  const [sending, setSending]     = useState({}); // { [invoiceId]: true/false }
+  const [sendMsg, setSendMsg]     = useState({}); // { [invoiceId]: 'success' | 'error text' }
 
   const load = () => api.get('/invoices').then(r => setInvoices(r.data)).catch(() => {});
   useEffect(() => {
@@ -31,8 +33,8 @@ export default function AdminInvoices() {
     items[i] = { ...items[i], [e.target.name]: e.target.value };
     return { ...f, items };
   });
-  const addItem = () => setForm(f => ({ ...f, items: [...f.items, { ...EMPTY_ITEM }] }));
-  const removeItem = i => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
+  const addItem    = () => setForm(f => ({ ...f, items: [...f.items, { ...EMPTY_ITEM }] }));
+  const removeItem = i  => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
 
   const subtotal = form.items.reduce((s, it) => s + (parseFloat(it.quantity)||0) * (parseFloat(it.unit_price)||0), 0);
   const taxAmt   = subtotal * ((parseFloat(form.tax_rate)||0) / 100);
@@ -59,6 +61,24 @@ export default function AdminInvoices() {
     setViewInv(data);
   };
 
+  const sendInvoice = async (inv, e) => {
+    e.stopPropagation();
+    setSending(s => ({ ...s, [inv.id]: true }));
+    setSendMsg(m => ({ ...m, [inv.id]: null }));
+    try {
+      await api.post(`/invoices/${inv.id}/send`);
+      setSendMsg(m => ({ ...m, [inv.id]: 'success' }));
+      load(); // refresh status to 'sent'
+      setTimeout(() => setSendMsg(m => ({ ...m, [inv.id]: null })), 4000);
+    } catch (err) {
+      const errText = err.response?.data?.error || 'Failed to send';
+      setSendMsg(m => ({ ...m, [inv.id]: errText }));
+      setTimeout(() => setSendMsg(m => ({ ...m, [inv.id]: null })), 5000);
+    } finally {
+      setSending(s => ({ ...s, [inv.id]: false }));
+    }
+  };
+
   return (
     <div>
       <div className="flex-between page-header">
@@ -69,22 +89,59 @@ export default function AdminInvoices() {
       <div className="card">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Invoice #</th><th>Client</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Invoice #</th>
+                <th>Client</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th style={{ minWidth: 200 }}>Actions</th>
+              </tr>
+            </thead>
             <tbody>
-              {invoices.length === 0 && <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--gray-400)', padding:'2rem' }}>No invoices yet</td></tr>}
+              {invoices.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--gray-400)', padding:'2rem' }}>No invoices yet</td></tr>
+              )}
               {invoices.map(inv => (
                 <tr key={inv.id}>
                   <td><strong>{inv.invoice_number}</strong></td>
                   <td>{inv.client_name}</td>
                   <td><strong>${Number(inv.total).toFixed(2)}</strong></td>
                   <td>
-                    <select className="form-control" style={{ fontSize:'.8rem', padding:'.25rem .5rem', width:'auto' }}
-                      value={inv.status} onChange={e => setStatus(inv.id, e.target.value)}>
+                    <select
+                      className="form-control"
+                      style={{ fontSize:'.8rem', padding:'.25rem .5rem', width:'auto' }}
+                      value={inv.status}
+                      onChange={e => setStatus(inv.id, e.target.value)}
+                    >
                       {['draft','sent','paid','overdue'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </td>
                   <td style={{ color:'var(--gray-400)', fontSize:'.8rem' }}>{inv.created_at?.slice(0,10)}</td>
-                  <td><button className="btn btn-secondary btn-sm" onClick={() => viewFull(inv)}>View</button></td>
+                  <td>
+                    <div style={{ display:'flex', gap:'.4rem', alignItems:'center', flexWrap:'wrap' }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => viewFull(inv)}>View</button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ background: sendMsg[inv.id] === 'success' ? 'var(--green-600)' : undefined }}
+                        onClick={e => sendInvoice(inv, e)}
+                        disabled={sending[inv.id]}
+                        title={`Email invoice to ${inv.client_email || 'client'}`}
+                      >
+                        {sending[inv.id]
+                          ? <span className="spinner" style={{ width:14, height:14 }} />
+                          : sendMsg[inv.id] === 'success'
+                            ? '✓ Sent!'
+                            : '📧 Send Invoice'}
+                      </button>
+                    </div>
+                    {sendMsg[inv.id] && sendMsg[inv.id] !== 'success' && (
+                      <div style={{ color:'var(--red-600)', fontSize:'.75rem', marginTop:'.25rem' }}>
+                        {sendMsg[inv.id]}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -118,7 +175,10 @@ export default function AdminInvoices() {
                 ))}
                 <button type="button" className="btn btn-secondary btn-sm mb-2" onClick={addItem}>+ Add Line Item</button>
                 <div className="form-row">
-                  <div className="form-group"><label>Tax Rate (%)</label><input type="number" name="tax_rate" value={form.tax_rate} onChange={handleForm} min="0" step="0.1" className="form-control" /></div>
+                  <div className="form-group">
+                    <label>Tax Rate (%)</label>
+                    <input type="number" name="tax_rate" value={form.tax_rate} onChange={handleForm} min="0" step="0.1" className="form-control" />
+                  </div>
                   <div style={{ display:'flex', flexDirection:'column', justifyContent:'flex-end', paddingBottom:'1rem' }}>
                     <div style={{ fontSize:'.85rem', color:'var(--gray-500)' }}>Subtotal: <strong>${subtotal.toFixed(2)}</strong></div>
                     <div style={{ fontSize:'.85rem', color:'var(--gray-500)' }}>Tax: <strong>${taxAmt.toFixed(2)}</strong></div>
@@ -143,49 +203,84 @@ export default function AdminInvoices() {
             <div className="modal-header">
               <h2>Invoice {viewInv.invoice_number}</h2>
               <div style={{ display:'flex', gap:'.5rem', alignItems:'center' }}>
+                {/* Send Invoice button inside view modal */}
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ background: sendMsg[viewInv.id] === 'success' ? 'var(--green-600)' : undefined }}
+                  onClick={e => sendInvoice(viewInv, e)}
+                  disabled={sending[viewInv.id]}
+                  title={`Email invoice to ${viewInv.client_email || 'client'}`}
+                >
+                  {sending[viewInv.id]
+                    ? <span className="spinner" style={{ width:14, height:14 }} />
+                    : sendMsg[viewInv.id] === 'success'
+                      ? '✓ Sent!'
+                      : '📧 Send Invoice'}
+                </button>
                 <PrintInvoiceButton invoice={viewInv} />
                 <button className="modal-close" onClick={() => setViewInv(null)}>×</button>
               </div>
             </div>
+            {sendMsg[viewInv.id] && sendMsg[viewInv.id] !== 'success' && (
+              <div className="alert alert-error" style={{ margin:'0 1.25rem', borderRadius:6 }}>{sendMsg[viewInv.id]}</div>
+            )}
+            {sendMsg[viewInv.id] === 'success' && (
+              <div className="alert alert-success" style={{ margin:'0 1.25rem', borderRadius:6 }}>✓ Invoice emailed to {viewInv.client_email}</div>
+            )}
             <div className="modal-body" style={{ padding: 0 }}>
               <BusinessHeader style={{ borderRadius: 0 }} />
               <div style={{ padding: '1.25rem' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'1rem', flexWrap:'wrap', gap:'.5rem' }}>
-                <div>
-                  <div style={{ fontWeight:700, fontSize:'1.1rem' }}>{viewInv.client_name}</div>
-                  <div style={{ color:'var(--gray-500)', fontSize:'.85rem' }}>{viewInv.client_email}</div>
-                  {viewInv.client_address && <div style={{ color:'var(--gray-500)', fontSize:'.85rem' }}>{viewInv.client_address}, {viewInv.client_city} {viewInv.client_state} {viewInv.client_zip}</div>}
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'1rem', flexWrap:'wrap', gap:'.5rem' }}>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:'1.1rem' }}>{viewInv.client_name}</div>
+                    <div style={{ color:'var(--gray-500)', fontSize:'.85rem' }}>{viewInv.client_email}</div>
+                    {viewInv.client_address && (
+                      <div style={{ color:'var(--gray-500)', fontSize:'.85rem' }}>
+                        {viewInv.client_address}, {viewInv.client_city} {viewInv.client_state} {viewInv.client_zip}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign:'right' }}>
+                    <span className={`badge ${STATUS_COLORS[viewInv.status] || 'badge-gray'}`} style={{ fontSize:'.85rem' }}>{viewInv.status}</span>
+                    <div style={{ color:'var(--gray-400)', fontSize:'.8rem', marginTop:'.25rem' }}>{viewInv.created_at?.slice(0,10)}</div>
+                    {viewInv.sent_at && (
+                      <div style={{ color:'var(--green-600)', fontSize:'.75rem', marginTop:'.15rem' }}>
+                        Last sent: {new Date(viewInv.sent_at).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ textAlign:'right' }}>
-                  <span className={`badge ${STATUS_COLORS[viewInv.status] || 'badge-gray'}`} style={{ fontSize:'.85rem' }}>{viewInv.status}</span>
-                  <div style={{ color:'var(--gray-400)', fontSize:'.8rem', marginTop:'.25rem' }}>{viewInv.created_at?.slice(0,10)}</div>
+                <div className="table-wrap">
+                  <table>
+                    <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+                    <tbody>
+                      {(viewInv.items||[]).map(it => (
+                        <tr key={it.id}>
+                          <td>{it.description}</td>
+                          <td>{it.quantity}</td>
+                          <td>${Number(it.unit_price).toFixed(2)}</td>
+                          <td>${Number(it.total).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
-                  <tbody>
-                    {(viewInv.items||[]).map(it => (
-                      <tr key={it.id}>
-                        <td>{it.description}</td>
-                        <td>{it.quantity}</td>
-                        <td>${Number(it.unit_price).toFixed(2)}</td>
-                        <td>${Number(it.total).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{ textAlign:'right', marginTop:'1rem' }}>
-                <div style={{ color:'var(--gray-500)', fontSize:'.88rem' }}>Subtotal: ${Number(viewInv.subtotal).toFixed(2)}</div>
-                {viewInv.tax_rate > 0 && <div style={{ color:'var(--gray-500)', fontSize:'.88rem' }}>Tax ({viewInv.tax_rate}%): ${Number(viewInv.tax_amount).toFixed(2)}</div>}
-                <div style={{ fontWeight:800, fontSize:'1.2rem', color:'var(--blue-700)' }}>Total: ${Number(viewInv.total).toFixed(2)}</div>
-              </div>
-              {viewInv.notes && <div style={{ marginTop:'1rem', padding:'.75rem', background:'var(--gray-50)', borderRadius:'var(--radius)', fontSize:'.88rem', color:'var(--gray-600)' }}>{viewInv.notes}</div>}
-
-              {/* Payment section */}
-              <hr className="divider" />
-              <PaymentSection invoiceTotal={viewInv.total} invoiceNumber={viewInv.invoice_number} />
+                <div style={{ textAlign:'right', marginTop:'1rem' }}>
+                  <div style={{ color:'var(--gray-500)', fontSize:'.88rem' }}>Subtotal: ${Number(viewInv.subtotal).toFixed(2)}</div>
+                  {viewInv.tax_rate > 0 && (
+                    <div style={{ color:'var(--gray-500)', fontSize:'.88rem' }}>
+                      Tax ({viewInv.tax_rate}%): ${Number(viewInv.tax_amount).toFixed(2)}
+                    </div>
+                  )}
+                  <div style={{ fontWeight:800, fontSize:'1.2rem', color:'var(--blue-700)' }}>Total: ${Number(viewInv.total).toFixed(2)}</div>
+                </div>
+                {viewInv.notes && (
+                  <div style={{ marginTop:'1rem', padding:'.75rem', background:'var(--gray-50)', borderRadius:'var(--radius)', fontSize:'.88rem', color:'var(--gray-600)' }}>
+                    {viewInv.notes}
+                  </div>
+                )}
+                <hr className="divider" />
+                <PaymentSection invoiceTotal={viewInv.total} invoiceNumber={viewInv.invoice_number} />
               </div>
             </div>
           </div>
