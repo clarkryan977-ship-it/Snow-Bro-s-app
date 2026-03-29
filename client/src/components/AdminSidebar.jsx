@@ -21,6 +21,7 @@ const links = [
   { to: '/admin/payroll', label: '💵 Payroll' },
   { to: '/admin/gps', label: '📍 GPS Tracking' },
   { to: '/admin/routes', label: '🗺️ Route Planner' },
+  { to: '/admin/documents', label: '📁 Employee Docs' },
   { section: 'Marketing' },
   { to: '/admin/emails', label: '📧 Email Blast' },
   { to: '/admin/gallery', label: '🖼️ Photo Gallery' },

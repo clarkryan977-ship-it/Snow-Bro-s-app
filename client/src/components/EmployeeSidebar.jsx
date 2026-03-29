@@ -19,6 +19,7 @@ export default function EmployeeSidebar({ open }) {
     { to: '/employee/jobs', label: '📋 Job Records' },
     { to: '/employee/time', label: '📆 Time Records' },
     { to: '/employee/notifications', label: `🔔 Notifications${unread > 0 ? ` (${unread})` : ''}` },
+    { to: '/employee/documents', label: '📁 My Documents' },
   ];
 
   return (

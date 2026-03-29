@@ -51,6 +51,8 @@ app.use('/api/settings',      require('./routes/settings'));
 app.use('/api/routes',        require('./routes/routes'));
 app.use('/api/payroll',       require('./routes/payroll'));
 app.use('/api/availability',  require('./routes/availability'));
+app.use('/api/push',          require('./routes/push'));
+app.use('/api/documents',     require('./routes/documents'));
 
 // ── Serve uploaded files ──
 app.use('/uploads', express.static(UPLOADS_ROOT, { maxAge: '1h', etag: true, lastModified: true }));

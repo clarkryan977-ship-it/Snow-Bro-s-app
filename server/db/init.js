@@ -464,6 +464,31 @@ async function initDB() {
     )
   `);
 
+
+  // ── Push Subscriptions ──
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL UNIQUE,
+      subscription_json TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // ── Employee Documents ──
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS employee_documents (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      doc_type TEXT NOT NULL DEFAULT 'other',
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      file_data TEXT NOT NULL,
+      uploaded_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   // ── Indexes ──
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)',
@@ -502,6 +527,8 @@ async function initDB() {
     'CREATE INDEX IF NOT EXISTS idx_route_sessions_route ON route_sessions(route_id)',
     'CREATE INDEX IF NOT EXISTS idx_blocked_times_date ON blocked_times(block_date)',
     'CREATE INDEX IF NOT EXISTS idx_payroll_periods_dates ON payroll_periods(start_date, end_date)',
+    'CREATE INDEX IF NOT EXISTS idx_push_subs_employee ON push_subscriptions(employee_id)',
+    'CREATE INDEX IF NOT EXISTS idx_employee_docs_employee ON employee_documents(employee_id)',
   ];
   for (const sql of indexes) {
     try { await db.query(sql); } catch (e) { /* ignore */ }

@@ -40,6 +40,7 @@ const AdminReviews = lazy(() => import('./pages/admin/Reviews'));
 const AdminRoutePlanner = lazy(() => import('./pages/admin/RoutePlanner'));
 const AdminPayroll = lazy(() => import('./pages/admin/Payroll'));
 const AdminAvailabilityCalendar = lazy(() => import('./pages/admin/AvailabilityCalendar'));
+const AdminEmployeeDocuments = lazy(() => import('./pages/admin/EmployeeDocuments'));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import('./pages/employee/Dashboard'));
@@ -48,6 +49,7 @@ const EmployeeJobs = lazy(() => import('./pages/employee/Jobs'));
 const EmployeeTimeRecords = lazy(() => import('./pages/employee/TimeRecords'));
 const EmployeeAssignedJobs = lazy(() => import('./pages/employee/AssignedJobs'));
 const EmployeeNotifications = lazy(() => import('./pages/employee/Notifications'));
+const EmployeeMyDocuments = lazy(() => import('./pages/employee/MyDocuments'));
 
 // Client pages
 const ClientDashboard = lazy(() => import('./pages/client/Dashboard'));
@@ -203,6 +205,7 @@ export default function App() {
               <Route path="/admin/routes" element={<AdminRoutePlanner />} />
               <Route path="/admin/payroll" element={<AdminPayroll />} />
               <Route path="/admin/availability" element={<AdminAvailabilityCalendar />} />
+              <Route path="/admin/documents" element={<AdminEmployeeDocuments />} />
             </Route>
           </Route>
 
@@ -215,6 +218,7 @@ export default function App() {
               <Route path="/employee/time" element={<EmployeeTimeRecords />} />
               <Route path="/employee/assigned" element={<EmployeeAssignedJobs />} />
               <Route path="/employee/notifications" element={<EmployeeNotifications />} />
+              <Route path="/employee/documents" element={<EmployeeMyDocuments />} />
             </Route>
           </Route>
 

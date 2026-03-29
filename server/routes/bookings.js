@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
+let sendAdminPush;
+try { sendAdminPush = require('./push').sendAdminPush; } catch(e) { sendAdminPush = null; }
+const { sendMail } = require('../utils/mailer');
 
 // Create booking (public)
 router.post('/', async (req, res) => {
@@ -13,6 +16,24 @@ router.post('/', async (req, res) => {
     const result = await req.db.query('INSERT INTO bookings (client_id, service_id, preferred_date, preferred_time, notes, client_name, client_email, client_phone) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id', [client_id || null, service_id, preferred_date, preferred_time || '', notes || '', client_name || '', client_email || '', client_phone || '']);
 
     res.status(201).json({ id: result.rows[0].id, message: 'Booking submitted successfully' });
+
+    // Fire-and-forget: push notification + email to admin
+    const name = client_name || client_email || 'A client';
+    try {
+      if (sendAdminPush) {
+        sendAdminPush(req.db, {
+          title: 'New Booking!',
+          body: name + ' booked a service for ' + (preferred_date || 'upcoming'),
+          url: '/admin/bookings',
+          tag: 'new-booking-' + result.rows[0].id,
+        });
+      }
+      sendMail({
+        to: 'clarkryan977@gmail.com',
+        subject: 'New Booking from ' + name,
+        html: '<p><strong>' + name + '</strong> submitted a new booking for <strong>' + (preferred_date || 'upcoming') + '</strong>.</p><p><a href="https://snowbros-production.up.railway.app/admin/bookings">View in Admin Panel</a></p>',
+      }).catch(() => {});
+    } catch(e) { /* non-critical */ }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

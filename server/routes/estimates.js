@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+let sendAdminPush;
+try { sendAdminPush = require('./push').sendAdminPush; } catch(e) { sendAdminPush = null; }
+const { sendMail } = require('../utils/mailer');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { emailHeader, emailFooter } = require('../utils/emailHeader');
 const { sendMail } = require('../utils/mailer');
