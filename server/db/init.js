@@ -436,6 +436,34 @@ async function initDB() {
     )
   `);
 
+  // ── Blocked Times (admin availability management) ──
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS blocked_times (
+      id SERIAL PRIMARY KEY,
+      block_date DATE NOT NULL,
+      start_time TIME,
+      end_time TIME,
+      all_day BOOLEAN DEFAULT TRUE,
+      reason TEXT DEFAULT '',
+      created_by INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // ── Payroll Periods ──
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS payroll_periods (
+      id SERIAL PRIMARY KEY,
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      employee_count INTEGER DEFAULT 0,
+      total_minutes INTEGER DEFAULT 0,
+      total_gross REAL DEFAULT 0,
+      paid_at TIMESTAMP DEFAULT NOW(),
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   // ── Indexes ──
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)',
@@ -472,6 +500,8 @@ async function initDB() {
     'CREATE INDEX IF NOT EXISTS idx_route_stops_client ON route_stops(client_id)',
     'CREATE INDEX IF NOT EXISTS idx_route_sessions_status ON route_sessions(status)',
     'CREATE INDEX IF NOT EXISTS idx_route_sessions_route ON route_sessions(route_id)',
+    'CREATE INDEX IF NOT EXISTS idx_blocked_times_date ON blocked_times(block_date)',
+    'CREATE INDEX IF NOT EXISTS idx_payroll_periods_dates ON payroll_periods(start_date, end_date)',
   ];
   for (const sql of indexes) {
     try { await db.query(sql); } catch (e) { /* ignore */ }

@@ -17,10 +17,11 @@ router.post('/login', async (req, res) => {
     const valid = bcrypt.compareSync(password, employee.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
+    const { remember_me } = req.body;
     const token = jwt.sign(
       { id: employee.id, email: employee.email, role: employee.role, name: `${employee.first_name} ${employee.last_name}` },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: remember_me ? '30d' : '24h' }
     );
 
     res.json({
@@ -72,10 +73,11 @@ router.post('/client-login', async (req, res) => {
     const valid = bcrypt.compareSync(password, client.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
+    const { remember_me } = req.body;
     const token = jwt.sign(
       { id: client.id, email: client.email, role: 'client', name: `${client.first_name} ${client.last_name}` },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: remember_me ? '30d' : '24h' }
     );
 
     res.json({

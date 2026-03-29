@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import FirstTimeDiscountBanner from '../components/FirstTimeDiscountBanner';
 import SiteFooter from '../components/SiteFooter';
@@ -11,14 +11,41 @@ export default function BookService() {
     client_name: '', client_email: '', client_phone: '',
     property_address: '', notes: ''
   });
-  const [status, setStatus] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus]         = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [dateBlocked, setDateBlocked] = useState(null); // null | { blocked, reason, all_day }
+  const [checkingDate, setCheckingDate] = useState(false);
 
   useEffect(() => {
     api.get('/services').then(r => setServices(r.data)).catch(() => {});
   }, []);
 
-  const handle = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+  // Check availability whenever date or time changes
+  const checkAvailability = useCallback(async (date, time) => {
+    if (!date) { setDateBlocked(null); return; }
+    setCheckingDate(true);
+    try {
+      const params = time ? `?date=${date}&time=${time}` : `?date=${date}`;
+      const { data } = await api.get(`/availability/check${params}`);
+      setDateBlocked(data);
+    } catch {
+      setDateBlocked(null);
+    } finally { setCheckingDate(false); }
+  }, []);
+
+  const handle = e => {
+    const { name, value } = e.target;
+    setForm(f => {
+      const updated = { ...f, [name]: value };
+      // Check availability when date or time changes
+      if (name === 'preferred_date' || name === 'preferred_time') {
+        const date = name === 'preferred_date' ? value : f.preferred_date;
+        const time = name === 'preferred_time' ? value : f.preferred_time;
+        checkAvailability(date, time);
+      }
+      return updated;
+    });
+  };
 
   const submit = async e => {
     e.preventDefault();
@@ -121,6 +148,26 @@ export default function BookService() {
               <input type="time" name="preferred_time" value={form.preferred_time} onChange={handle} className="form-control" />
             </div>
           </div>
+
+          {/* Availability check result */}
+          {checkingDate && (
+            <div style={{ padding: '.6rem 1rem', background: '#f1f5f9', borderRadius: 8, fontSize: '.85rem', color: '#64748b', marginBottom: '.75rem' }}>
+              ⏳ Checking availability...
+            </div>
+          )}
+          {!checkingDate && dateBlocked?.blocked && (
+            <div style={{ padding: '.75rem 1rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: '.88rem', color: '#dc2626', fontWeight: 600, marginBottom: '.75rem' }}>
+              🚫 {dateBlocked.all_day
+                ? `This date is not available${dateBlocked.reason ? ` — ${dateBlocked.reason}` : ''}. Please choose a different date.`
+                : `This time slot is not available${dateBlocked.reason ? ` — ${dateBlocked.reason}` : ''}. Please choose a different time.`
+              }
+            </div>
+          )}
+          {!checkingDate && form.preferred_date && dateBlocked && !dateBlocked.blocked && (
+            <div style={{ padding: '.6rem 1rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, fontSize: '.85rem', color: '#16a34a', fontWeight: 600, marginBottom: '.75rem' }}>
+              ✅ This date is available!
+            </div>
+          )}
 
           <hr className="divider" />
           <p style={{ fontSize: '.85rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>

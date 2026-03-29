@@ -79,11 +79,29 @@ function emailFooter() {
 }
 
 /**
- * Wraps content in a full HTML email document with header and footer.
+ * Returns the portal CTA button block.
+ * @param {string} [label] - Button label text
+ */
+function portalCTA(label = '\u2744\ufe0f View Your Account') {
+  return `
+  <!-- Portal CTA -->
+  <div style="text-align:center;margin:28px 0 8px;">
+    <a href="${BUSINESS.website}/login"
+       target="_blank"
+       style="display:inline-block;background:linear-gradient(135deg,#0f2557 0%,#1d4ed8 100%);color:#fff;text-decoration:none;padding:13px 34px;border-radius:8px;font-size:15px;font-weight:700;letter-spacing:.02em;box-shadow:0 4px 12px rgba(29,78,216,.30);">
+      ${label}
+    </a>
+    <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;">Log in to your Snow Bro's client portal to view invoices, contracts, and service history.</p>
+  </div>`;
+}
+
+/**
+ * Wraps content in a full HTML email document with header, portal CTA, and footer.
  * @param {string} content - The inner HTML body content
  * @param {string} [subtitle] - Optional subtitle for the header
+ * @param {boolean} [showCTA=true] - Whether to include the portal CTA button
  */
-function wrapEmail(content, subtitle = '') {
+function wrapEmail(content, subtitle = '', showCTA = true) {
   // Faint watermark: centered logo at 8% opacity behind the email body content
   const watermark = LOGO_B64 ? `
     <div style="
@@ -114,6 +132,7 @@ function wrapEmail(content, subtitle = '') {
       ${watermark}
       <div style="position:relative;z-index:1;">
         ${content}
+        ${showCTA ? portalCTA() : ''}
       </div>
     </div>
     ${emailFooter()}
@@ -122,4 +141,4 @@ function wrapEmail(content, subtitle = '') {
 </html>`;
 }
 
-module.exports = { emailHeader, emailFooter, wrapEmail, BUSINESS };
+module.exports = { emailHeader, emailFooter, wrapEmail, portalCTA, BUSINESS };

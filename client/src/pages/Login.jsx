@@ -7,7 +7,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState('staff'); // 'staff' | 'client'
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '', remember_me: false });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -17,7 +17,10 @@ export default function Login() {
   const [forgotMsg, setForgotMsg] = useState(null);
   const [forgotLoading, setForgotLoading] = useState(false);
 
-  const handle = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+  const handle = e => {
+    const { name, value, type, checked } = e.target;
+    setForm(f => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
+  };
 
   const submit = async e => {
     e.preventDefault();
@@ -25,7 +28,7 @@ export default function Login() {
     try {
       const endpoint = tab === 'client' ? '/auth/client-login' : '/auth/login';
       const { data } = await api.post(endpoint, form);
-      login(data.token, data.user);
+      login(data.token, data.user, form.remember_me);
       if (data.user.role === 'admin' || data.user.role === 'manager') navigate('/admin');
       else if (data.user.role === 'employee') navigate('/employee');
       else navigate('/client');
@@ -152,6 +155,22 @@ export default function Login() {
             </div>
             <input type="password" name="password" value={form.password} onChange={handle} required className="form-control" autoComplete="current-password" />
           </div>
+
+          {/* Remember Me */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '1.25rem' }}>
+            <input
+              type="checkbox"
+              id="remember_me"
+              name="remember_me"
+              checked={form.remember_me}
+              onChange={handle}
+              style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--blue-600)' }}
+            />
+            <label htmlFor="remember_me" style={{ margin: 0, fontSize: '.88rem', color: 'var(--gray-600)', cursor: 'pointer', userSelect: 'none' }}>
+              Remember me for 30 days
+            </label>
+          </div>
+
           <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={loading}>
             {loading ? <span className="spinner" /> : 'Sign In'}
           </button>

@@ -38,6 +38,8 @@ const AdminCalendar = lazy(() => import('./pages/admin/Calendar'));
 const AdminRecurring = lazy(() => import('./pages/admin/Recurring'));
 const AdminReviews = lazy(() => import('./pages/admin/Reviews'));
 const AdminRoutePlanner = lazy(() => import('./pages/admin/RoutePlanner'));
+const AdminPayroll = lazy(() => import('./pages/admin/Payroll'));
+const AdminAvailabilityCalendar = lazy(() => import('./pages/admin/AvailabilityCalendar'));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import('./pages/employee/Dashboard'));
@@ -199,6 +201,8 @@ export default function App() {
               <Route path="/admin/reviews" element={<AdminReviews />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
               <Route path="/admin/routes" element={<AdminRoutePlanner />} />
+              <Route path="/admin/payroll" element={<AdminPayroll />} />
+              <Route path="/admin/availability" element={<AdminAvailabilityCalendar />} />
             </Route>
           </Route>
 
