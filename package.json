@@ -4,7 +4,7 @@
   "description": "Snow Bro's - Professional Residential Lawn Care & Snow Removal",
   "scripts": {
     "install:all": "cd client && npm install --legacy-peer-deps && cd ../server && npm install",
-    "build": "cd client && npm run build",
+    "build": "cd client && npm install --legacy-peer-deps && npm run build",
     "start": "cd server && node index.js",
     "dev": "cd server && node index.js"
   },
