@@ -36,11 +36,11 @@ router.get('/backup', authenticateToken, requireAdmin, async (req, res) => {
                        active, created_at
                 FROM employees ORDER BY id`),
       db.query(`SELECT b.id, b.client_id,
-                       c.first_name || ' ' || c.last_name AS client_name,
+                       COALESCE(c.first_name || ' ' || c.last_name, b.client_name) AS client_name,
                        s.name AS service_name,
-                       b.scheduled_date, b.scheduled_time, b.status,
-                       b.address, b.city, b.state, b.zip,
-                       b.price, b.notes, b.created_at
+                       b.preferred_date, b.preferred_time, b.status,
+                       b.client_email, b.client_phone,
+                       b.notes, b.created_at
                 FROM bookings b
                 LEFT JOIN clients c ON b.client_id = c.id
                 LEFT JOIN services s ON b.service_id = s.id
