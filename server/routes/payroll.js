@@ -101,7 +101,7 @@ router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
          AND tr.clock_out IS NOT NULL
          AND tr.clock_in >= $1::date
          AND tr.clock_in < ($2::date + INTERVAL '1 day')
-       WHERE e.active = 1
+       WHERE e.active IS NOT FALSE
        GROUP BY e.id, e.first_name, e.last_name, e.email, e.phone, e.hourly_rate
        ORDER BY e.first_name`,
       [start_date, end_date]);

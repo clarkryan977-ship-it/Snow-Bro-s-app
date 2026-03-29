@@ -147,7 +147,7 @@ router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
               COALESCE(e.hourly_rate, 0) AS hourly_rate
        FROM employees e
        LEFT JOIN time_records tr ON tr.employee_id = e.id ${where}
-       WHERE e.active = 1
+       WHERE e.active IS NOT FALSE
        GROUP BY e.id, e.first_name, e.last_name, e.email, e.hourly_rate
        ORDER BY e.first_name`,
       params);

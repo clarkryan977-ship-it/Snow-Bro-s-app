@@ -10,7 +10,7 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    const { rows: __employee } = await req.db.query('SELECT * FROM employees WHERE email = $1 AND active = 1', [email]);
+    const { rows: __employee } = await req.db.query('SELECT * FROM employees WHERE email = $1 AND active IS NOT FALSE', [email]);
     const employee = __employee[0];
     if (!employee) return res.status(401).json({ error: 'Invalid credentials' });
 
