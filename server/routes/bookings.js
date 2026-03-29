@@ -67,6 +67,22 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// Mark booking as completed (employee or admin)
+router.patch('/:id/complete', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const completedAt = new Date().toISOString();
+    const { rowCount } = await req.db.query(
+      `UPDATE bookings SET status = 'completed', completed_at = $1 WHERE id = $2`,
+      [completedAt, id]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'Booking not found' });
+    res.json({ message: 'Job marked as completed', completed_at: completedAt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get my bookings (client)
 router.get('/my', authenticateToken, async (req, res) => {
   try {

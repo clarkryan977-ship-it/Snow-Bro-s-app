@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 
-const STATUS_COLORS = { pending:'badge-yellow', confirmed:'badge-green', completed:'badge-blue', cancelled:'badge-red' };
+const STATUS_COLORS = { pending:'badge-yellow', confirmed:'badge-blue', completed:'badge-green', cancelled:'badge-red' };
+const STATUS_LABELS = { pending:'⏳ Pending', confirmed:'✓ Confirmed', completed:'✅ Completed', cancelled:'✗ Cancelled' };
 
 export default function AdminBookings() {
   const [bookings, setBookings] = useState([]);
@@ -39,7 +40,7 @@ export default function AdminBookings() {
             <tbody>
               {filtered.length === 0 && <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--gray-400)', padding:'2rem' }}>No bookings</td></tr>}
               {filtered.map(b => (
-                <tr key={b.id}>
+                <tr key={b.id} style={b.status === 'completed' ? { background:'#f0fdf4', opacity:0.9 } : {}}>
                   <td>
                     <div style={{ fontWeight:600 }}>{b.display_name}</div>
                     <div style={{ fontSize:'.78rem', color:'var(--gray-400)' }}>{b.display_email}</div>
@@ -47,7 +48,7 @@ export default function AdminBookings() {
                   <td>{b.service_name}</td>
                   <td>{b.preferred_date}</td>
                   <td>{b.preferred_time || '—'}</td>
-                  <td><span className={`badge ${STATUS_COLORS[b.status] || 'badge-gray'}`}>{b.status}</span></td>
+                  <td><span className={`badge ${STATUS_COLORS[b.status] || 'badge-gray'}`}>{STATUS_LABELS[b.status] || b.status}</span></td>
                   <td>
                     <select className="form-control" style={{ fontSize:'.8rem', padding:'.25rem .5rem', width:'auto' }}
                       value={b.status} onChange={e => setStatus(b.id, e.target.value)}>

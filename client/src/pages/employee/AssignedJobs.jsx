@@ -7,6 +7,7 @@ export default function EmployeeAssignedJobs() {
   const [photoModal, setPhotoModal] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [completing, setCompleting] = useState({});
   const fileRef = useRef();
 
   const load = () => {
@@ -14,9 +15,22 @@ export default function EmployeeAssignedJobs() {
   };
   useEffect(() => { load(); }, []);
 
+  const markDone = async (jobId) => {
+    if (!confirm('Mark this job as completed?')) return;
+    setCompleting(c => ({ ...c, [jobId]: true }));
+    try {
+      await api.patch(`/bookings/${jobId}/complete`);
+      setJobs(prev => prev.map(j =>
+        j.id === jobId ? { ...j, status: 'completed' } : j
+      ));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to mark job as done');
+    } finally {
+      setCompleting(c => ({ ...c, [jobId]: false }));
+    }
+  };
+
   const loadPhotos = async (bookingId) => {
-    // We use the booking ID as a proxy; before/after photos are tied to time records
-    // For simplicity, load all before/after photos for the employee
     try {
       const { data } = await api.get(`/beforeafter/record/${bookingId}`);
       setPhotos(p => ({ ...p, [bookingId]: data }));
@@ -31,7 +45,9 @@ export default function EmployeeAssignedJobs() {
   };
 
   const getRouteUrl = () => {
-    const addresses = jobs.filter(j => j.address).map(j => [j.address, j.city, j.state, j.zip].filter(Boolean).join(', '));
+    const addresses = jobs
+      .filter(j => j.status !== 'completed' && j.address)
+      .map(j => [j.address, j.city, j.state, j.zip].filter(Boolean).join(', '));
     if (addresses.length === 0) return null;
     if (addresses.length === 1) return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addresses[0])}`;
     const dest = addresses[addresses.length - 1];
@@ -63,6 +79,99 @@ export default function EmployeeAssignedJobs() {
   };
 
   const routeUrl = getRouteUrl();
+  const activeJobs = jobs.filter(j => j.status !== 'completed');
+  const completedJobs = jobs.filter(j => j.status === 'completed');
+
+  const renderJob = (job, idx) => {
+    const addr = [job.address, job.city, job.state, job.zip].filter(Boolean).join(', ');
+    const isDone = job.status === 'completed';
+    return (
+      <div
+        key={job.id}
+        className="card"
+        style={isDone ? {
+          background: '#f0fdf4',
+          borderLeft: '4px solid #16a34a',
+          opacity: 0.88,
+        } : {}}
+      >
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'.5rem' }}>
+          <div>
+            <div style={{ display:'flex', alignItems:'center', gap:'.5rem', marginBottom:'.25rem' }}>
+              <span style={{
+                background: isDone ? '#16a34a' : 'var(--blue-700)',
+                color: '#fff', borderRadius: '50%', width: 28, height: 28,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '.82rem', fontWeight: 700
+              }}>
+                {isDone ? '✓' : idx + 1}
+              </span>
+              <strong style={{
+                fontSize: '1.05rem',
+                textDecoration: isDone ? 'line-through' : 'none',
+                color: isDone ? 'var(--gray-500)' : 'inherit'
+              }}>
+                {job.service_name || 'Service'}
+              </strong>
+            </div>
+            <div style={{ fontSize:'.85rem', color:'var(--gray-600)' }}>
+              📅 {job.preferred_date} {job.preferred_time && `at ${job.preferred_time}`}
+            </div>
+          </div>
+          <span className={`badge ${isDone ? 'badge-green' : job.status === 'confirmed' ? 'badge-blue' : 'badge-yellow'}`}
+            style={{ textTransform:'capitalize' }}>
+            {isDone ? '✅ Completed' : job.status}
+          </span>
+        </div>
+
+        <div style={{ marginTop:'.75rem', display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'.75rem' }}>
+          <div>
+            <div style={{ fontSize:'.72rem', color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>👤 Client</div>
+            <div style={{ fontSize:'.88rem' }}>{job.full_client_name || 'N/A'}</div>
+            {job.client_phone && <div style={{ fontSize:'.82rem', color:'var(--gray-500)' }}>📞 {job.client_phone}</div>}
+          </div>
+          <div>
+            <div style={{ fontSize:'.72rem', color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>📍 Address</div>
+            <div style={{ fontSize:'.88rem' }}>{addr || 'No address'}</div>
+          </div>
+          {isDone && job.completed_at && (
+            <div>
+              <div style={{ fontSize:'.72rem', color:'#16a34a', fontWeight:600, textTransform:'uppercase' }}>✅ Completed At</div>
+              <div style={{ fontSize:'.82rem', color:'#16a34a' }}>{new Date(job.completed_at).toLocaleString()}</div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display:'flex', gap:'.5rem', marginTop:'1rem', flexWrap:'wrap' }}>
+          {!isDone && addr && (
+            <button className="btn btn-primary btn-sm" onClick={() => openGoogleMaps(job)}>
+              🗺️ Navigate
+            </button>
+          )}
+          {!isDone && job.client_phone && (
+            <a href={`tel:${job.client_phone}`} className="btn btn-secondary btn-sm">📞 Call Client</a>
+          )}
+          <button className="btn btn-secondary btn-sm" onClick={() => { setPhotoModal(job); loadPhotos(job.id); }}>
+            📷 Before/After Photos
+          </button>
+          {!isDone ? (
+            <button
+              className="btn btn-sm"
+              style={{ background: '#16a34a', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+              onClick={() => markDone(job.id)}
+              disabled={completing[job.id]}
+            >
+              {completing[job.id] ? <span className="spinner" /> : '✅ Mark as Done'}
+            </button>
+          ) : (
+            <span style={{ fontSize:'.82rem', color:'#16a34a', fontWeight:600, alignSelf:'center' }}>
+              ✅ Job Complete
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -70,11 +179,11 @@ export default function EmployeeAssignedJobs() {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'.75rem' }}>
           <div>
             <h1>🗺️ Assigned Jobs</h1>
-            <p>Your upcoming job assignments with navigation and before/after photos.</p>
+            <p>Your job assignments. Tap <strong>✅ Mark as Done</strong> when a job is finished.</p>
           </div>
           {routeUrl && (
             <a href={routeUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
-              🗺️ Optimized Route (All Jobs)
+              🗺️ Optimized Route (Active Jobs)
             </a>
           )}
         </div>
@@ -87,53 +196,24 @@ export default function EmployeeAssignedJobs() {
         </div>
       )}
 
-      <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
-        {jobs.map((job, idx) => {
-          const addr = [job.address, job.city, job.state, job.zip].filter(Boolean).join(', ');
-          return (
-            <div key={job.id} className="card">
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'.5rem' }}>
-                <div>
-                  <div style={{ display:'flex', alignItems:'center', gap:'.5rem', marginBottom:'.25rem' }}>
-                    <span style={{ background:'var(--blue-700)', color:'#fff', borderRadius:'50%', width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.82rem', fontWeight:700 }}>{idx + 1}</span>
-                    <strong style={{ fontSize:'1.05rem' }}>{job.service_name || 'Service'}</strong>
-                  </div>
-                  <div style={{ fontSize:'.85rem', color:'var(--gray-600)' }}>
-                    📅 {job.preferred_date} {job.preferred_time && `at ${job.preferred_time}`}
-                  </div>
-                </div>
-                <span className={`badge badge-${job.status === 'confirmed' ? 'blue' : 'yellow'}`} style={{ textTransform:'capitalize' }}>{job.status}</span>
-              </div>
+      {/* Active jobs */}
+      {activeJobs.length > 0 && (
+        <div style={{ display:'flex', flexDirection:'column', gap:'1rem', marginBottom: completedJobs.length > 0 ? '1.5rem' : 0 }}>
+          {activeJobs.map((job, idx) => renderJob(job, idx))}
+        </div>
+      )}
 
-              <div style={{ marginTop:'.75rem', display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'.75rem' }}>
-                <div>
-                  <div style={{ fontSize:'.72rem', color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>👤 Client</div>
-                  <div style={{ fontSize:'.88rem' }}>{job.full_client_name || 'N/A'}</div>
-                  {job.client_phone && <div style={{ fontSize:'.82rem', color:'var(--gray-500)' }}>📞 {job.client_phone}</div>}
-                </div>
-                <div>
-                  <div style={{ fontSize:'.72rem', color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>📍 Address</div>
-                  <div style={{ fontSize:'.88rem' }}>{addr || 'No address'}</div>
-                </div>
-              </div>
-
-              <div style={{ display:'flex', gap:'.5rem', marginTop:'1rem', flexWrap:'wrap' }}>
-                {addr && (
-                  <button className="btn btn-primary btn-sm" onClick={() => openGoogleMaps(job)}>
-                    🗺️ Navigate
-                  </button>
-                )}
-                {job.client_phone && (
-                  <a href={`tel:${job.client_phone}`} className="btn btn-secondary btn-sm">📞 Call Client</a>
-                )}
-                <button className="btn btn-secondary btn-sm" onClick={() => { setPhotoModal(job); loadPhotos(job.id); }}>
-                  📷 Before/After Photos
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Completed jobs section */}
+      {completedJobs.length > 0 && (
+        <>
+          <div style={{ fontSize:'.8rem', fontWeight:700, color:'#16a34a', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:'.75rem', paddingTop: activeJobs.length > 0 ? '.5rem' : 0 }}>
+            ✅ Completed Jobs ({completedJobs.length})
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+            {completedJobs.map(job => renderJob(job, 0))}
+          </div>
+        </>
+      )}
 
       {/* Before/After Photo Modal */}
       {photoModal && (
@@ -148,7 +228,6 @@ export default function EmployeeAssignedJobs() {
                 {photoModal.service_name} — {photoModal.preferred_date}
               </div>
 
-              {/* Side by side comparison */}
               {(photos[photoModal.id] || []).length > 0 && (
                 <div style={{ marginBottom:'1.25rem' }}>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
@@ -180,7 +259,6 @@ export default function EmployeeAssignedJobs() {
                 </div>
               )}
 
-              {/* Upload */}
               <div style={{ borderTop:'1px solid var(--blue-100)', paddingTop:'1rem' }}>
                 <div style={{ fontSize:'.8rem', fontWeight:700, color:'var(--blue-700)', textTransform:'uppercase', marginBottom:'.75rem' }}>Upload Photo</div>
                 <input ref={fileRef} type="file" accept="image/*" className="form-control" capture="environment" style={{ marginBottom:'.75rem' }} />
