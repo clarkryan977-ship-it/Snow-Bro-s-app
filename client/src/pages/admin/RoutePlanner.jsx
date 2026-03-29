@@ -1,20 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../utils/api';
 
-// ─── Pure helper functions (module-level, never recreated) ───────────────────
-
-async function geocodeAddress(address, city, state, zip) {
-  const q = [address, city, state, zip].filter(Boolean).join(', ');
-  if (!q.trim()) return null;
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&countrycodes=us`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'SnowBros-RoutePlanner/1.0' } });
-    const data = await res.json();
-    if (data && data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-  } catch { /* ignore */ }
-  return null;
-}
-
+// ─── Pure helpers (module-level) ─────────────────────────────────────────────
 function haversine(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -24,680 +11,627 @@ function haversine(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function nearestNeighborSort(stops, startLat, startLng) {
-  const unvisited = [...stops];
-  const sorted = [];
-  let curLat = startLat, curLng = startLng;
-  while (unvisited.length > 0) {
-    let nearestIdx = 0, nearestDist = Infinity;
-    for (let i = 0; i < unvisited.length; i++) {
-      const s = unvisited[i];
-      if (s._lat != null && s._lng != null) {
-        const d = haversine(curLat, curLng, s._lat, s._lng);
-        if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
-      }
-    }
-    const next = unvisited.splice(nearestIdx, 1)[0];
-    sorted.push(next);
-    curLat = next._lat ?? curLat;
-    curLng = next._lng ?? curLng;
-  }
-  return sorted;
-}
-
-// Unified address getter — works for both booking objects and client objects
-function getAddress(item) {
+function getStopAddress(stop) {
   const parts = [
-    item.job_address || item.address,
-    item.job_city    || item.city,
-    item.job_state   || item.state,
-    item.job_zip     || item.zip,
+    stop.stop_address || stop.address,
+    stop.stop_city || stop.city,
+    stop.stop_state || stop.state,
+    stop.stop_zip || stop.zip,
   ].filter(Boolean);
-  return parts.join(', ') || 'No address on file';
+  return parts.join(', ') || 'No address';
 }
 
-// Build a Google Maps navigation URL for a stop
-function mapsUrl(item) {
-  const addr = getAddress(item);
-  if (!addr || addr === 'No address on file') return null;
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}`;
+function mapsUrl(stop) {
+  const addr = getStopAddress(stop);
+  if (!addr || addr === 'No address') return null;
+  return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(addr);
 }
 
-const DEFAULT_START = { lat: 46.8772, lng: -96.7898 };
+function mapsRouteUrl(stops) {
+  const withAddr = stops.filter(s => getStopAddress(s) !== 'No address');
+  if (withAddr.length === 0) return null;
+  if (withAddr.length === 1) return mapsUrl(withAddr[0]);
+  const origin = encodeURIComponent(getStopAddress(withAddr[0]));
+  const dest   = encodeURIComponent(getStopAddress(withAddr[withAddr.length - 1]));
+  const wps    = withAddr.slice(1, -1).map(s => encodeURIComponent(getStopAddress(s))).join('|');
+  return 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + dest + (wps ? '&waypoints=' + wps : '');
+}
 
-// ─── Stable sub-components (module-level — NEVER defined inside the parent) ──
-
-// AvailablePanel: two inner tabs — Bookings and Clients
-function AvailablePanel({
-  // bookings tab
-  bookings, filterDate, loadingBookings, onDateChange,
-  // clients tab
-  clients, loadingClients, clientSearch, onClientSearch,
-  // shared
-  routeIds, onAdd,
-}) {
-  const [innerTab, setInnerTab] = useState('bookings');
-
-  const availableBookings = bookings.filter(b => !routeIds.has(`booking-${b.id}`));
-  const filteredClients = clients.filter(c => {
-    if (routeIds.has(`client-${c.id}`)) return false;
-    if (!clientSearch.trim()) return true;
-    const q = clientSearch.toLowerCase();
-    return (
-      `${c.first_name} ${c.last_name}`.toLowerCase().includes(q) ||
-      (c.address || '').toLowerCase().includes(q) ||
-      (c.city || '').toLowerCase().includes(q)
-    );
-  });
-
-  const tabBtn = (id, label) => (
-    <button
-      onClick={() => setInnerTab(id)}
+// ─── RouteCard ────────────────────────────────────────────────────────────────
+function RouteCard({ route, isSelected, onSelect, onEdit, onDelete }) {
+  const empNames = (route.assigned_employees || []).map(e => e.name).join(', ') || 'Unassigned';
+  return (
+    <div
+      onClick={() => onSelect(route.id)}
       style={{
-        flex: 1, padding: '9px 8px', fontWeight: 700, fontSize: 13,
-        cursor: 'pointer', border: 'none', transition: 'all .15s',
-        background: innerTab === id ? '#2563eb' : '#f1f5f9',
-        color: innerTab === id ? '#fff' : '#374151',
+        background: isSelected ? '#1e3a5f' : '#fff',
+        color: isSelected ? '#fff' : '#1a1a2e',
+        border: '2px solid ' + (isSelected ? '#1e3a5f' : '#e2e8f0'),
+        borderRadius: 10, padding: '14px 16px', marginBottom: 10,
+        cursor: 'pointer',
       }}
     >
-      {label}
-    </button>
-  );
-
-  return (
-    <div style={{
-      background: '#fff', borderRadius: 12, padding: 16,
-      boxShadow: '0 1px 6px rgba(0,0,0,.1)', marginBottom: 16,
-      boxSizing: 'border-box', width: '100%',
-    }}>
-      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>📋 Available</h3>
-
-      {/* Inner tab bar */}
-      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb', marginBottom: 14 }}>
-        {tabBtn('bookings', `📅 Bookings (${availableBookings.length})`)}
-        {tabBtn('clients',  `👥 Clients (${filteredClients.length})`)}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 3 }}>{route.name}</div>
+          <div style={{ fontSize: 12, opacity: .8 }}>
+            {route.route_date
+              ? new Date(route.route_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+              : 'No date set'}
+            {' · '}{route.stop_count || 0} stop{route.stop_count !== 1 ? 's' : ''}
+          </div>
+          <div style={{ fontSize: 12, opacity: .75, marginTop: 2 }}>{'👤 ' + empNames}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
+          <button
+            onClick={e => { e.stopPropagation(); onEdit(route); }}
+            style={{ background: isSelected ? 'rgba(255,255,255,.2)' : '#f0f4f8', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13 }}
+          >✏️</button>
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(route); }}
+            style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13 }}
+          >🗑️</button>
+        </div>
       </div>
-
-      {/* ── BOOKINGS TAB ── */}
-      {innerTab === 'bookings' && (
-        <>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>
-              Filter by Date
-            </label>
-            <input
-              type="date"
-              value={filterDate}
-              onChange={e => onDateChange(e.target.value)}
-              style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box', minHeight: 44 }}
-            />
-          </div>
-          {loadingBookings ? (
-            <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>Loading bookings…</p>
-          ) : availableBookings.length === 0 ? (
-            <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
-              {bookings.length === 0 ? `No active bookings for ${filterDate}` : '✅ All bookings added to route'}
-            </p>
-          ) : (
-            availableBookings.map(b => (
-              <div key={b.id} style={{
-                padding: '12px 14px', borderRadius: 8, marginBottom: 8,
-                background: '#f8fafc', border: '1px solid #e5e7eb',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>
-                        {b.display_name || b.client_name || 'Unknown'}
-                      </span>
-                      <span style={{ background: '#dbeafe', color: '#1d4ed8', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>
-                        Booking
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                      {b.service_name || 'Service'} · {b.preferred_time || 'No time'}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>
-                      📍 {getAddress(b)}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onAdd(b)}
-                    style={{ background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36, whiteSpace: 'nowrap' }}
-                  >
-                    + Add
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </>
-      )}
-
-      {/* ── CLIENTS TAB ── */}
-      {innerTab === 'clients' && (
-        <>
-          <div style={{ marginBottom: 14 }}>
-            <input
-              type="text"
-              value={clientSearch}
-              onChange={e => onClientSearch(e.target.value)}
-              placeholder="Search by name or address…"
-              style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box', minHeight: 44 }}
-            />
-          </div>
-          {loadingClients ? (
-            <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>Loading clients…</p>
-          ) : filteredClients.length === 0 ? (
-            <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
-              {clientSearch ? 'No clients match your search' : 'All clients already on route'}
-            </p>
-          ) : (
-            filteredClients.map(c => (
-              <div key={c.id} style={{
-                padding: '12px 14px', borderRadius: 8, marginBottom: 8,
-                background: '#f8fafc', border: '1px solid #e5e7eb',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>
-                        {c.first_name} {c.last_name}
-                      </span>
-                      <span style={{ background: '#f3e8ff', color: '#7c3aed', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>
-                        Client
-                      </span>
-                      {c.active === 0 && (
-                        <span style={{ background: '#fee2e2', color: '#dc2626', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10 }}>
-                          Inactive
-                        </span>
-                      )}
-                    </div>
-                    {c.phone && (
-                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>📞 {c.phone}</div>
-                    )}
-                    <div style={{ fontSize: 12, color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>
-                      📍 {getAddress(c)}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onAdd({
-                      // Normalise client into a stop-compatible shape
-                      _stopType: 'client',
-                      _clientId: c.id,
-                      id: `client-${c.id}`,
-                      display_name: `${c.first_name} ${c.last_name}`,
-                      client_name: `${c.first_name} ${c.last_name}`,
-                      address: c.address, city: c.city, state: c.state, zip: c.zip,
-                      _lat: c.latitude  || null,
-                      _lng: c.longitude || null,
-                      _geocoded: !!(c.latitude && c.longitude),
-                      service_name: c.service_type || 'Service',
-                      preferred_time: '',
-                      phone: c.phone || '',
-                    })}
-                    style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36, whiteSpace: 'nowrap' }}
-                  >
-                    + Add
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </>
-      )}
     </div>
   );
 }
 
-function RoutePanel({
-  route, saving, saved, geocoding,
-  dragIdx, dragOverIdx,
-  onSave, onClear, onAutoSort, onMoveStop, onRemove,
-  onDragStart, onDragOver, onDrop,
-  startAddressRef,
-}) {
+// ─── StopCard ─────────────────────────────────────────────────────────────────
+function StopCard({ stop, index, onRemove }) {
+  const clientName = stop.first_name
+    ? stop.first_name + ' ' + stop.last_name
+    : (stop.stop_label || ('Stop ' + (index + 1)));
+  const addr = getStopAddress(stop);
+  const url  = mapsUrl(stop);
   return (
-    <div style={{
-      background: '#fff', borderRadius: 12, padding: 16,
-      boxShadow: '0 1px 6px rgba(0,0,0,.1)', marginBottom: 16,
-      boxSizing: 'border-box', width: '100%',
-    }}>
-      {/* Header */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚗 Today's Route ({route.length} stops)</h3>
-        {route.length > 0 && (
-          <button
-            onClick={onClear}
-            style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 36 }}
-          >
-            ✕ Clear
-          </button>
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ background: '#1e3a5f', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+        {index + 1}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>{clientName}</div>
+        <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addr}</div>
+        {stop.booking_service_type && <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 2 }}>{'📋 ' + stop.booking_service_type}</div>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        {url && (
+          <a href={url} target="_blank" rel="noopener noreferrer"
+            style={{ background: '#eff6ff', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13, textDecoration: 'none' }}>
+            🗺️
+          </a>
         )}
+        <button onClick={() => onRemove(stop.id)}
+          style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13 }}>
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── AddStopPanel ─────────────────────────────────────────────────────────────
+function AddStopPanel({ routeId, existingStopIds, onAdded }) {
+  const [tab, setTab] = useState('bookings');
+  const [bookings, setBookings] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState({});
+
+  useEffect(() => {
+    setLoading(true);
+    if (tab === 'bookings') {
+      api.get('/bookings?date=' + filterDate)
+        .then(r => setBookings(r.data || []))
+        .catch(() => setBookings([]))
+        .finally(() => setLoading(false));
+    } else {
+      api.get('/clients')
+        .then(r => setClients(r.data || []))
+        .catch(() => setClients([]))
+        .finally(() => setLoading(false));
+    }
+  }, [tab, filterDate]);
+
+  const addBookingStop = async (booking) => {
+    setAdding(a => ({ ...a, [booking.id]: true }));
+    try {
+      await api.post('/routes/' + routeId + '/stops', {
+        client_id: booking.client_id,
+        booking_id: booking.id,
+        stop_label: booking.service_type || 'Service',
+        address: booking.address || booking.job_address || '',
+        city: booking.city || booking.job_city || '',
+        state: booking.state || booking.job_state || '',
+        zip: booking.zip || booking.job_zip || '',
+      });
+      onAdded();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add stop');
+    } finally {
+      setAdding(a => ({ ...a, [booking.id]: false }));
+    }
+  };
+
+  const addClientStop = async (client) => {
+    setAdding(a => ({ ...a, [client.id]: true }));
+    try {
+      await api.post('/routes/' + routeId + '/stops', {
+        client_id: client.id,
+        stop_label: client.first_name + ' ' + client.last_name,
+        address: client.address || '',
+        city: client.city || '',
+        state: client.state || '',
+        zip: client.zip || '',
+      });
+      onAdded();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add stop');
+    } finally {
+      setAdding(a => ({ ...a, [client.id]: false }));
+    }
+  };
+
+  const tabStyle = (active) => ({
+    flex: 1, padding: '8px 0', border: 'none', borderRadius: 6,
+    background: active ? '#1e3a5f' : 'transparent',
+    color: active ? '#fff' : '#64748b',
+    fontWeight: 600, fontSize: 13, cursor: 'pointer',
+  });
+
+  const filteredClients = clients.filter(c => {
+    const name = (c.first_name + ' ' + c.last_name).toLowerCase();
+    const addr = (c.address || '').toLowerCase();
+    const q = search.toLowerCase();
+    return name.includes(q) || addr.includes(q);
+  });
+
+  return (
+    <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14, marginTop: 12, border: '1px solid #e2e8f0' }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: '#1e3a5f' }}>➕ Add Stops</div>
+      <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 8, padding: 3, marginBottom: 12 }}>
+        <button style={tabStyle(tab === 'bookings')} onClick={() => setTab('bookings')}>📋 Bookings</button>
+        <button style={tabStyle(tab === 'clients')} onClick={() => setTab('clients')}>👥 Clients</button>
       </div>
 
-      {/* Starting address — uses a ref so typing never triggers parent re-render */}
-      <div style={{ marginBottom: 14 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>
-          Starting Address (for auto-sort)
-        </label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            ref={startAddressRef}
-            defaultValue=""
-            placeholder="e.g. 1812 33rd St S, Moorhead MN (blank = Fargo)"
-            style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, flex: 1, boxSizing: 'border-box', minHeight: 44 }}
-          />
-          <button
-            onClick={onAutoSort}
-            disabled={geocoding}
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 14, minHeight: 44, whiteSpace: 'nowrap' }}
-          >
-            {geocoding ? '⏳' : '🧭 Sort'}
-          </button>
-        </div>
-        <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 0' }}>
-          Nearest-neighbor sort via OpenStreetMap — works for both bookings and clients
-        </p>
-      </div>
-
-      {/* Empty state */}
-      {route.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '32px 16px', color: '#9ca3af' }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>🗺️</div>
-          <p>Add bookings or clients from the Available panel to build today's route.</p>
-        </div>
-      ) : (
+      {tab === 'bookings' && (
         <div>
-          {route.map((stop, idx) => {
-            const isClient = stop._stopType === 'client';
-            const navUrl = mapsUrl(stop);
-            return (
-              <div
-                key={stop.id}
-                draggable
-                onDragStart={() => onDragStart(idx)}
-                onDragOver={(e) => onDragOver(e, idx)}
-                onDrop={() => onDrop(idx)}
-                style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                  padding: '12px 12px', borderRadius: 8, marginBottom: 8,
-                  background: dragOverIdx === idx ? '#eff6ff' : (isClient ? '#faf5ff' : '#f0fdf4'),
-                  border: `2px solid ${dragOverIdx === idx ? '#2563eb' : (isClient ? '#e9d5ff' : '#bbf7d0')}`,
-                  cursor: 'grab',
-                  opacity: dragIdx === idx ? 0.5 : 1,
-                  transition: 'all .15s',
-                  boxSizing: 'border-box',
-                }}
-              >
-                <div style={{
-                  minWidth: 30, height: 30, borderRadius: '50%',
-                  background: isClient ? '#7c3aed' : '#2563eb', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 800, fontSize: 13, flexShrink: 0,
-                }}>
-                  {idx + 1}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, wordBreak: 'break-word' }}>
-                      {stop.display_name || stop.client_name || 'Unknown'}
-                    </span>
-                    <span style={{
-                      background: isClient ? '#f3e8ff' : '#dbeafe',
-                      color: isClient ? '#7c3aed' : '#1d4ed8',
-                      fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10,
-                    }}>
-                      {isClient ? 'Client' : 'Booking'}
-                    </span>
-                  </div>
-                  {!isClient && (
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                      {stop.service_name || 'Service'} · {stop.preferred_time || 'No time'}
+          <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+            style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #e2e8f0', marginBottom: 8, fontSize: 13, boxSizing: 'border-box' }} />
+          {loading
+            ? <div style={{ textAlign: 'center', color: '#64748b', padding: 12 }}>Loading…</div>
+            : bookings.length === 0
+              ? <div style={{ textAlign: 'center', color: '#64748b', fontSize: 13, padding: 12 }}>No bookings for this date</div>
+              : bookings.map(b => {
+                const key = b.id + '_booking';
+                const done = existingStopIds.has(key);
+                const cname = b.client_name || b.display_name || ('Client #' + b.client_id);
+                return (
+                  <div key={b.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{cname}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{b.service_type} · {b.address || b.job_address || 'No address'}</div>
                     </div>
-                  )}
-                  {isClient && stop.phone && (
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>📞 {stop.phone}</div>
-                  )}
-                  <div style={{ fontSize: 12, color: '#374151', marginTop: 2, wordBreak: 'break-word' }}>
-                    📍 {getAddress(stop)}
+                    <button onClick={() => addBookingStop(b)} disabled={done || adding[b.id]}
+                      style={{ background: done ? '#d1fae5' : '#1e3a5f', color: done ? '#065f46' : '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: done ? 'default' : 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                      {done ? '✓' : adding[b.id] ? '…' : '+ Add'}
+                    </button>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                    {stop._lat && (
-                      <span style={{ fontSize: 11, color: '#22c55e' }}>✅ Geocoded</span>
-                    )}
-                    {navUrl && (
-                      <a
-                        href={navUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontSize: 11, color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}
-                      >
-                        🗺️ Navigate
-                      </a>
-                    )}
+                );
+              })
+          }
+        </div>
+      )}
+
+      {tab === 'clients' && (
+        <div>
+          <input type="text" placeholder="Search clients…" value={search} onChange={e => setSearch(e.target.value)}
+            style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #e2e8f0', marginBottom: 8, fontSize: 13, boxSizing: 'border-box' }} />
+          {loading
+            ? <div style={{ textAlign: 'center', color: '#64748b', padding: 12 }}>Loading…</div>
+            : filteredClients.length === 0
+              ? <div style={{ textAlign: 'center', color: '#64748b', fontSize: 13, padding: 12 }}>No clients found</div>
+              : filteredClients.map(c => {
+                const key = c.id + '_client';
+                const done = existingStopIds.has(key);
+                const addr = [c.address, c.city, c.state].filter(Boolean).join(', ') || 'No address';
+                return (
+                  <div key={c.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{c.first_name} {c.last_name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addr}</div>
+                    </div>
+                    <button onClick={() => addClientStop(c)} disabled={done || adding[c.id]}
+                      style={{ background: done ? '#d1fae5' : '#1e3a5f', color: done ? '#065f46' : '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: done ? 'default' : 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                      {done ? '✓' : adding[c.id] ? '…' : '+ Add'}
+                    </button>
                   </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-                  <button
-                    onClick={() => onMoveStop(idx, -1)}
-                    disabled={idx === 0}
-                    style={{ background: '#6b7280', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 10px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 32, opacity: idx === 0 ? 0.3 : 1 }}
-                  >▲</button>
-                  <button
-                    onClick={() => onMoveStop(idx, 1)}
-                    disabled={idx === route.length - 1}
-                    style={{ background: '#6b7280', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 10px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 32, opacity: idx === route.length - 1 ? 0.3 : 1 }}
-                  >▼</button>
-                  <button
-                    onClick={() => onRemove(stop.id)}
-                    style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 10px', fontWeight: 700, cursor: 'pointer', fontSize: 13, minHeight: 32 }}
-                  >✕</button>
-                </div>
-              </div>
-            );
-          })}
-
-          <div style={{ marginTop: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>
-            💡 Drag to reorder, or use ▲▼ buttons. Click 🗺️ Navigate on any stop to open Google Maps.
-            Tap "💾 Save Route" below to push the order to employees.
-          </div>
-
-          {/* ── SAVE ROUTE BUTTON — always visible when route has stops ── */}
-          <button
-            onClick={onSave}
-            disabled={saving}
-            style={{
-              background: saved ? '#22c55e' : '#7c3aed',
-              color: '#fff', border: 'none', borderRadius: 8,
-              padding: '13px 16px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
-              fontSize: 15, minHeight: 48, width: '100%', marginTop: 12,
-              boxSizing: 'border-box', letterSpacing: '.01em',
-            }}
-          >
-            {saving ? '⏳ Saving…' : saved ? '✅ Route Saved!' : '💾 Save Route Order'}
-          </button>
+                );
+              })
+          }
         </div>
       )}
     </div>
   );
 }
 
-// ─── Main component ──────────────────────────────────────────────────────────
+// ─── RouteFormModal ───────────────────────────────────────────────────────────
+function RouteFormModal({ route, employees, onSave, onClose }) {
+  const [name, setName] = useState(route ? route.name : '');
+  const [routeDate, setRouteDate] = useState(
+    route && route.route_date ? route.route_date.slice(0, 10) : new Date().toISOString().slice(0, 10)
+  );
+  const [type, setType] = useState(route ? (route.type || 'lawn') : 'lawn');
+  const [description, setDescription] = useState(route ? (route.description || '') : '');
+  const [selectedEmpIds, setSelectedEmpIds] = useState(() => {
+    if (!route) return [];
+    try { return JSON.parse(route.assigned_employee_ids || '[]').map(Number); } catch { return []; }
+  });
+  const [saving, setSaving] = useState(false);
 
-export default function RoutePlanner() {
-  const [bookings, setBookings]         = useState([]);
-  const [clients, setClients]           = useState([]);
-  const [route, setRoute]               = useState([]);
-  const [loadingBookings, setLoadingBookings] = useState(false);
-  const [loadingClients, setLoadingClients]   = useState(false);
-  const [geocoding, setGeocoding]       = useState(false);
-  const [saving, setSaving]             = useState(false);
-  const [saved, setSaved]               = useState(false);
-  const [filterDate, setFilterDate]     = useState(() => new Date().toISOString().split('T')[0]);
-  const [clientSearch, setClientSearch] = useState('');
-  const [dragIdx, setDragIdx]           = useState(null);
-  const [dragOverIdx, setDragOverIdx]   = useState(null);
-  const [msg, setMsg]                   = useState('');
-  const [activeTab, setActiveTab]       = useState('available');
-
-  // Uncontrolled ref for starting address — typing never triggers a re-render
-  const startAddressRef = useRef(null);
-
-  const showMsg = (text, ms = 3500) => {
-    setMsg(text);
-    setTimeout(() => setMsg(''), ms);
+  const toggleEmp = (id) => {
+    setSelectedEmpIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  // Load bookings filtered by date
-  const loadBookings = useCallback(async () => {
-    setLoadingBookings(true);
-    try {
-      const r = await api.get('/bookings');
-      const filtered = r.data.filter(b =>
-        b.preferred_date === filterDate && b.status !== 'completed'
-      );
-      setBookings(filtered);
-    } catch (e) { console.error(e); }
-    setLoadingBookings(false);
-  }, [filterDate]);
-
-  // Load all clients (once on mount)
-  const loadClients = useCallback(async () => {
-    setLoadingClients(true);
-    try {
-      const r = await api.get('/clients');
-      setClients(r.data);
-    } catch (e) { console.error(e); }
-    setLoadingClients(false);
-  }, []);
-
-  useEffect(() => { loadBookings(); }, [loadBookings]);
-  useEffect(() => { loadClients(); }, [loadClients]);
-
-  // Set of IDs already on the route (format: "booking-{id}" or "client-{id}")
-  const routeIds = new Set(route.map(s => s.id));
-
-  const addToRoute = (stop) => {
-    // For booking stops, normalise the id to "booking-{id}" format
-    const normStop = stop._stopType === 'client'
-      ? stop  // already normalised in AvailablePanel
-      : {
-          ...stop,
-          _stopType: 'booking',
-          id: `booking-${stop.id}`,
-          _bookingId: stop.id,
-          _lat: stop._lat ?? (stop.latitude  || null),
-          _lng: stop._lng ?? (stop.longitude || null),
-          _geocoded: stop._geocoded ?? !!(stop.latitude && stop.longitude),
-        };
-
-    setRoute(prev => [...prev, normStop]);
-    showMsg(`✅ Added ${normStop.display_name || normStop.client_name} to route`);
-    setActiveTab('route');
-  };
-
-  const removeFromRoute = (id) => setRoute(prev => prev.filter(s => s.id !== id));
-
-  const moveStop = (idx, dir) => {
-    setRoute(prev => {
-      const arr = [...prev];
-      const target = idx + dir;
-      if (target < 0 || target >= arr.length) return arr;
-      [arr[idx], arr[target]] = [arr[target], arr[idx]];
-      return arr;
-    });
-  };
-
-  const onDragStart = (idx) => setDragIdx(idx);
-  const onDragOver  = (e, idx) => { e.preventDefault(); setDragOverIdx(idx); };
-  const onDrop      = (idx) => {
-    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOverIdx(null); return; }
-    setRoute(prev => {
-      const arr = [...prev];
-      const [moved] = arr.splice(dragIdx, 1);
-      arr.splice(idx, 0, moved);
-      return arr;
-    });
-    setDragIdx(null);
-    setDragOverIdx(null);
-  };
-
-  const autoSort = async () => {
-    if (route.length === 0) { showMsg('Add stops to the route first'); return; }
-    setGeocoding(true);
-    showMsg('📍 Geocoding addresses via OpenStreetMap…', 10000);
-    let startLat = DEFAULT_START.lat, startLng = DEFAULT_START.lng;
-    const addr = startAddressRef.current?.value?.trim() || '';
-    if (addr) {
-      const geo = await geocodeAddress(addr, '', '', '');
-      if (geo) { startLat = geo.lat; startLng = geo.lng; }
-    }
-    const geocoded = await Promise.all(route.map(async (stop) => {
-      if (stop._geocoded && stop._lat != null) return stop;
-      const geo = await geocodeAddress(
-        stop.job_address || stop.address || '',
-        stop.job_city    || stop.city    || '',
-        stop.job_state   || stop.state   || '',
-        stop.job_zip     || stop.zip     || '',
-      );
-      return { ...stop, _lat: geo?.lat ?? null, _lng: geo?.lng ?? null, _geocoded: true };
-    }));
-    const sorted = nearestNeighborSort(geocoded, startLat, startLng);
-    setRoute(sorted);
-    setGeocoding(false);
-    showMsg(`🧭 Route optimized! ${sorted.length} stops sorted by proximity.`);
-  };
-
-  const saveOrder = async () => {
-    if (route.length === 0) return;
+  const handleSave = async () => {
+    if (!name.trim()) { alert('Route name is required'); return; }
     setSaving(true);
     try {
-      // Separate booking stops from client stops
-      const bookingOrders = route
-        .filter(s => s._stopType === 'booking')
-        .map((s, idx) => ({ id: s._bookingId, route_order: idx + 1 }));
-
-      // Save booking route order
-      if (bookingOrders.length > 0) {
-        await api.patch('/bookings/route-order', { orders: bookingOrders });
-      }
-
-      // Client stops don't need to be saved to the DB for today's route —
-      // they are ephemeral (just for navigation today). We still show them
-      // in the saved route display so the employee sees the full stop list.
-
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-      showMsg(`💾 Route saved! ${bookingOrders.length} booking stop${bookingOrders.length !== 1 ? 's' : ''} ordered for employees.`);
-    } catch (e) {
-      showMsg('❌ Failed to save: ' + (e.response?.data?.error || e.message));
-    }
-    setSaving(false);
+      await onSave({ name: name.trim(), route_date: routeDate, type, description, assigned_employee_ids: selectedEmpIds });
+    } finally { setSaving(false); }
   };
 
-  const clearRoute = () => {
-    if (!window.confirm('Clear all stops from the route?')) return;
-    setRoute([]);
-  };
-
-  // ── Determine screen width for layout (SSR-safe) ──
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    const check = () => setIsDesktop(window.innerWidth >= 768);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-
-  // ── Layout: pure inline styles, zero CSS classes for the panels ──
-  const outerStyle = {
-    padding: 16,
-    maxWidth: '100%',
-    boxSizing: 'border-box',
-    overflowX: 'hidden',
-  };
-
-  const panelsStyle = {
-    display: 'flex',
-    flexDirection: isDesktop ? 'row' : 'column',
-    alignItems: 'flex-start',
-    gap: isDesktop ? 16 : 0,
-    width: '100%',
-    boxSizing: 'border-box',
-  };
-
-  const panelStyle = {
-    width: '100%',
-    boxSizing: 'border-box',
-    ...(isDesktop ? { flex: 1, minWidth: 0 } : {}),
-  };
-
-  // On mobile: show only the active tab panel; on desktop: show both
-  const showAvailable = isDesktop || activeTab === 'available';
-  const showRoute     = isDesktop || activeTab === 'route';
+  const inp = { width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 14, marginTop: 4, boxSizing: 'border-box' };
+  const lbl = { fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginTop: 14 };
 
   return (
-    <div style={outerStyle}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>🗺️ Route Planner</h1>
-      <p style={{ color: '#6b7280', marginBottom: 16, fontSize: 14, lineHeight: 1.5 }}>
-        Add bookings <em>or</em> any client directly to today's route. Auto-sort by geography, reorder stops, then save so employees see jobs in the right order.
-      </p>
-
-      {msg && (
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#1e40af', fontWeight: 600, fontSize: 14 }}>
-          {msg}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, color: '#1e3a5f', fontSize: 18 }}>{route ? 'Edit Route' : 'New Route'}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#64748b' }}>✕</button>
         </div>
-      )}
+
+        <label style={lbl}>Route Name *</label>
+        <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Crew A – Monday, Gabe's Route" />
+
+        <label style={lbl}>Date</label>
+        <input type="date" style={inp} value={routeDate} onChange={e => setRouteDate(e.target.value)} />
+
+        <label style={lbl}>Type</label>
+        <select style={inp} value={type} onChange={e => setType(e.target.value)}>
+          <option value="lawn">🌿 Lawn Care</option>
+          <option value="snow">❄️ Snow Removal</option>
+          <option value="landscape">🌱 Landscape</option>
+          <option value="other">📋 Other</option>
+        </select>
+
+        <label style={lbl}>Description (optional)</label>
+        <input style={inp} value={description} onChange={e => setDescription(e.target.value)} placeholder="Notes about this route…" />
+
+        <label style={lbl}>Assign Employees</label>
+        <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {employees.map(emp => {
+            const selected = selectedEmpIds.includes(emp.id);
+            return (
+              <button key={emp.id} onClick={() => toggleEmp(emp.id)}
+                style={{ padding: '6px 12px', borderRadius: 20, border: '2px solid ' + (selected ? '#1e3a5f' : '#e2e8f0'), background: selected ? '#1e3a5f' : '#fff', color: selected ? '#fff' : '#374151', fontSize: 13, cursor: 'pointer', fontWeight: selected ? 700 : 400 }}>
+                {selected ? '✓ ' : ''}{emp.first_name} {emp.last_name}
+              </button>
+            );
+          })}
+          {employees.length === 0 && <div style={{ color: '#64748b', fontSize: 13 }}>No employees found</div>}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: 14 }}>Cancel</button>
+          <button onClick={handleSave} disabled={saving}
+            style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: '#1e3a5f', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>
+            {saving ? 'Saving…' : (route ? 'Save Changes' : 'Create Route')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main RoutePlanner ────────────────────────────────────────────────────────
+export default function RoutePlanner() {
+  const [routes, setRoutes] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [loadingRoutes, setLoadingRoutes] = useState(true);
+  const [loadingStops, setLoadingStops] = useState(false);
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showAllDates, setShowAllDates] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingRoute, setEditingRoute] = useState(null);
+  const [showAddStop, setShowAddStop] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [mobileView, setMobileView] = useState('routes');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const startAddressRef = useRef(null);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const loadRoutes = useCallback(() => {
+    setLoadingRoutes(true);
+    const url = showAllDates ? '/routes' : ('/routes?date=' + filterDate);
+    api.get(url)
+      .then(r => setRoutes(r.data || []))
+      .catch(() => setRoutes([]))
+      .finally(() => setLoadingRoutes(false));
+  }, [filterDate, showAllDates]);
+
+  useEffect(() => {
+    api.get('/employees').then(r => setEmployees(r.data || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => { loadRoutes(); }, [loadRoutes]);
+
+  const loadRouteDetail = useCallback((id) => {
+    if (!id) { setSelectedRoute(null); return; }
+    setLoadingStops(true);
+    api.get('/routes/' + id)
+      .then(r => setSelectedRoute(r.data))
+      .catch(() => setSelectedRoute(null))
+      .finally(() => setLoadingStops(false));
+  }, []);
+
+  const handleSelectRoute = (id) => {
+    setSelectedRouteId(id);
+    loadRouteDetail(id);
+    setShowAddStop(false);
+    if (isMobile) setMobileView('stops');
+  };
+
+  const handleCreateRoute = async (data) => {
+    await api.post('/routes', data);
+    setShowForm(false);
+    loadRoutes();
+  };
+
+  const handleEditRoute = async (data) => {
+    await api.put('/routes/' + editingRoute.id, data);
+    setEditingRoute(null);
+    setShowForm(false);
+    loadRoutes();
+    if (selectedRouteId === editingRoute.id) loadRouteDetail(editingRoute.id);
+  };
+
+  const handleDeleteRoute = async (route) => {
+    if (!window.confirm('Delete route "' + route.name + '"? This will remove all ' + (route.stop_count || 0) + ' stops.')) return;
+    await api.delete('/routes/' + route.id);
+    if (selectedRouteId === route.id) { setSelectedRouteId(null); setSelectedRoute(null); }
+    loadRoutes();
+  };
+
+  const handleRemoveStop = async (stopId) => {
+    if (!selectedRouteId) return;
+    await api.delete('/routes/' + selectedRouteId + '/stops/' + stopId);
+    loadRouteDetail(selectedRouteId);
+    loadRoutes();
+  };
+
+  const handleStopAdded = () => {
+    loadRouteDetail(selectedRouteId);
+    loadRoutes();
+  };
+
+  const handleGeoSort = async () => {
+    if (!selectedRouteId) return;
+    setOptimizing(true);
+    try {
+      let startLat = 46.8772, startLng = -96.7898;
+      const addrVal = startAddressRef.current ? startAddressRef.current.value.trim() : '';
+      if (addrVal) {
+        try {
+          const geoUrl = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(addrVal) + '&limit=1&countrycodes=us';
+          const res = await fetch(geoUrl, { headers: { 'User-Agent': 'SnowBros-RoutePlanner/1.0' } });
+          const data = await res.json();
+          if (data && data[0]) { startLat = parseFloat(data[0].lat); startLng = parseFloat(data[0].lon); }
+        } catch { /* use default */ }
+      }
+      await api.post('/routes/' + selectedRouteId + '/optimize', { start_lat: startLat, start_lng: startLng });
+      loadRouteDetail(selectedRouteId);
+    } finally { setOptimizing(false); }
+  };
+
+  const existingStopIds = new Set(
+    (selectedRoute ? selectedRoute.stops || [] : []).map(s =>
+      s.booking_id ? (s.booking_id + '_booking') : (s.client_id + '_client')
+    )
+  );
+
+  // Pure inline layout — guaranteed single column on mobile
+  const panelsStyle = isMobile
+    ? { display: 'flex', flexDirection: 'column', width: '100%' }
+    : { display: 'flex', flexDirection: 'row', gap: 16, width: '100%', alignItems: 'flex-start' };
+
+  const leftStyle = isMobile
+    ? { width: '100%', display: mobileView === 'routes' ? 'block' : 'none' }
+    : { width: 320, flexShrink: 0 };
+
+  const rightStyle = isMobile
+    ? { width: '100%', display: mobileView === 'stops' ? 'block' : 'none' }
+    : { flex: 1, minWidth: 0 };
+
+  return (
+    <div style={{ padding: 16, maxWidth: 1100, margin: '0 auto', boxSizing: 'border-box' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <h2 style={{ margin: 0, color: '#1e3a5f', fontSize: 22 }}>🗺️ Route Planner</h2>
+        <button
+          onClick={() => { setEditingRoute(null); setShowForm(true); }}
+          style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+          + New Route
+        </button>
+      </div>
+
+      {/* Date filter */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <input type="date" value={filterDate}
+          onChange={e => { setFilterDate(e.target.value); setShowAllDates(false); }}
+          style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 14 }} />
+        <button onClick={() => setShowAllDates(v => !v)}
+          style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: showAllDates ? '#1e3a5f' : '#fff', color: showAllDates ? '#fff' : '#374151', fontSize: 13, cursor: 'pointer' }}>
+          {showAllDates ? '📅 All Dates (active)' : '📅 Show All Dates'}
+        </button>
+      </div>
 
       {/* Mobile tab bar — only rendered on mobile */}
-      {!isDesktop && (
-        <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: '1px solid #e5e7eb', marginBottom: 16 }}>
+      {isMobile && (
+        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 8, padding: 3, marginBottom: 12 }}>
           <button
-            onClick={() => setActiveTab('available')}
-            style={{
-              flex: 1, padding: '12px 8px', textAlign: 'center', fontWeight: 700, fontSize: 14,
-              cursor: 'pointer', border: 'none', transition: 'all .15s',
-              background: activeTab === 'available' ? '#2563eb' : '#f8fafc',
-              color: activeTab === 'available' ? '#fff' : '#374151',
-            }}
-          >
-            📋 Available
+            style={{ flex: 1, padding: '8px 0', border: 'none', borderRadius: 6, background: mobileView === 'routes' ? '#1e3a5f' : 'transparent', color: mobileView === 'routes' ? '#fff' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+            onClick={() => setMobileView('routes')}>
+            {'📋 Routes (' + routes.length + ')'}
           </button>
           <button
-            onClick={() => setActiveTab('route')}
-            style={{
-              flex: 1, padding: '12px 8px', textAlign: 'center', fontWeight: 700, fontSize: 14,
-              cursor: 'pointer', border: 'none', transition: 'all .15s',
-              background: activeTab === 'route' ? '#2563eb' : '#f8fafc',
-              color: activeTab === 'route' ? '#fff' : '#374151',
-            }}
-          >
-            🚗 Route ({route.length})
+            style={{ flex: 1, padding: '8px 0', border: 'none', borderRadius: 6, background: mobileView === 'stops' ? '#1e3a5f' : 'transparent', color: mobileView === 'stops' ? '#fff' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+            onClick={() => setMobileView('stops')}>
+            {'📍 ' + (selectedRoute ? selectedRoute.name : 'Select Route')}
           </button>
         </div>
       )}
 
-      {/* Panels */}
       <div style={panelsStyle}>
-        {showAvailable && (
-          <div style={panelStyle}>
-            <AvailablePanel
-              bookings={bookings}
-              filterDate={filterDate}
-              loadingBookings={loadingBookings}
-              onDateChange={setFilterDate}
-              clients={clients}
-              loadingClients={loadingClients}
-              clientSearch={clientSearch}
-              onClientSearch={setClientSearch}
-              routeIds={routeIds}
-              onAdd={addToRoute}
-            />
+        {/* LEFT: Route List */}
+        <div style={leftStyle}>
+          <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, border: '1px solid #e2e8f0' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a5f', marginBottom: 12 }}>
+              Routes
+              {routes.length > 0 && (
+                <span style={{ background: '#1e3a5f', color: '#fff', borderRadius: 20, padding: '2px 8px', fontSize: 12, marginLeft: 6 }}>
+                  {routes.length}
+                </span>
+              )}
+            </div>
+            {loadingRoutes ? (
+              <div style={{ textAlign: 'center', color: '#64748b', padding: 20 }}>Loading…</div>
+            ) : routes.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#64748b', padding: 20, fontSize: 13 }}>
+                {showAllDates ? 'No routes found.' : 'No routes for this date.'}
+                <br />
+                <button onClick={() => { setEditingRoute(null); setShowForm(true); }}
+                  style={{ marginTop: 10, background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
+                  + Create First Route
+                </button>
+              </div>
+            ) : (
+              routes.map(r => (
+                <RouteCard
+                  key={r.id}
+                  route={r}
+                  isSelected={r.id === selectedRouteId}
+                  onSelect={handleSelectRoute}
+                  onEdit={route => { setEditingRoute(route); setShowForm(true); }}
+                  onDelete={handleDeleteRoute}
+                />
+              ))
+            )}
           </div>
-        )}
-        {showRoute && (
-          <div style={panelStyle}>
-            <RoutePanel
-              route={route}
-              saving={saving}
-              saved={saved}
-              geocoding={geocoding}
-              dragIdx={dragIdx}
-              dragOverIdx={dragOverIdx}
-              onSave={saveOrder}
-              onClear={clearRoute}
-              onAutoSort={autoSort}
-              onMoveStop={moveStop}
-              onRemove={removeFromRoute}
-              onDragStart={onDragStart}
-              onDragOver={onDragOver}
-              onDrop={onDrop}
-              startAddressRef={startAddressRef}
-            />
-          </div>
-        )}
+        </div>
+
+        {/* RIGHT: Route Detail */}
+        <div style={rightStyle}>
+          {!selectedRoute && !loadingStops ? (
+            <div style={{ background: '#f8fafc', borderRadius: 12, padding: 40, textAlign: 'center', border: '1px solid #e2e8f0', color: '#64748b' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🗺️</div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Select a route to view stops</div>
+              <div style={{ fontSize: 13, marginTop: 6 }}>Or create a new route to get started</div>
+            </div>
+          ) : loadingStops ? (
+            <div style={{ background: '#f8fafc', borderRadius: 12, padding: 40, textAlign: 'center', border: '1px solid #e2e8f0', color: '#64748b' }}>
+              Loading stops…
+            </div>
+          ) : selectedRoute && (
+            <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, border: '1px solid #e2e8f0' }}>
+              {/* Route header */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                  <div>
+                    <h3 style={{ margin: 0, color: '#1e3a5f', fontSize: 18 }}>{selectedRoute.name}</h3>
+                    <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>
+                      {selectedRoute.route_date
+                        ? new Date(selectedRoute.route_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                        : 'No date set'}
+                      {' · '}{(selectedRoute.stops || []).length} stops
+                    </div>
+                    {selectedRoute.assigned_employees && selectedRoute.assigned_employees.length > 0 && (
+                      <div style={{ fontSize: 12, color: '#7c3aed', marginTop: 2 }}>
+                        {'👤 ' + selectedRoute.assigned_employees.map(e => e.name || ('Employee #' + e)).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => {
+                        const url = mapsRouteUrl(selectedRoute.stops || []);
+                        if (url) window.open(url, '_blank', 'noopener');
+                      }}
+                      style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 8, padding: '7px 12px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                      🗺️ Open in Maps
+                    </button>
+                    <button onClick={() => setShowAddStop(v => !v)}
+                      style={{ background: showAddStop ? '#1e3a5f' : '#fff', color: showAddStop ? '#fff' : '#1e3a5f', border: '2px solid #1e3a5f', borderRadius: 8, padding: '7px 12px', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>
+                      {showAddStop ? '✕ Close' : '+ Add Stops'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Geo-sort bar */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                  <input ref={startAddressRef} placeholder="Starting address for geo-sort (optional)"
+                    style={{ flex: 1, minWidth: 160, padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }} />
+                  <button onClick={handleGeoSort} disabled={optimizing}
+                    style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {optimizing ? '⏳ Sorting…' : '📍 Geo-Sort'}
+                  </button>
+                </div>
+              </div>
+
+              {showAddStop && (
+                <AddStopPanel
+                  routeId={selectedRouteId}
+                  existingStopIds={existingStopIds}
+                  onAdded={handleStopAdded}
+                />
+              )}
+
+              <div style={{ marginTop: 14 }}>
+                {(!selectedRoute.stops || selectedRoute.stops.length === 0) ? (
+                  <div style={{ textAlign: 'center', color: '#64748b', padding: 24, fontSize: 13 }}>
+                    No stops yet. Click "+ Add Stops" to add clients or bookings.
+                  </div>
+                ) : (
+                  selectedRoute.stops.map((stop, idx) => (
+                    <StopCard key={stop.id} stop={stop} index={idx} onRemove={handleRemoveStop} />
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {showForm && (
+        <RouteFormModal
+          route={editingRoute}
+          employees={employees}
+          onSave={editingRoute ? handleEditRoute : handleCreateRoute}
+          onClose={() => { setShowForm(false); setEditingRoute(null); }}
+        />
+      )}
     </div>
   );
 }

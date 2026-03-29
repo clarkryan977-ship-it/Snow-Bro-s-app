@@ -499,6 +499,19 @@ async function initDB() {
     )
   `);
 
+  // ── Named Routes: add date + employee assignment columns ──
+  await db.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS route_date DATE`).catch(() => {});
+  await db.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS assigned_employee_ids TEXT DEFAULT '[]'`).catch(() => {});
+  await db.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_routes_date ON routes(route_date)`).catch(() => {});
+  // route_stops: add booking_id and label columns for mixed booking+client stops
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS stop_label TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS state TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS zip TEXT DEFAULT ''`).catch(() => {});
+
   // ── Indexes ──
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)',

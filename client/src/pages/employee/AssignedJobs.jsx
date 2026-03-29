@@ -3,6 +3,8 @@ import api from '../../utils/api';
 
 export default function EmployeeAssignedJobs() {
   const [jobs, setJobs] = useState([]);
+  const [myRoutes, setMyRoutes] = useState([]);
+  const [routeTab, setRouteTab] = useState('jobs'); // 'jobs' | 'routes'
   const [photos, setPhotos] = useState({});
   const [photoModal, setPhotoModal] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -12,6 +14,7 @@ export default function EmployeeAssignedJobs() {
 
   const load = () => {
     api.get('/calendar/my-jobs').then(r => setJobs(r.data)).catch(() => {});
+    api.get('/routes/my-routes').then(r => setMyRoutes(r.data || [])).catch(() => {});
   };
   useEffect(() => { load(); }, []);
 
@@ -207,6 +210,62 @@ export default function EmployeeAssignedJobs() {
     );
   };
 
+  const renderRoute = (route) => {
+    const stops = route.stops || [];
+    const stopAddrs = stops
+      .filter(s => (s.stop_address || s.address))
+      .map(s => [s.stop_address || s.address, s.stop_city || s.city, s.stop_state || s.state, s.stop_zip || s.zip].filter(Boolean).join(', '));
+    let mapsUrl = null;
+    if (stopAddrs.length === 1) {
+      mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(stopAddrs[0]);
+    } else if (stopAddrs.length > 1) {
+      const origin = encodeURIComponent(stopAddrs[0]);
+      const dest   = encodeURIComponent(stopAddrs[stopAddrs.length - 1]);
+      const wps    = stopAddrs.slice(1, -1).map(a => encodeURIComponent(a)).join('|');
+      mapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + dest + (wps ? '&waypoints=' + wps : '');
+    }
+    return (
+      <div key={route.id} className="card" style={{ marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '.5rem', marginBottom: '.75rem' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--blue-700)' }}>{route.name}</div>
+            <div style={{ fontSize: '.82rem', color: 'var(--gray-500)', marginTop: 2 }}>
+              {route.route_date ? new Date(route.route_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'No date set'}
+              {' · '}{stops.length} stop{stops.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+          {mapsUrl && (
+            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">
+              🗺️ Open Full Route
+            </a>
+          )}
+        </div>
+        {stops.length === 0 ? (
+          <div style={{ color: 'var(--gray-400)', fontSize: '.85rem', textAlign: 'center', padding: '1rem' }}>No stops on this route.</div>
+        ) : (
+          stops.map((stop, idx) => {
+            const clientName = stop.first_name ? stop.first_name + ' ' + stop.last_name : (stop.stop_label || ('Stop ' + (idx + 1)));
+            const addr = [stop.stop_address || stop.address, stop.stop_city || stop.city, stop.stop_state || stop.state, stop.stop_zip || stop.zip].filter(Boolean).join(', ');
+            const navUrl = addr ? 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(addr) : null;
+            return (
+              <div key={stop.id} style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '.6rem .75rem', background: '#f8fafc', borderRadius: 8, marginBottom: 6, border: '1px solid #e2e8f0' }}>
+                <div style={{ background: 'var(--blue-700)', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.78rem', fontWeight: 700, flexShrink: 0 }}>{idx + 1}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '.9rem' }}>{clientName}</div>
+                  <div style={{ fontSize: '.78rem', color: 'var(--gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addr || 'No address'}</div>
+                  {stop.booking_service_type && <div style={{ fontSize: '.72rem', color: '#7c3aed' }}>📋 {stop.booking_service_type}</div>}
+                </div>
+                {navUrl && (
+                  <a href={navUrl} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" style={{ flexShrink: 0 }}>🗺️</a>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -222,6 +281,40 @@ export default function EmployeeAssignedJobs() {
           )}
         </div>
       </div>
+
+      {/* Tab bar: Jobs vs Routes */}
+      {myRoutes.length > 0 && (
+        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 8, padding: 3, marginBottom: '1rem' }}>
+          <button
+            onClick={() => setRouteTab('jobs')}
+            style={{ flex: 1, padding: '8px 0', border: 'none', borderRadius: 6, background: routeTab === 'jobs' ? '#1e3a5f' : 'transparent', color: routeTab === 'jobs' ? '#fff' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            📋 My Jobs ({jobs.length})
+          </button>
+          <button
+            onClick={() => setRouteTab('routes')}
+            style={{ flex: 1, padding: '8px 0', border: 'none', borderRadius: 6, background: routeTab === 'routes' ? '#1e3a5f' : 'transparent', color: routeTab === 'routes' ? '#fff' : '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            🗺️ My Routes ({myRoutes.length})
+          </button>
+        </div>
+      )}
+
+      {/* Routes tab content */}
+      {routeTab === 'routes' && (
+        <div>
+          {myRoutes.length === 0 ? (
+            <div className="card text-center" style={{ padding: '3rem' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '.75rem' }}>🗺️</div>
+              <p style={{ color: 'var(--gray-500)' }}>No routes assigned to you today.</p>
+            </div>
+          ) : (
+            myRoutes.map(r => renderRoute(r))
+          )}
+        </div>
+      )}
+
+      {/* Jobs tab content (original) — only shown when tab is 'jobs' */}
+      {routeTab === 'jobs' && (
+        <div>
 
       {/* Route Complete Banner */}
       {routeCompleteMsg && (
@@ -263,6 +356,9 @@ export default function EmployeeAssignedJobs() {
             {completedJobs.map(job => renderJob(job, 0))}
           </div>
         </>
+      )}
+
+        </div>
       )}
 
       {/* Before/After Photo Modal */}
