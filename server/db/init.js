@@ -588,25 +588,24 @@ async function initDB() {
     }
   }
 
-  // ── Seed admin ──
-  const { rows: adminCount } = await db.query("SELECT COUNT(*) as c FROM employees WHERE role='admin'");
-  if (parseInt(adminCount[0].c) === 0) {
-    const hash = bcrypt.hashSync('admin123', 10);
-    await db.query(
-      "INSERT INTO employees (first_name,last_name,email,password_hash,role) VALUES ($1,$2,$3,$4,$5)",
-      ['Admin', 'User', 'admin@snowbros.com', hash, 'admin']
-    );
-  }
+  // ── Seed / ensure admin@snowbros.com with correct password ──
+  // Always upsert so existing DB gets the right password hash
+  const adminHash = bcrypt.hashSync('Admin123', 10);
+  await db.query(
+    `INSERT INTO employees (first_name,last_name,email,password_hash,role,active)
+     VALUES ($1,$2,$3,$4,$5,1)
+     ON CONFLICT(email) DO UPDATE SET password_hash=$4, role=$5, active=1`,
+    ['Admin', 'User', 'admin@snowbros.com', adminHash, 'admin']
+  );
 
-  // ── Seed Gabe Clark manager ──
-  const { rows: gabeCount } = await db.query("SELECT COUNT(*) as c FROM employees WHERE email='gabe@snowbros.com'");
-  if (parseInt(gabeCount[0].c) === 0) {
-    const hash = bcrypt.hashSync('manager123', 10);
-    await db.query(
-      "INSERT INTO employees (first_name,last_name,email,phone,password_hash,role,title) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-      ['Gabe', 'Clark', 'gabe@snowbros.com', '218-331-5145', hash, 'manager', 'Operations Manager']
-    );
-  }
+  // ── Seed Gabe Clark (gabeforrestclark@gmail.com) ──
+  const gabeHash = bcrypt.hashSync('GabeClark2024!', 10);
+  await db.query(
+    `INSERT INTO employees (first_name,last_name,email,phone,password_hash,role,title,active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,1)
+     ON CONFLICT(email) DO UPDATE SET first_name=$1, last_name=$2, phone=$4, role=$6, title=$7, active=1`,
+    ['Gabe', 'Clark', 'gabeforrestclark@gmail.com', '218-331-5145', gabeHash, 'employee', 'Field Employee']
+  );
 
   // ── Seed demo employee ──
   const { rows: empCount } = await db.query("SELECT COUNT(*) as c FROM employees WHERE role='employee'");

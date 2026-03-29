@@ -5,7 +5,6 @@ try { sendAdminPush = require('./push').sendAdminPush; } catch(e) { sendAdminPus
 const { sendMail } = require('../utils/mailer');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { emailHeader, emailFooter } = require('../utils/emailHeader');
-const { sendMail } = require('../utils/mailer');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 async function nextEstimateNumber(db) {
