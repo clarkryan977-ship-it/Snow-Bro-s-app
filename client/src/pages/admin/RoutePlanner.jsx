@@ -65,7 +65,7 @@ function RouteCard({ route, isSelected, onSelect, onEdit, onDelete }) {
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 3 }}>{route.name}</div>
           <div style={{ fontSize: 12, opacity: .8 }}>
             {route.route_date
-              ? new Date(route.route_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+              ? new Date(route.route_date.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
               : 'No date set'}
             {' · '}{total} stop{total !== 1 ? 's' : ''}
             {done > 0 && ` · ${done}/${total} done`}
@@ -518,7 +518,7 @@ export default function RoutePlanner() {
   }, [filterDate, showAllDates]);
 
   useEffect(() => {
-    api.get('/employees').then(r => setEmployees(r.data || [])).catch(() => {});
+    api.get('/employees').then(r => setEmployees((r.data || []).filter(e => e.role !== 'admin'))).catch(() => {});
   }, []);
 
   useEffect(() => { loadRoutes(); }, [loadRoutes]);
@@ -747,7 +747,7 @@ export default function RoutePlanner() {
                     <h3 style={{ margin: 0, color: '#1e3a5f', fontSize: 18 }}>{selectedRoute.name}</h3>
                     <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>
                       {selectedRoute.route_date
-                        ? new Date(selectedRoute.route_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                        ? new Date(selectedRoute.route_date.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
                         : 'No date set'}
                       {' · '}{totalCount} stops
                       {selectedRoute.minutes_per_stop && ` · ${selectedRoute.minutes_per_stop} min/stop`}
