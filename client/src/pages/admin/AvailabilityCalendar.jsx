@@ -4,13 +4,47 @@ import api from '../../utils/api';
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-const TIME_SLOTS = [
-  '08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00',
-];
-const TIME_LABELS = {
-  '08:00':'8 AM','09:00':'9 AM','10:00':'10 AM','11:00':'11 AM','12:00':'12 PM',
-  '13:00':'1 PM','14:00':'2 PM','15:00':'3 PM','16:00':'4 PM','17:00':'5 PM',
-};
+// ── Full hour options: 6 AM through 11 PM (end can go to midnight) ──
+// Each entry: { value: 'HH:00', label: 'H AM/PM' }
+function buildHourOptions(includeEndOfDay = false) {
+  const hours = [];
+  for (let h = 6; h <= 23; h++) {
+    const value = `${String(h).padStart(2, '0')}:00`;
+    let label;
+    if (h === 0)  label = '12 AM';
+    else if (h < 12) label = `${h} AM`;
+    else if (h === 12) label = '12 PM';
+    else label = `${h - 12} PM`;
+    hours.push({ value, label });
+  }
+  // Optionally add midnight (00:00) as the very last end-time option
+  if (includeEndOfDay) {
+    hours.push({ value: '24:00', label: 'Midnight' });
+  }
+  return hours;
+}
+
+const START_HOURS = buildHourOptions(false); // 6 AM – 11 PM
+const ALL_END_HOURS = buildHourOptions(true); // 6 AM – Midnight (for end picker)
+
+// Friendly label for a stored HH:MM value
+function hourLabel(timeStr) {
+  if (!timeStr) return '';
+  const hhmm = timeStr.slice(0, 5);
+  const [hStr] = hhmm.split(':');
+  const h = parseInt(hStr, 10);
+  if (h === 0)  return '12 AM';
+  if (h < 12)   return `${h} AM`;
+  if (h === 12) return '12 PM';
+  if (h === 24) return 'Midnight';
+  return `${h - 12} PM`;
+}
+
+// TIME_SLOTS used for week-view grid (every hour 6 AM–10 PM)
+const TIME_SLOTS = [];
+for (let h = 6; h <= 22; h++) {
+  TIME_SLOTS.push(`${String(h).padStart(2, '0')}:00`);
+}
 
 function toYMD(date) {
   return date.toISOString().slice(0, 10);
@@ -23,20 +57,20 @@ function addDays(date, n) {
 
 export default function AvailabilityCalendar() {
   const today = new Date();
-  const [view, setView]           = useState('month'); // 'month' | 'week'
+  const [view, setView]           = useState('month');
   const [year, setYear]           = useState(today.getFullYear());
-  const [month, setMonth]         = useState(today.getMonth()); // 0-indexed
+  const [month, setMonth]         = useState(today.getMonth());
   const [weekStart, setWeekStart] = useState(() => {
     const d = new Date(today);
     d.setDate(d.getDate() - d.getDay());
     return d;
   });
-  const [blocked, setBlocked]     = useState([]); // array of blocked_times rows
+  const [blocked, setBlocked]     = useState([]);
   const [loading, setLoading]     = useState(false);
   const [msg, setMsg]             = useState(null);
-  const [modal, setModal]         = useState(null); // { date, blocks, mode:'day'|'time', slot? }
+  const [modal, setModal]         = useState(null);
   const [reason, setReason]       = useState('');
-  const [blockMode, setBlockMode] = useState('all_day'); // 'all_day' | 'time_range'
+  const [blockMode, setBlockMode] = useState('all_day');
   const [timeStart, setTimeStart] = useState('08:00');
   const [timeEnd,   setTimeEnd]   = useState('17:00');
 
@@ -45,7 +79,19 @@ export default function AvailabilityCalendar() {
     setTimeout(() => setMsg(null), 4000);
   };
 
-  // Compute date range to fetch
+  // End-hour options: only hours strictly after the selected start
+  const endHourOptions = ALL_END_HOURS.filter(opt => opt.value > timeStart);
+
+  // When start changes, push end forward if it's no longer valid
+  const handleStartChange = (val) => {
+    setTimeStart(val);
+    if (timeEnd <= val) {
+      // Pick the next available end hour
+      const next = ALL_END_HOURS.find(o => o.value > val);
+      if (next) setTimeEnd(next.value);
+    }
+  };
+
   const fetchRange = useCallback(() => {
     if (view === 'month') {
       const start = `${year}-${String(month + 1).padStart(2,'0')}-01`;
@@ -72,13 +118,15 @@ export default function AvailabilityCalendar() {
 
   useEffect(() => { loadBlocked(); }, [loadBlocked]);
 
-  // Helper: get blocks for a specific date string
   const blocksForDate = (dateStr) => blocked.filter(b => b.block_date?.slice(0,10) === dateStr);
   const isFullyBlocked = (dateStr) => blocksForDate(dateStr).some(b => b.all_day);
 
-  // ── Block a date/time ──
   const doBlock = async () => {
     if (!modal) return;
+    if (blockMode === 'time_range' && timeEnd <= timeStart) {
+      flash('error', 'End time must be after start time');
+      return;
+    }
     try {
       const payload = {
         block_date: modal.date,
@@ -97,7 +145,6 @@ export default function AvailabilityCalendar() {
     }
   };
 
-  // ── Unblock a specific entry ──
   const doUnblock = async (id) => {
     try {
       await api.delete(`/availability/block/${id}`);
@@ -109,7 +156,6 @@ export default function AvailabilityCalendar() {
     }
   };
 
-  // ── Unblock entire date ──
   const doUnblockDate = async (dateStr) => {
     if (!window.confirm(`Unblock all slots on ${dateStr}?`)) return;
     try {
@@ -122,7 +168,6 @@ export default function AvailabilityCalendar() {
     }
   };
 
-  // ── Click on a calendar day ──
   const handleDayClick = (dateStr) => {
     const blocks = blocksForDate(dateStr);
     setModal({ date: dateStr, blocks, mode: 'day' });
@@ -132,7 +177,6 @@ export default function AvailabilityCalendar() {
     setTimeEnd('17:00');
   };
 
-  // ── Navigation ──
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
     else setMonth(m => m - 1);
@@ -144,7 +188,6 @@ export default function AvailabilityCalendar() {
   const prevWeek = () => setWeekStart(d => addDays(d, -7));
   const nextWeek = () => setWeekStart(d => addDays(d, 7));
 
-  // ── Build month grid ──
   const buildMonthGrid = () => {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -154,29 +197,33 @@ export default function AvailabilityCalendar() {
     return cells;
   };
 
-  // ── Build week days ──
-  const buildWeekDays = () => {
-    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  };
+  const buildWeekDays = () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   const todayStr = toYMD(today);
+
+  // Check if a specific hour slot is blocked for a date
+  const isSlotBlocked = (dateStr, slot) => {
+    const dayBlocks = blocksForDate(dateStr);
+    if (dayBlocks.some(b => b.all_day)) return 'full';
+    const partial = dayBlocks.some(b => {
+      if (!b.start_time || !b.end_time) return false;
+      const st = b.start_time.slice(0, 5);
+      const et = b.end_time.slice(0, 5) === '00:00' ? '24:00' : b.end_time.slice(0, 5);
+      return slot >= st && slot < et;
+    });
+    return partial ? 'partial' : 'open';
+  };
 
   return (
     <div>
       <div className="flex-between page-header" style={{ flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1>🗓️ Availability Calendar</h1>
-          <p>Block or unblock dates and time slots. Blocked days appear as unavailable to clients.</p>
+          <p>Block or unblock dates and time ranges. Blocked days appear as unavailable to clients.</p>
         </div>
         <div style={{ display: 'flex', gap: '.5rem' }}>
-          <button
-            className={`btn btn-sm ${view === 'month' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setView('month')}
-          >Monthly</button>
-          <button
-            className={`btn btn-sm ${view === 'week' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setView('week')}
-          >Weekly</button>
+          <button className={`btn btn-sm ${view === 'month' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setView('month')}>Monthly</button>
+          <button className={`btn btn-sm ${view === 'week' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setView('week')}>Weekly</button>
         </div>
       </div>
 
@@ -188,42 +235,34 @@ export default function AvailabilityCalendar() {
 
       {/* Legend */}
       <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', flexWrap: 'wrap', fontSize: '.85rem' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
-          <span style={{ width: 14, height: 14, borderRadius: 3, background: '#dcfce7', border: '1px solid #16a34a', display: 'inline-block' }} />
-          Available
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
-          <span style={{ width: 14, height: 14, borderRadius: 3, background: '#fee2e2', border: '1px solid #dc2626', display: 'inline-block' }} />
-          Fully Blocked
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
-          <span style={{ width: 14, height: 14, borderRadius: 3, background: '#fef3c7', border: '1px solid #d97706', display: 'inline-block' }} />
-          Partially Blocked
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
-          <span style={{ width: 14, height: 14, borderRadius: 3, background: '#dbeafe', border: '1px solid #2563eb', display: 'inline-block' }} />
-          Today
-        </span>
+        {[
+          { bg: '#dcfce7', border: '#16a34a', label: 'Available' },
+          { bg: '#fee2e2', border: '#dc2626', label: 'Fully Blocked' },
+          { bg: '#fef3c7', border: '#d97706', label: 'Partially Blocked' },
+          { bg: '#dbeafe', border: '#2563eb', label: 'Today' },
+        ].map(({ bg, border, label }) => (
+          <span key={label} style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
+            <span style={{ width: 14, height: 14, borderRadius: 3, background: bg, border: `1px solid ${border}`, display: 'inline-block' }} />
+            {label}
+          </span>
+        ))}
       </div>
 
       {/* ── MONTH VIEW ── */}
       {view === 'month' && (
         <div className="card" style={{ padding: '1.25rem' }}>
-          {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <button className="btn btn-secondary btn-sm" onClick={prevMonth}>‹ Prev</button>
             <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>{MONTHS[month]} {year}</h2>
             <button className="btn btn-secondary btn-sm" onClick={nextMonth}>Next ›</button>
           </div>
 
-          {/* Day headers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
             {DAYS.map(d => (
               <div key={d} style={{ textAlign: 'center', fontSize: '.75rem', fontWeight: 700, color: '#64748b', padding: '4px 0' }}>{d}</div>
             ))}
           </div>
 
-          {/* Calendar grid */}
           {loading ? (
             <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>
           ) : (
@@ -237,42 +276,31 @@ export default function AvailabilityCalendar() {
                 const isToday = dateStr === todayStr;
                 const isPast  = dateStr < todayStr;
 
-                let bg = '#f0fdf4'; // available green tint
-                let border = '#86efac';
-                if (fullyBlocked)   { bg = '#fee2e2'; border = '#fca5a5'; }
+                let bg = '#f0fdf4'; let border = '#86efac';
+                if (fullyBlocked)    { bg = '#fee2e2'; border = '#fca5a5'; }
                 else if (partialBlocked) { bg = '#fef9c3'; border = '#fde047'; }
-                if (isToday)        { bg = '#dbeafe'; border = '#93c5fd'; }
-                if (isPast)         { bg = '#f8fafc'; border = '#e2e8f0'; }
+                if (isToday)         { bg = '#dbeafe'; border = '#93c5fd'; }
+                if (isPast)          { bg = '#f8fafc'; border = '#e2e8f0'; }
 
                 return (
                   <div
                     key={dateStr}
                     onClick={() => !isPast && handleDayClick(dateStr)}
                     style={{
-                      minHeight: 70,
-                      background: bg,
-                      border: `2px solid ${border}`,
-                      borderRadius: 8,
-                      padding: '6px 8px',
+                      minHeight: 70, background: bg, border: `2px solid ${border}`,
+                      borderRadius: 8, padding: '6px 8px',
                       cursor: isPast ? 'default' : 'pointer',
                       opacity: isPast ? 0.5 : 1,
                       transition: 'transform .1s, box-shadow .1s',
-                      position: 'relative',
                     }}
-                    onMouseEnter={e => { if (!isPast) { e.currentTarget.style.transform = 'scale(1.04)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.12)'; } }}
+                    onMouseEnter={e => { if (!isPast) { e.currentTarget.style.transform = 'scale(1.04)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.12)'; }}}
                     onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
                   >
-                    <div style={{ fontWeight: isToday ? 800 : 600, fontSize: '.9rem', color: isToday ? '#1d4ed8' : '#1e293b' }}>
-                      {day}
-                    </div>
-                    {fullyBlocked && (
-                      <div style={{ fontSize: '.65rem', color: '#dc2626', fontWeight: 700, marginTop: 2 }}>
-                        🚫 Blocked
-                      </div>
-                    )}
+                    <div style={{ fontWeight: isToday ? 800 : 600, fontSize: '.9rem', color: isToday ? '#1d4ed8' : '#1e293b' }}>{day}</div>
+                    {fullyBlocked && <div style={{ fontSize: '.65rem', color: '#dc2626', fontWeight: 700, marginTop: 2 }}>🚫 Blocked</div>}
                     {partialBlocked && (
                       <div style={{ fontSize: '.65rem', color: '#d97706', fontWeight: 700, marginTop: 2 }}>
-                        ⚠️ {blocks.length} slot{blocks.length > 1 ? 's' : ''} blocked
+                        ⚠️ {blocks.length} block{blocks.length > 1 ? 's' : ''}
                       </div>
                     )}
                     {!fullyBlocked && !partialBlocked && !isPast && (
@@ -289,7 +317,6 @@ export default function AvailabilityCalendar() {
       {/* ── WEEK VIEW ── */}
       {view === 'week' && (
         <div className="card" style={{ padding: '1.25rem' }}>
-          {/* Week nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <button className="btn btn-secondary btn-sm" onClick={prevWeek}>‹ Prev Week</button>
             <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>
@@ -311,20 +338,12 @@ export default function AvailabilityCalendar() {
                       const isToday = dateStr === todayStr;
                       const fullyBlocked = isFullyBlocked(dateStr);
                       return (
-                        <th
-                          key={dateStr}
-                          style={{
-                            padding: '8px 4px',
-                            textAlign: 'center',
-                            fontSize: '.82rem',
-                            fontWeight: 700,
-                            borderBottom: '2px solid #e2e8f0',
-                            background: fullyBlocked ? '#fee2e2' : isToday ? '#dbeafe' : undefined,
-                            color: isToday ? '#1d4ed8' : '#374151',
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => handleDayClick(dateStr)}
-                        >
+                        <th key={dateStr} style={{
+                          padding: '8px 4px', textAlign: 'center', fontSize: '.82rem', fontWeight: 700,
+                          borderBottom: '2px solid #e2e8f0',
+                          background: fullyBlocked ? '#fee2e2' : isToday ? '#dbeafe' : undefined,
+                          color: isToday ? '#1d4ed8' : '#374151', cursor: 'pointer',
+                        }} onClick={() => handleDayClick(dateStr)}>
                           {DAYS[d.getDay()]}<br />
                           <span style={{ fontWeight: 400, fontSize: '.75rem', color: '#64748b' }}>{dateStr.slice(5)}</span>
                           {fullyBlocked && <div style={{ fontSize: '.65rem', color: '#dc2626' }}>🚫 Blocked</div>}
@@ -337,38 +356,21 @@ export default function AvailabilityCalendar() {
                   {TIME_SLOTS.map(slot => (
                     <tr key={slot}>
                       <td style={{ padding: '6px 8px', fontSize: '.78rem', color: '#64748b', fontWeight: 600, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
-                        {TIME_LABELS[slot]}
+                        {hourLabel(slot)}
                       </td>
                       {buildWeekDays().map(d => {
                         const dateStr = toYMD(d);
-                        const dayBlocks = blocksForDate(dateStr);
-                        const fullyBlocked = dayBlocks.some(b => b.all_day);
-                        const slotBlocked = !fullyBlocked && dayBlocks.some(b => {
-                          if (!b.start_time || !b.end_time) return false;
-                          return slot >= b.start_time.slice(0,5) && slot < b.end_time.slice(0,5);
-                        });
+                        const status = isSlotBlocked(dateStr, slot);
                         const isPast = dateStr < todayStr;
-
-                        let bg = 'transparent';
-                        if (fullyBlocked) bg = '#fee2e2';
-                        else if (slotBlocked) bg = '#fef3c7';
-
+                        const bg = status === 'full' ? '#fee2e2' : status === 'partial' ? '#fef3c7' : 'transparent';
                         return (
-                          <td
-                            key={`${dateStr}-${slot}`}
-                            style={{
-                              padding: '4px',
-                              borderBottom: '1px solid #f1f5f9',
-                              borderLeft: '1px solid #f1f5f9',
-                              background: bg,
-                              textAlign: 'center',
-                              cursor: isPast ? 'default' : 'pointer',
-                              opacity: isPast ? 0.4 : 1,
-                            }}
-                            onClick={() => !isPast && handleDayClick(dateStr)}
-                          >
-                            {slotBlocked && <span style={{ fontSize: '.7rem', color: '#d97706' }}>⚠️</span>}
-                            {fullyBlocked && <span style={{ fontSize: '.7rem', color: '#dc2626' }}>🚫</span>}
+                          <td key={`${dateStr}-${slot}`} style={{
+                            padding: '4px', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #f1f5f9',
+                            background: bg, textAlign: 'center',
+                            cursor: isPast ? 'default' : 'pointer', opacity: isPast ? 0.4 : 1,
+                          }} onClick={() => !isPast && handleDayClick(dateStr)}>
+                            {status === 'partial' && <span style={{ fontSize: '.7rem', color: '#d97706' }}>⚠️</span>}
+                            {status === 'full'    && <span style={{ fontSize: '.7rem', color: '#dc2626' }}>🚫</span>}
                           </td>
                         );
                       })}
@@ -384,7 +386,7 @@ export default function AvailabilityCalendar() {
       {/* ── Day Detail Modal ── */}
       {modal && (
         <div className="modal-overlay" onClick={() => setModal(null)}>
-          <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>📅 {modal.date}</h2>
               <button className="modal-close" onClick={() => setModal(null)}>×</button>
@@ -398,10 +400,15 @@ export default function AvailabilityCalendar() {
                     Current Blocks
                   </div>
                   {modal.blocks.map(b => (
-                    <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '.5rem .75rem', background: '#fee2e2', borderRadius: 6, marginBottom: '.4rem', gap: '.5rem' }}>
+                    <div key={b.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '.5rem .75rem', background: '#fee2e2', borderRadius: 6, marginBottom: '.4rem', gap: '.5rem',
+                    }}>
                       <div>
                         <span style={{ fontWeight: 600, color: '#dc2626', fontSize: '.88rem' }}>
-                          {b.all_day ? '🚫 All Day' : `⏰ ${b.start_time?.slice(0,5)} – ${b.end_time?.slice(0,5)}`}
+                          {b.all_day
+                            ? '🚫 All Day'
+                            : `⏰ ${hourLabel(b.start_time)} – ${hourLabel(b.end_time)}`}
                         </span>
                         {b.reason && <span style={{ color: '#64748b', fontSize: '.8rem', marginLeft: '.5rem' }}>— {b.reason}</span>}
                       </div>
@@ -436,19 +443,60 @@ export default function AvailabilityCalendar() {
               </div>
 
               {blockMode === 'time_range' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
-                  <div className="form-group">
-                    <label style={{ fontSize: '.85rem' }}>Start Time</label>
-                    <select className="form-control" value={timeStart} onChange={e => setTimeStart(e.target.value)}>
-                      {TIME_SLOTS.map(t => <option key={t} value={t}>{TIME_LABELS[t]}</option>)}
-                    </select>
+                <div style={{ background: '#f8fafc', borderRadius: 10, padding: '1rem', marginBottom: '.75rem', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '.8rem', color: '#64748b', marginBottom: '.6rem', fontWeight: 600 }}>
+                    Select the hours to block (e.g. 8 AM → 5 PM blocks all hours from 8 AM through 4 PM)
                   </div>
-                  <div className="form-group">
-                    <label style={{ fontSize: '.85rem' }}>End Time</label>
-                    <select className="form-control" value={timeEnd} onChange={e => setTimeEnd(e.target.value)}>
-                      {TIME_SLOTS.map(t => <option key={t} value={t}>{TIME_LABELS[t]}</option>)}
-                    </select>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '.5rem', alignItems: 'center' }}>
+                    {/* Start hour */}
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: '.25rem' }}>
+                        Start Hour
+                      </label>
+                      <select
+                        className="form-control"
+                        value={timeStart}
+                        onChange={e => handleStartChange(e.target.value)}
+                        style={{ fontSize: '1rem', fontWeight: 600 }}
+                      >
+                        {START_HOURS.map(({ value, label }) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Arrow */}
+                    <div style={{ textAlign: 'center', fontSize: '1.4rem', color: '#94a3b8', paddingTop: '1.4rem' }}>→</div>
+
+                    {/* End hour */}
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: '.8rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: '.25rem' }}>
+                        End Hour
+                      </label>
+                      <select
+                        className="form-control"
+                        value={timeEnd}
+                        onChange={e => setTimeEnd(e.target.value)}
+                        style={{ fontSize: '1rem', fontWeight: 600 }}
+                      >
+                        {endHourOptions.map(({ value, label }) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
+
+                  {/* Live preview */}
+                  {timeStart && timeEnd && timeEnd > timeStart && (
+                    <div style={{
+                      marginTop: '.75rem', padding: '.6rem .85rem',
+                      background: '#fef3c7', borderRadius: 8, border: '1px solid #fde047',
+                      fontSize: '.85rem', fontWeight: 600, color: '#92400e',
+                    }}>
+                      🚫 Will block: <strong>{hourLabel(timeStart)}</strong> through <strong>{hourLabel(timeEnd)}</strong>
+                      {' '}— covers all bookings in that window
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -465,7 +513,9 @@ export default function AvailabilityCalendar() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={doBlock}>🚫 Block This {blockMode === 'all_day' ? 'Day' : 'Time Slot'}</button>
+              <button className="btn btn-danger" onClick={doBlock}>
+                🚫 Block {blockMode === 'all_day' ? 'Entire Day' : `${hourLabel(timeStart)} – ${hourLabel(timeEnd)}`}
+              </button>
             </div>
           </div>
         </div>
