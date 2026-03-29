@@ -321,7 +321,8 @@ export default function AdminClients() {
           <button
             onClick={async () => {
               try {
-                const token = localStorage.getItem('token');
+                const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+                if (!token) throw new Error('Not authenticated — please log in again');
                 const r = await fetch('/api/export/backup', { headers: { Authorization: 'Bearer ' + token } });
                 if (!r.ok) throw new Error('Export failed: ' + r.status);
                 const blob = await r.blob();
