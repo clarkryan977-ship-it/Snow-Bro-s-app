@@ -21,28 +21,21 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     api.get('/contracts/my').then(r => setContracts(r.data)).catch(() => {});
-    
-    // Initial load
     loadEta().then(() => setEtaLoading(false));
-    
-    // Poll every 2-3 minutes for live updates
-    etaPollRef.current = setInterval(loadEta, 150000); // 2.5 minutes
-    
-    return () => {
-      if (etaPollRef.current) clearInterval(etaPollRef.current);
-    };
+    etaPollRef.current = setInterval(loadEta, 150000);
+    return () => { if (etaPollRef.current) clearInterval(etaPollRef.current); };
   }, []);
 
   const pending = contracts.filter(c => c.status !== 'signed').length;
 
   const cards = [
-    { to:'/client/history', icon:'📋', title:'Service History', desc:'View past jobs and leave reviews' },
-    { to:'/client/contracts', icon:'📄', title:'Contracts', desc:'View and sign your contracts' },
+    { to:'/client/book', icon:'📅', title:'Book a Service', desc:'Schedule lawn care or snow removal — no contract needed' },
+    { to:'/client/history', icon:'📋', title:'Service History', desc:'View past jobs and before/after photos' },
     { to:'/client/invoices', icon:'🧾', title:'Invoices', desc:'View and pay your invoices' },
     { to:'/client/recurring', icon:'🔄', title:'Recurring Services', desc:'Set up automatic scheduling' },
+    { to:'/client/contracts', icon:'📄', title:'Contracts', desc:'View and sign your contracts' },
     { to:'/client/referrals', icon:'🎁', title:'Refer a Friend', desc:'Earn $10 for each referral' },
     { to:'/pay', icon:'💳', title:'Make Payment', desc:'Pay via Venmo or Zelle' },
-    { to:'/book', icon:'📅', title:'Book Service', desc:'Schedule a new service' },
     { to:'/reviews', icon:'⭐', title:'Reviews', desc:'See what customers say' },
   ];
 
@@ -51,6 +44,19 @@ export default function ClientDashboard() {
       <div className="page-header">
         <h1>👋 Welcome, {user?.name?.split(' ')[0]}!</h1>
         <p>Your Snow Bro's client portal.</p>
+      </div>
+
+      {/* Prominent Book Service CTA */}
+      <div className="card mb-2" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 100%)', color: '#fff', borderRadius: 12, padding: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>📅 Need a Service?</h2>
+            <p style={{ margin: '.4rem 0 0', opacity: .9, fontSize: '.92rem' }}>Book lawn care or snow removal — no contract required.</p>
+          </div>
+          <Link to="/client/book" style={{ background: '#fff', color: '#1e3a5f', padding: '.75rem 1.5rem', borderRadius: 8, textDecoration: 'none', fontWeight: 800, fontSize: '1rem', whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}>
+            Book Now →
+          </Link>
+        </div>
       </div>
 
       {pending > 0 && (
@@ -81,7 +87,7 @@ export default function ClientDashboard() {
                     Estimated arrival: {eta.refined_eta || eta.eta}
                   </p>
                 )}
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '.5rem', fontSize: '.85rem', color: 'var(--blue-700)' }}>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '.5rem', fontSize: '.85rem', color: 'var(--blue-700)', flexWrap: 'wrap' }}>
                   <span>{eta.snow_day ? '❄️ Snow Removal' : '🌱 Lawn Care'}</span>
                   <span>•</span>
                   <span>Stop #{eta.stop_number} of {eta.total_stops || '?'}</span>
@@ -109,7 +115,7 @@ export default function ClientDashboard() {
         </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'1rem' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'1rem' }}>
         {cards.map(c => (
           <Link key={c.to} to={c.to} style={{ textDecoration:'none' }}>
             <div className="card" style={{ textAlign:'center', cursor:'pointer', height:'100%' }}>

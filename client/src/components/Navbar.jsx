@@ -50,7 +50,7 @@ export default function Navbar({ onMenuToggle }) {
             <Link to="/client/contracts" className="nav-link">Contracts</Link>
             <Link to="/client/recurring" className="nav-link">Recurring</Link>
             <Link to="/client/referrals" className="nav-link">Referrals</Link>
-            <Link to="/book" className="nav-link">Book</Link>
+            <Link to="/client/book" className="nav-link">Book</Link>
             <Link to="/pay" className="nav-link">Pay</Link>
           </>
         )}

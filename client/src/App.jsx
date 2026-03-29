@@ -58,6 +58,7 @@ const ClientInvoices = lazy(() => import('./pages/client/Invoices'));
 const ClientServiceHistory = lazy(() => import('./pages/client/ServiceHistory'));
 const ClientReferrals = lazy(() => import('./pages/client/Referrals'));
 const ClientRecurringServices = lazy(() => import('./pages/client/RecurringServices'));
+const ClientBookService = lazy(() => import('./pages/client/BookService'));
 
 // ── Loading spinner for lazy components ──
 function PageLoader() {
@@ -231,6 +232,7 @@ export default function App() {
               <Route path="/client/history" element={<ClientServiceHistory />} />
               <Route path="/client/referrals" element={<ClientReferrals />} />
               <Route path="/client/recurring" element={<ClientRecurringServices />} />
+              <Route path="/client/book" element={<ClientBookService />} />
             </Route>
           </Route>
 

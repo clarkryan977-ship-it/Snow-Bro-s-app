@@ -41,11 +41,10 @@ export default function Register() {
     setLoading(true); setStatus(null);
     try {
       const { data } = await api.post('/auth/register', form);
-      // Redeem referral if code provided
       if (form.referral_code && data.id) {
         try { await api.post('/referrals/redeem', { referral_code: form.referral_code, new_client_id: data.id }); } catch (e) {}
       }
-      setStatus({ type: 'success', msg: '✅ Account created! You can now log in.' });
+      setStatus({ type: 'success', msg: '✅ Account created! Redirecting to login…' });
       setTimeout(() => navigate('/login'), 1800);
     } catch (err) {
       setStatus({ type: 'error', msg: err.response?.data?.error || 'Registration failed' });
@@ -60,11 +59,22 @@ export default function Register() {
           alt="Snow Bro's"
           style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--blue-200)', boxShadow: 'var(--shadow-md)', display: 'block', margin: '0 auto .75rem' }}
         />
-        <h1>Create Account</h1>
-        <p>Sign up to manage bookings, view invoices, and sign contracts.</p>
+        <h1>Create Your Account</h1>
+        <p>Sign up to book services, view invoices, and manage your account.</p>
       </div>
+
+      {/* No-contract callout */}
+      <div className="card mb-2" style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', borderLeft: '4px solid #16a34a', padding: '1rem 1.25rem' }}>
+        <div style={{ fontWeight: 700, color: '#15803d', marginBottom: '.25rem' }}>✅ No Contract Required</div>
+        <div style={{ fontSize: '.88rem', color: '#166534' }}>
+          Create an account and book a one-off service right away — no long-term contract needed.
+          Perfect for one-time lawn care or snow removal jobs.
+        </div>
+      </div>
+
       <FirstTimeDiscountBanner />
       {status && <div className={`alert alert-${status.type === 'success' ? 'success' : 'error'}`}>{status.msg}</div>}
+
       <div className="card">
         <form onSubmit={submit}>
           <div className="form-row">
@@ -73,12 +83,12 @@ export default function Register() {
           </div>
           <div className="form-group"><label>Email *</label><input type="email" name="email" value={form.email} onChange={handle} required className="form-control" /></div>
           <div className="form-group"><label>Phone</label><input type="tel" name="phone" value={form.phone} onChange={handle} className="form-control" /></div>
-          <div className="form-group"><label>Street Address</label><input name="address" value={form.address} onChange={handle} className="form-control" /></div>
+          <div className="form-group"><label>Street Address</label><input name="address" value={form.address} onChange={handle} className="form-control" placeholder="123 Main St" /></div>
           <div className="form-row">
-            <div className="form-group"><label>City</label><input name="city" value={form.city} onChange={handle} className="form-control" /></div>
-            <div className="form-group"><label>State</label><input name="state" value={form.state} onChange={handle} className="form-control" /></div>
+            <div className="form-group"><label>City</label><input name="city" value={form.city} onChange={handle} className="form-control" placeholder="Moorhead" /></div>
+            <div className="form-group"><label>State</label><input name="state" value={form.state} onChange={handle} className="form-control" placeholder="MN" /></div>
           </div>
-          <div className="form-group"><label>ZIP</label><input name="zip" value={form.zip} onChange={handle} className="form-control" style={{ maxWidth: 140 }} /></div>
+          <div className="form-group"><label>ZIP</label><input name="zip" value={form.zip} onChange={handle} className="form-control" style={{ maxWidth: 140 }} placeholder="56560" /></div>
           <hr className="divider" />
           <div className="form-group">
             <label>Referral Code (optional)</label>
@@ -97,7 +107,7 @@ export default function Register() {
             <div className="form-group"><label>Confirm Password *</label><input type="password" name="confirm" value={form.confirm} onChange={handle} required className="form-control" /></div>
           </div>
           <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={loading}>
-            {loading ? <span className="spinner" /> : 'Create Account'}
+            {loading ? <span className="spinner" /> : '🚀 Create Account & Book a Service'}
           </button>
         </form>
         <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '.88rem', color: 'var(--gray-500)' }}>

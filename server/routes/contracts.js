@@ -163,10 +163,10 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { rows: contracts } = await req.db.query(`
       SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email,
-             e.first_name || ' ' || e.last_name AS uploaded_by_name
+             COALESCE(e.first_name || ' ' || e.last_name, 'Admin') AS uploaded_by_name
       FROM contracts c
-      JOIN clients cl ON c.client_id = cl.id
-      JOIN employees e ON c.uploaded_by = e.id
+      LEFT JOIN clients cl ON c.client_id = cl.id
+      LEFT JOIN employees e ON c.uploaded_by = e.id
       ORDER BY c.created_at DESC`);
     res.json(contracts);
   } catch (err) {

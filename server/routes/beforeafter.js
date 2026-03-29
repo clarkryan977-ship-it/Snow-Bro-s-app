@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 const uploadDir = path.join(process.env.UPLOADS_ROOT || path.join(__dirname, '../uploads'), 'beforeafter');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -14,32 +14,107 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
 
-// GET before/after photos for a time record
-router.get('/record/:recordId', authenticateToken, async (req, res) => {
+// ── GET before/after photos for a booking ────────────────────────────────────
+router.get('/booking/:bookingId', authenticateToken, async (req, res) => {
   try {
-    const { rows: rows } = await req.db.query('SELECT * FROM before_after_photos WHERE time_record_id = $1 ORDER BY photo_type ASC, created_at ASC', [req.params.recordId]);
+    const bookingId = req.params.bookingId;
+    if (req.user.role === 'client') {
+      const { rows: bk } = await req.db.query('SELECT client_id, client_email FROM bookings WHERE id = $1', [bookingId]);
+      if (!bk[0]) return res.status(404).json({ error: 'Booking not found' });
+      const { rows: cl } = await req.db.query('SELECT email FROM clients WHERE id = $1', [req.user.id]);
+      const clientEmail = cl[0]?.email || '';
+      if (bk[0].client_id !== req.user.id && bk[0].client_email !== clientEmail) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
+    const { rows } = await req.db.query(
+      `SELECT p.*, e.first_name || ' ' || e.last_name AS employee_name
+       FROM before_after_photos p
+       LEFT JOIN employees e ON p.employee_id = e.id
+       WHERE p.booking_id = $1
+       ORDER BY p.photo_type ASC, p.created_at ASC`,
+      [bookingId]
+    );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST upload a before or after photo
+// ── GET before/after photos for a time record (legacy) ───────────────────────
+router.get('/record/:recordId', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(
+      'SELECT * FROM before_after_photos WHERE time_record_id = $1 ORDER BY photo_type ASC, created_at ASC',
+      [req.params.recordId]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST upload a before or after photo for a booking ────────────────────────
+router.post('/booking/:bookingId', authenticateToken, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const { photo_type, caption } = req.body;
+    if (!['before', 'after'].includes(photo_type)) return res.status(400).json({ error: 'photo_type must be before or after' });
+    const bookingId = req.params.bookingId;
+    const { rows: bk } = await req.db.query('SELECT id FROM bookings WHERE id = $1', [bookingId]);
+    if (!bk[0]) return res.status(404).json({ error: 'Booking not found' });
+    const filePath = `/uploads/beforeafter/${req.file.filename}`;
+    const { rows: inserted } = await req.db.query(
+      `INSERT INTO before_after_photos (booking_id, employee_id, photo_type, filename, original_name, file_path, caption)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [bookingId, req.user.id, photo_type, req.file.filename, req.file.originalname, filePath, caption || '']
+    );
+    res.status(201).json(inserted[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST upload a before or after photo for a time record (legacy) ────────────
 router.post('/record/:recordId', authenticateToken, upload.single('photo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const { photo_type, caption } = req.body;
     if (!['before', 'after'].includes(photo_type)) return res.status(400).json({ error: 'photo_type must be before or after' });
     const filePath = `/uploads/beforeafter/${req.file.filename}`;
-    const info = await req.db.query('INSERT INTO before_after_photos (time_record_id, employee_id, photo_type, filename, original_name, file_path, caption) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [req.params.recordId, req.user.id, photo_type, req.file.filename, req.file.originalname, filePath, caption || '']);
-    res.json({ id: info[0].id, file_path: filePath });
+    const { rows: inserted } = await req.db.query(
+      `INSERT INTO before_after_photos (time_record_id, employee_id, photo_type, filename, original_name, file_path, caption)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [req.params.recordId, req.user.id, photo_type, req.file.filename, req.file.originalname, filePath, caption || '']
+    );
+    res.status(201).json(inserted[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE a before/after photo
+// ── GET all photos for admin ───────────────────────────────────────────────────
+router.get('/admin/all', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(
+      `SELECT p.*, e.first_name || ' ' || e.last_name AS employee_name,
+              b.preferred_date, b.client_name, b.client_email,
+              COALESCE(c.first_name || ' ' || c.last_name, b.client_name) AS display_name,
+              s.name AS service_name
+       FROM before_after_photos p
+       LEFT JOIN employees e ON p.employee_id = e.id
+       LEFT JOIN bookings b ON p.booking_id = b.id
+       LEFT JOIN clients c ON b.client_id = c.id
+       LEFT JOIN services s ON b.service_id = s.id
+       WHERE p.booking_id IS NOT NULL
+       ORDER BY p.created_at DESC
+       LIMIT 200`
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE a before/after photo ────────────────────────────────────────────────
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { rows: __photo } = await req.db.query('SELECT * FROM before_after_photos WHERE id = $1', [req.params.id]);
     const photo = __photo[0];
     if (!photo) return res.status(404).json({ error: 'Not found' });
+    if (req.user.role !== 'admin' && photo.employee_id !== req.user.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     const fullPath = path.join(uploadDir, photo.filename);
     if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
     await req.db.query('DELETE FROM before_after_photos WHERE id = $1', [req.params.id]);

@@ -172,9 +172,11 @@ export default function RoutePlanner() {
     card: { background: '#fff', borderRadius: 12, padding: '16px', boxShadow: '0 1px 6px rgba(0,0,0,.1)', marginBottom: 16 },
     grid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
       gap: 16,
       alignItems: 'start',
+      width: '100%',
+      boxSizing: 'border-box',
     },
     msgBox: { background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#1e40af', fontWeight: 600, fontSize: 14 },
     input: { padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box', minHeight: 44 },
@@ -351,11 +353,13 @@ export default function RoutePlanner() {
 
       {/* Mobile tab switcher — hidden on larger screens via CSS */}
       <style>{`
+        .route-grid { overflow-x: hidden; }
         @media (min-width: 700px) {
           .route-tab-bar { display: none !important; }
           .route-panel-available, .route-panel-route { display: block !important; }
         }
         @media (max-width: 699px) {
+          .route-grid { grid-template-columns: 1fr !important; }
           .route-panel-available { display: ${activeTab === 'available' ? 'block' : 'none'} !important; }
           .route-panel-route { display: ${activeTab === 'route' ? 'block' : 'none'} !important; }
         }
@@ -370,7 +374,7 @@ export default function RoutePlanner() {
         </button>
       </div>
 
-      <div style={S.grid}>
+      <div style={S.grid} className="route-grid">
         <div className="route-panel-available"><AvailablePanel /></div>
         <div className="route-panel-route"><RoutePanel /></div>
       </div>

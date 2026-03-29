@@ -416,6 +416,10 @@ async function initDB() {
     )
   `);
   await db.query(`ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE`).catch(() => {});
+  // Before/after photos: add booking_id for direct booking linkage (make time_record_id nullable)
+  await db.query(`ALTER TABLE before_after_photos ADD COLUMN IF NOT EXISTS booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE`).catch(() => {});
+  await db.query(`ALTER TABLE before_after_photos ALTER COLUMN time_record_id DROP NOT NULL`).catch(() => {});
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_beforeafter_booking ON before_after_photos(booking_id)`).catch(() => {});
   // Route order for bookings (employee Assigned Jobs page ordering)
   await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS route_order INTEGER DEFAULT 9999`).catch(() => {});
   await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''`).catch(() => {});

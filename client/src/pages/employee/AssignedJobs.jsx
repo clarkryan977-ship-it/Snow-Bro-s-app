@@ -66,7 +66,7 @@ export default function EmployeeAssignedJobs() {
 
   const loadPhotos = async (bookingId) => {
     try {
-      const { data } = await api.get(`/beforeafter/record/${bookingId}`);
+      const { data } = await api.get(`/beforeafter/booking/${bookingId}`);
       setPhotos(p => ({ ...p, [bookingId]: data }));
     } catch (e) {}
   };
@@ -97,7 +97,7 @@ export default function EmployeeAssignedJobs() {
       fd.append('photo', fileRef.current.files[0]);
       fd.append('photo_type', type);
       fd.append('caption', type === 'before' ? 'Before' : 'After');
-      await api.post(`/beforeafter/record/${bookingId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await api.post(`/beforeafter/booking/${bookingId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       fileRef.current.value = '';
       await loadPhotos(bookingId);
     } catch (e) { alert('Upload failed'); }
