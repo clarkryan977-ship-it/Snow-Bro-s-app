@@ -39,6 +39,175 @@ const upload = multer({
   },
 });
 
+// ── Contract HTML template builder ─────────────────────────────────────────────
+// Based on the 2026 Lawn Care Service Agreement (Lisa Clark template).
+// All dynamic values are substituted before saving.
+function buildContractHtml({
+  clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
+  startDate, endDate, rate, deposit, frequency, serviceDetails, contractType, year
+}) {
+  const contractTypeName = contractType === 'snow_removal' ? 'Snow Removal' : 'Lawn Care';
+  const yr  = year || new Date().getFullYear();
+  const freq = frequency || 'Weekly';
+  const dep  = parseFloat(deposit || 0).toFixed(2);
+  const rt   = parseFloat(rate || 0).toFixed(2);
+  const details = serviceDetails || `${freq} lawn mowing, trimming, and property maintenance.`;
+
+  const fmtDate = raw => {
+    if (!raw) return '';
+    const d = new Date(raw + 'T12:00:00');
+    return isNaN(d) ? raw : d.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+  };
+  const startFmt = fmtDate(startDate);
+  const endFmt   = fmtDate(endDate);
+
+  const addrParts = [clientAddress];
+  if (clientCity && clientState) addrParts.push(`${clientCity}, ${clientState} ${clientZip || ''}`.trim());
+  const addrHtml = addrParts.filter(Boolean).join('<br/>');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${yr} ${contractTypeName} Service Agreement</title>
+  <style>
+    body{font-family:Arial,sans-serif;line-height:1.6;color:#333;margin:0;padding:0}
+    .hdr{background:linear-gradient(135deg,#0f2557 0%,#1d4ed8 100%);color:#fff;padding:24px 32px}
+    .hdr h1{margin:0;font-size:26px;font-weight:800}
+    .hdr p{margin:4px 0 0;font-size:13px;opacity:.9}
+    .body{padding:28px 32px}
+    h2.section{font-size:15px;font-weight:700;color:#0f2557;border-bottom:2px solid #0f2557;padding-bottom:5px;margin:24px 0 10px}
+    .parties{display:flex;gap:20px;margin-bottom:8px}
+    .party{flex:1;background:#f8fafc;border-radius:8px;padding:14px 16px;font-size:14px}
+    .party strong{display:block;color:#0f2557;font-size:14px;font-weight:700;margin-bottom:6px}
+    table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+    th,td{padding:9px 12px;text-align:left;border-bottom:1px solid #e5e7eb}
+    th{background:#f0f4f8;font-weight:700;color:#0f2557}
+    .highlight{color:#dc2626;font-weight:700;font-size:15px}
+    p.body-p{font-size:14px;margin:6px 0}
+    .ftr{background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 32px;text-align:center;font-size:12px;color:#666;margin-top:32px}
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <h1>Snow Bro's Lawn Care &amp; Snow Removal</h1>
+    <p>1812 33rd St S, Moorhead, MN 56560 &nbsp;|&nbsp; 218-331-5145 &nbsp;|&nbsp; clarkryan977@gmail.com</p>
+  </div>
+  <div class="body">
+    <h1 style="text-align:center;text-transform:uppercase;color:#0f2557;margin:0 0 24px;font-size:22px">${yr} ${contractTypeName} Service Agreement</h1>
+
+    <h2 class="section">Agreement Parties</h2>
+    <div class="parties">
+      <div class="party">
+        <strong>Client</strong>
+        ${clientName}<br/>
+        ${addrHtml}${addrHtml ? '<br/>' : ''}
+        ${clientPhone ? `Phone: ${clientPhone}<br/>` : ''}
+        ${clientEmail ? `Email: ${clientEmail}` : ''}
+      </div>
+      <div class="party">
+        <strong>Contractor</strong>
+        Snow Bro's (Ryan Clark)<br/>
+        1812 33rd St S<br/>Moorhead, MN 56560<br/>
+        Phone: 218-331-5145<br/>Email: clarkryan977@gmail.com
+      </div>
+    </div>
+
+    <h2 class="section">1. Services Provided</h2>
+    <p class="body-p"><strong>Service Type:</strong> ${contractTypeName}</p>
+    <p class="body-p"><strong>Frequency:</strong> ${freq}</p>
+    <p class="body-p"><strong>Details:</strong> ${details}</p>
+
+    <h2 class="section">2. Term of Agreement</h2>
+    ${startFmt ? `<p class="body-p"><strong>Effective Date:</strong> ${startFmt}</p>` : ''}
+    ${endFmt   ? `<p class="highlight">Agreement Termination Date: ${endFmt}</p>` : ''}
+    <p class="body-p">This Agreement commences on the Effective Date and terminates on the Termination Date above, unless earlier terminated by either party with 30 days written notice.</p>
+
+    <h2 class="section">3. Compensation &amp; Payment Terms</h2>
+    <table>
+      <tr><th>Service Rate</th><td>$${rt} per ${freq.toLowerCase()}</td></tr>
+      <tr><th>Deposit Required</th><td>$${dep}</td></tr>
+      <tr><th>Payment Terms</th><td>Due upon completion of each service</td></tr>
+    </table>
+
+    <h2 class="section">4. Cancellation Policy</h2>
+    <p class="body-p">Either party may terminate this agreement with 24 hours notice. Late cancellations may be subject to a service charge.</p>
+
+    <h2 class="section">5. Liability &amp; Indemnification</h2>
+    <p class="body-p">The Contractor will provide all necessary equipment and tools. The Contractor is an independent contractor and not an employee of the Client. The Contractor agrees to indemnify and hold harmless the Client against claims arising from the Contractor's gross negligence or willful misconduct.</p>
+
+    <h2 class="section">6. Service Area</h2>
+    <p class="body-p">Services are provided in Moorhead, MN and Fargo, ND and surrounding areas.</p>
+
+    <h2 class="section">7. Governing Law</h2>
+    <p class="body-p">This Agreement is governed by the laws of the State of Minnesota.</p>
+  </div>
+  <div class="ftr">
+    <strong>Snow Bro's Lawn Care &amp; Snow Removal</strong> &bull; 1812 33rd St S, Moorhead, MN 56560 &bull; 218-331-5145
+  </div>
+</body>
+</html>`;
+}
+
+// ── GET /template — default field values for the generate form ───────────────
+router.get('/template', authenticateToken, requireAdmin, (req, res) => {
+  const yr = new Date().getFullYear();
+  res.json({
+    year: yr,
+    defaultStart: `${yr}-04-01`,
+    defaultEnd:   `${yr}-11-01`,
+    defaultRate: '200',
+    defaultDeposit: '0',
+    defaultFrequency: 'Weekly',
+    defaultServiceDetails: 'Weekly lawn mowing, trimming, and property maintenance.',
+    contractTypes: [
+      { value: 'lawn_care',    label: 'Lawn Care' },
+      { value: 'snow_removal', label: 'Snow Removal' },
+    ],
+    frequencies: ['Weekly', 'Bi-weekly', 'Monthly', 'As needed'],
+  });
+});
+
+// ── POST /preview — render HTML without saving (for live preview) ─────────────
+router.post('/preview', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const {
+      client_id, contract_type, rate, start_date, end_date,
+      deposit, frequency, service_details, client_name_override,
+    } = req.body;
+
+    let clientName = client_name_override || 'Client Name';
+    let clientAddress = '', clientCity = '', clientState = '', clientZip = '', clientPhone = '', clientEmail = '';
+
+    if (client_id) {
+      const { rows } = await req.db.query('SELECT * FROM clients WHERE id = $1', [client_id]);
+      const cl = rows[0];
+      if (cl) {
+        clientName    = client_name_override || `${cl.first_name} ${cl.last_name}`;
+        clientAddress = cl.address || '';
+        clientCity    = cl.city    || '';
+        clientState   = cl.state   || '';
+        clientZip     = cl.zip     || '';
+        clientPhone   = cl.phone   || '';
+        clientEmail   = cl.email   || '';
+      }
+    }
+
+    const html = buildContractHtml({
+      clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
+      startDate: start_date, endDate: end_date,
+      rate, deposit, frequency, serviceDetails: service_details,
+      contractType: contract_type || 'lawn_care',
+      year: new Date().getFullYear(),
+    });
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    res.status(500).send('<h1>Preview error</h1><p>' + err.message + '</p>');
+  }
+});
+
 // ── Admin: generate + create contract and send email ─────────────────────────
 router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
   try {
@@ -59,6 +228,21 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
     const signToken = uuidv4();
+    // Build the full contract HTML server-side using the Lisa Clark template
+    const generatedHtml = buildContractHtml({
+      clientName: `${client.first_name} ${client.last_name}`,
+      clientAddress: client.address || '',
+      clientCity:    client.city    || '',
+      clientState:   client.state   || '',
+      clientZip:     client.zip     || '',
+      clientPhone:   client.phone   || '',
+      clientEmail:   client.email   || '',
+      startDate: start_date, endDate: end_date,
+      rate, deposit, frequency: frequency || 'Weekly',
+      serviceDetails: service_details,
+      contractType: contract_type,
+      year: new Date().getFullYear(),
+    });
     const { rows: result } = await req.db.query(`
       INSERT INTO contracts
         (title, client_id, uploaded_by, contract_type, service_category, rate, start_date, end_date,
@@ -69,7 +253,7 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
         title, client_id, req.user.id, contract_type, service_category || '',
         rate || '', start_date || '', end_date || '', deposit || '0',
         frequency || 'Weekly', service_details || '',
-        signToken, contract_html || '', 'generated', 'Generated Contract', 'generated'
+        signToken, generatedHtml, 'generated', 'Generated Contract', 'generated'
       ]
     );
 
