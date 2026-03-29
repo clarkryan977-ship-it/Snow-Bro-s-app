@@ -697,9 +697,9 @@ export default function AdminContracts() {
                       <button onClick={() => viewFile(c.id)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#f9fafb', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
                         👁️ View
                       </button>
-                      {c.status !== 'signed' && c.original_name === 'Generated Contract' && (
+                      {c.status !== 'signed' && c.sign_token && (
                         <button onClick={() => resend(c.id, c.client_name)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
-                          📧 Resend
+                          📧 Send
                         </button>
                       )}
                       {c.status === 'signed' && c.signed_file_path && (

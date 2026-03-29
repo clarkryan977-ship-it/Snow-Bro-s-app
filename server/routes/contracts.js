@@ -1027,11 +1027,13 @@ router.get('/:id/view', async (req, res) => {
     .body-section p { margin-bottom: 12px; }
     .body-section ul, .body-section ol { padding-left: 20px; margin-bottom: 12px; }
     .status-row { margin-top: 28px; }
+    /* Template body styles (from SHARED_CSS) */
+    ${SHARED_CSS}
     @media print {
       .print-bar { display: none !important; }
-      body { background: #fff; }
-      .contract-card { box-shadow: none; padding: 0; }
-      .page-wrapper { padding: 0; max-width: 100%; }
+      body { background: #fff !important; }
+      .contract-card { box-shadow: none !important; padding: 20px !important; }
+      .page-wrapper { padding: 0 !important; max-width: 100% !important; }
     }
   </style>
 </head>
@@ -1118,6 +1120,26 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
 
     await req.db.query('DELETE FROM contracts WHERE id = $1', [req.params.id]);
     res.json({ message: 'Contract deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin: delete ALL contracts (dev/reset) ─────────────────────────────────
+router.delete('/all/purge', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    // Delete all physical files first
+    const { rows: all } = await req.db.query('SELECT file_path, signed_file_path FROM contracts');
+    for (const c of all) {
+      if (c.file_path && c.file_path !== 'generated') {
+        try { if (fs.existsSync(c.file_path)) fs.unlinkSync(c.file_path); } catch (_) {}
+      }
+      if (c.signed_file_path) {
+        try { if (fs.existsSync(c.signed_file_path)) fs.unlinkSync(c.signed_file_path); } catch (_) {}
+      }
+    }
+    const { rowCount } = await req.db.query('DELETE FROM contracts');
+    res.json({ message: `Deleted ${rowCount} contracts`, count: rowCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
