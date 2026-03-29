@@ -45,8 +45,9 @@ router.get('/backup', authenticateToken, requireAdmin, async (req, res) => {
                 LEFT JOIN clients c ON b.client_id = c.id
                 LEFT JOIN services s ON b.service_id = s.id
                 ORDER BY b.id`),
-      db.query(`SELECT id, client_id, title, status, total_amount,
-                       signed_at, created_at
+      db.query(`SELECT id, client_id, title, status, contract_type,
+                       service_category, rate, start_date,
+                       signed_at, signer_name, created_at
                 FROM contracts ORDER BY id`),
       db.query(`SELECT id, name, description, base_price, category, active, created_at
                 FROM services ORDER BY id`),
