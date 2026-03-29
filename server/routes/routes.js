@@ -385,6 +385,53 @@ router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) =
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /:id/optimize-from-here  — nearest-neighbour from a GPS point, only moves uncompleted stops
+router.post('/:id/optimize-from-here', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { lat, lng } = req.body;
+    if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required' });
+    const startLat = parseFloat(lat);
+    const startLng = parseFloat(lng);
+
+    const { rows: stops } = await req.db.query(`
+      SELECT rs.id, rs.position, rs.completed,
+        COALESCE(c.latitude, 0)  AS latitude,
+        COALESCE(c.longitude, 0) AS longitude
+      FROM route_stops rs
+      LEFT JOIN clients c ON rs.client_id = c.id
+      WHERE rs.route_id = $1
+      ORDER BY rs.position ASC
+    `, [req.params.id]);
+
+    // Completed stops stay locked at the top in their current order
+    const completed = stops.filter(s => s.completed === true || s.completed === 't');
+    const pending   = stops.filter(s => s.completed !== true && s.completed !== 't');
+
+    const geoStops = pending.filter(s => s.latitude && s.longitude);
+    const noGeo    = pending.filter(s => !s.latitude || !s.longitude);
+
+    const ordered  = [];
+    const remaining = [...geoStops];
+    let curLat = startLat, curLng = startLng;
+    while (remaining.length > 0) {
+      let nearest = 0, nearestDist = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const d = haversine(curLat, curLng, remaining[i].latitude, remaining[i].longitude);
+        if (d < nearestDist) { nearestDist = d; nearest = i; }
+      }
+      const next = remaining.splice(nearest, 1)[0];
+      ordered.push(next);
+      curLat = next.latitude; curLng = next.longitude;
+    }
+
+    const finalOrder = [...completed, ...ordered, ...noGeo];
+    for (let idx = 0; idx < finalOrder.length; idx++) {
+      await req.db.query('UPDATE route_stops SET position = $1 WHERE id = $2', [idx, finalOrder[idx].id]);
+    }
+    res.json({ message: 'Route re-optimized from location', count: finalOrder.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════════════
 //  LIVE ROUTE SESSIONS (GPS tracking)
 // ═══════════════════════════════════════════════════════════════════

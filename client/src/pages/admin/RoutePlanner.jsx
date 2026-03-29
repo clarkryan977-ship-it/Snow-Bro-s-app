@@ -608,22 +608,47 @@ export default function RoutePlanner() {
     loadRoutes();
   };
 
-  const handleGeoSort = async () => {
+  // Sort from Start: geocode optional address, then nearest-neighbour all stops
+  const handleSortFromStart = async () => {
     if (!selectedRouteId) return;
-    setOptimizing(true);
+    setOptimizing('start');
     try {
-      let startLat = 46.8772, startLng = -96.7898;
+      let startLat = 46.8772, startLng = -96.7898; // Fargo default
       const addrVal = startAddressRef.current ? startAddressRef.current.value.trim() : '';
       if (addrVal) {
         try {
           const geoUrl = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(addrVal) + '&limit=1&countrycodes=us';
-          const res = await fetch(geoUrl, { headers: { 'User-Agent': 'SnowBros-RoutePlanner/1.0' } });
-          const data = await res.json();
+          const r = await fetch(geoUrl, { headers: { 'User-Agent': 'SnowBros-RoutePlanner/1.0' } });
+          const data = await r.json();
           if (data && data[0]) { startLat = parseFloat(data[0].lat); startLng = parseFloat(data[0].lon); }
         } catch { /* use default */ }
       }
       await api.post('/routes/' + selectedRouteId + '/optimize', { start_lat: startLat, start_lng: startLng });
       loadRouteDetail(selectedRouteId);
+    } catch (e) {
+      alert('Sort failed: ' + (e.response?.data?.error || e.message));
+    } finally { setOptimizing(false); }
+  };
+
+  // Sort from My Location: get device GPS, then nearest-neighbour uncompleted stops only
+  const handleSortFromHere = async () => {
+    if (!selectedRouteId) return;
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by this browser.');
+      return;
+    }
+    setOptimizing('here');
+    try {
+      const pos = await new Promise((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, maximumAge: 30000 })
+      );
+      const { latitude: lat, longitude: lng } = pos.coords;
+      await api.post('/routes/' + selectedRouteId + '/optimize-from-here', { lat, lng });
+      loadRouteDetail(selectedRouteId);
+    } catch (e) {
+      if (e.code === 1) alert('Location permission denied. Please allow location access and try again.');
+      else if (e.code === 3) alert('Location request timed out. Please try again.');
+      else alert('Sort failed: ' + (e.response?.data?.error || e.message));
     } finally { setOptimizing(false); }
   };
 
@@ -815,17 +840,36 @@ export default function RoutePlanner() {
                   </div>
                 )}
 
-                {/* Geo-sort bar (planning mode only) */}
-                {!liveMode && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                    <input ref={startAddressRef} placeholder="Starting address for geo-sort (optional)"
+                {/* Geo-sort bar — available in both planning and live mode */}
+                <div style={{ marginTop: 12 }}>
+                  {/* Sort from Start row */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <input ref={startAddressRef} placeholder="Start address (optional — leave blank to use first stop)"
                       style={{ flex: 1, minWidth: 160, padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }} />
-                    <button onClick={handleGeoSort} disabled={optimizing}
-                      style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                      {optimizing ? '⏳ Sorting…' : '📍 Geo-Sort'}
+                    <button
+                      onClick={handleSortFromStart}
+                      disabled={!!optimizing}
+                      title="Sort all stops using nearest-neighbour from the start address (or first stop if blank)"
+                      style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap', opacity: optimizing ? 0.6 : 1 }}>
+                      {optimizing === 'start' ? '⏳ Sorting…' : '🚩 Sort from Start'}
                     </button>
                   </div>
-                )}
+                  {/* Sort from My Location row */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ flex: 1, fontSize: 12, color: '#64748b' }}>
+                      {liveMode
+                        ? 'Re-sort remaining stops from your current GPS position (completed stops stay locked).'
+                        : 'Sort all stops nearest-neighbour from your current device location.'}
+                    </div>
+                    <button
+                      onClick={handleSortFromHere}
+                      disabled={!!optimizing}
+                      title="Use device GPS to sort stops nearest-neighbour from your current location"
+                      style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: optimizing ? 0.6 : 1 }}>
+                      {optimizing === 'here' ? '⏳ Locating…' : '📍 Sort from My Location'}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {!liveMode && showAddStop && (
