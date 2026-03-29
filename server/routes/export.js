@@ -32,7 +32,7 @@ router.get('/backup', authenticateToken, requireAdmin, async (req, res) => {
       db.query(`SELECT id, first_name, last_name, email, phone, address, city, state, zip,
                        notes, active, service_type, latitude, longitude, created_at
                 FROM clients ORDER BY id`),
-      db.query(`SELECT id, first_name, last_name, email, phone, role, hourly_rate,
+      db.query(`SELECT id, first_name, last_name, email, phone, role, title,
                        active, created_at
                 FROM employees ORDER BY id`),
       db.query(`SELECT b.id, b.client_id,
