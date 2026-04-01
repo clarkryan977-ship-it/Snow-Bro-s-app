@@ -93,7 +93,7 @@ function RouteCard({ route, isSelected, onSelect, onEdit, onDelete }) {
 }
 
 // ─── LiveStopCard ─────────────────────────────────────────────────────────────
-function LiveStopCard({ stop, index, routeId, onToggle }) {
+function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }) {
   const [loading, setLoading] = useState(false);
   const isDone = stop.completed === true || stop.completed === 't';
   const clientName = stop.first_name
@@ -101,14 +101,22 @@ function LiveStopCard({ stop, index, routeId, onToggle }) {
     : (stop.stop_label || ('Stop ' + (index + 1)));
   const addr = getStopAddress(stop);
   const url  = mapsUrl(stop);
-
   const handleToggle = async () => {
     setLoading(true);
     try {
+      const wasCompleting = !isDone;
       const endpoint = isDone
         ? `/routes/${routeId}/stops/${stop.id}/uncomplete`
         : `/routes/${routeId}/stops/${stop.id}/complete`;
       await api.patch(endpoint);
+      // Auto-navigate to next stop if enabled and we just completed (not undid) this stop
+      if (wasCompleting && autoNavigate && nextStop) {
+        const nextAddr = getStopAddress(nextStop);
+        if (nextAddr && nextAddr !== 'No address') {
+          const mapsLink = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(nextAddr) + '&travelmode=driving';
+          window.open(mapsLink, '_blank', 'noopener');
+        }
+      }
       onToggle();
     } catch (e) {
       alert('Failed to update stop');
@@ -540,6 +548,7 @@ export default function RoutePlanner() {
   const [showAddStop, setShowAddStop] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [liveMode, setLiveMode] = useState(false);
+  const [autoNavigate, setAutoNavigate] = useState(true);
   const [mobileView, setMobileView] = useState('routes');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const startAddressRef = useRef(null);
@@ -859,6 +868,24 @@ export default function RoutePlanner() {
                         📍 GPS active
                       </span>
                     )}
+                    {liveMode && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', fontSize: 13, fontWeight: 600, color: autoNavigate ? '#1d4ed8' : '#64748b' }}>
+                        <div
+                          onClick={() => setAutoNavigate(v => !v)}
+                          style={{
+                            width: 36, height: 20, borderRadius: 10, position: 'relative', cursor: 'pointer',
+                            background: autoNavigate ? '#3b82f6' : '#cbd5e1',
+                            transition: 'background .2s',
+                          }}>
+                          <div style={{
+                            position: 'absolute', top: 2, left: autoNavigate ? 18 : 2,
+                            width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                            transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)',
+                          }} />
+                        </div>
+                        🧭 Auto-navigate
+                      </label>
+                    )}
                     <button
                       onClick={() => {
                         const url = mapsRouteUrl(selectedRoute.stops || []);
@@ -935,15 +962,21 @@ export default function RoutePlanner() {
                     No stops yet. Click "+ Add Stops" to add clients or bookings.
                   </div>
                 ) : liveMode ? (
-                  stops.map((stop, idx) => (
-                    <LiveStopCard
-                      key={stop.id}
-                      stop={stop}
-                      index={idx}
-                      routeId={selectedRouteId}
-                      onToggle={handleStopToggled}
-                    />
-                  ))
+                  stops.map((stop, idx) => {
+                    // Find the next uncompleted stop after this one (for auto-navigate)
+                    const nextStop = stops.slice(idx + 1).find(s => !(s.completed === true || s.completed === 't'));
+                    return (
+                      <LiveStopCard
+                        key={stop.id}
+                        stop={stop}
+                        index={idx}
+                        routeId={selectedRouteId}
+                        onToggle={handleStopToggled}
+                        autoNavigate={autoNavigate}
+                        nextStop={nextStop}
+                      />
+                    );
+                  })
                 ) : (
                   stops.map((stop, idx) => (
                     <StopCard key={stop.id} stop={stop} index={idx} onRemove={handleRemoveStop} />
