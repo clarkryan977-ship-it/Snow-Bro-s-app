@@ -294,7 +294,7 @@ export default function AdminClients() {
     <div class="section">
       <h2>1. Services Provided</h2>
       <p>${isSnow
-        ? "Snow removal services will be performed after snowfall accumulation reaches 2 inches or more, unless service is specifically requested by the Client. Snow Bro's has a 12-hour grace period from the end of snowfall to complete the contracted service."
+        ? "Snow removal services will be performed after snowfall accumulation reaches 2 inches or more, unless service is specifically requested by the Client. Snow Bro's has a 12-hour grace period from the end of snowfall to complete the contracted service. No specific arrival or service time is guaranteed. Please note that salting and sanding are NOT included as automatic services and must be specifically requested or arranged separately."
         : "Lawn care services including mowing, trimming, and property maintenance as scheduled."
       }</p>
       <p><strong>Service Frequency:</strong> ${contractForm.frequency}</p>
