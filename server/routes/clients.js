@@ -85,10 +85,10 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// Update client (admin) — full update; also accepts latitude/longitude
+// Update client (admin) — full update; also accepts latitude/longitude and password
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { first_name, last_name, email, phone, address, city, state, zip, notes, active, service_type, latitude, longitude } = req.body;
+    const { first_name, last_name, email, phone, address, city, state, zip, notes, active, service_type, latitude, longitude, password } = req.body;
     if (!first_name || !last_name || !email) {
       return res.status(400).json({ error: 'first_name, last_name, and email are required' });
     }
@@ -111,6 +111,12 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
 
     const { rows } = await req.db.query(query, params);
     if (rows.length === 0) return res.status(404).json({ error: 'Client not found' });
+
+    // If password provided, hash and save it
+    if (password && password.trim()) {
+      const password_hash = bcrypt.hashSync(password.trim(), 10);
+      await req.db.query('UPDATE clients SET password_hash=$1 WHERE id=$2', [password_hash, req.params.id]);
+    }
 
     // If address changed and no coords provided, re-geocode in background
     if (latVal === undefined && address && city) {
@@ -262,6 +268,145 @@ router.post('/:id/invite', authenticateToken, requireAdmin, async (req, res) => 
     });
 
     res.json({ message: `Portal invite sent to ${client.email}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin: Create portal account for a client ─────────────────────────────────
+router.post('/:id/create-portal-account', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: __client } = await req.db.query(
+      'SELECT id, first_name, last_name, email, password_hash FROM clients WHERE id = $1',
+      [req.params.id]
+    );
+    const client = __client[0];
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (client.email.endsWith('@snowbros.placeholder')) {
+      return res.status(400).json({ error: 'Cannot create portal account with a placeholder email. Update the client\'s real email first.' });
+    }
+
+    // Generate or use provided password
+    let { password } = req.body;
+    if (!password || !password.trim()) {
+      // Auto-generate: first name lowercase + random 4 digits
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      password = `${client.first_name.toLowerCase()}${rand}`;
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const password_hash = bcrypt.hashSync(password, 10);
+    await req.db.query('UPDATE clients SET password_hash=$1 WHERE id=$2', [password_hash, client.id]);
+
+    res.json({
+      message: `Portal account created for ${client.first_name} ${client.last_name}`,
+      credentials: { email: client.email, password, login_url: (process.env.BASE_URL || 'https://snowbros-production.up.railway.app') + '/login' }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin: Reset client portal password ─────────────────────────────────────
+router.post('/:id/reset-password', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: __client } = await req.db.query(
+      'SELECT id, first_name, last_name, email, password_hash FROM clients WHERE id = $1',
+      [req.params.id]
+    );
+    const client = __client[0];
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!client.password_hash) {
+      return res.status(400).json({ error: 'Client does not have a portal account yet. Create one first.' });
+    }
+
+    let { password } = req.body;
+    if (!password || !password.trim()) {
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      password = `${client.first_name.toLowerCase()}${rand}`;
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const password_hash = bcrypt.hashSync(password, 10);
+    await req.db.query('UPDATE clients SET password_hash=$1 WHERE id=$2', [password_hash, client.id]);
+
+    res.json({
+      message: `Password reset for ${client.first_name} ${client.last_name}`,
+      credentials: { email: client.email, password, login_url: (process.env.BASE_URL || 'https://snowbros-production.up.railway.app') + '/login' }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin: Send credentials to client via email ─────────────────────────────
+router.post('/:id/send-credentials', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: __client } = await req.db.query(
+      'SELECT id, first_name, last_name, email, phone FROM clients WHERE id = $1',
+      [req.params.id]
+    );
+    const client = __client[0];
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    const { password, method } = req.body; // method: 'email' or 'sms'
+    if (!password) return res.status(400).json({ error: 'Password is required to send credentials' });
+
+    const BASE_URL = process.env.BASE_URL || 'https://snowbros-production.up.railway.app';
+    const loginUrl = `${BASE_URL}/login`;
+
+    if (method === 'sms') {
+      // SMS via email-to-SMS gateways is unreliable; return the message text for manual sending
+      const smsText = `Hi ${client.first_name}! Your Snow Bro's portal account is ready. Login at ${loginUrl} with email: ${client.email} and password: ${password}`;
+      return res.json({ message: 'SMS text generated (copy and send manually)', sms_text: smsText, phone: client.phone });
+    }
+
+    // Send via email
+    if (!client.email || client.email.endsWith('@snowbros.placeholder')) {
+      return res.status(400).json({ error: 'Client has no valid email address' });
+    }
+
+    const { sendMail } = require('../utils/mailer');
+    const { wrapEmail } = require('../utils/emailHeader');
+
+    const html = wrapEmail(`
+      <h2 style="color:#1e40af;margin-top:0;">Your Portal Account is Ready!</h2>
+      <p>Hi ${client.first_name},</p>
+      <p>Your <strong>Snow Bro's Client Portal</strong> account has been set up. You can now log in to view invoices, contracts, service history, and track your service in real time.</p>
+      <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:10px;padding:20px;margin:20px 0;">
+        <p style="margin:0 0 8px;font-weight:700;color:#1e40af;">Your Login Credentials</p>
+        <table style="font-size:14px;">
+          <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#374151;">Email:</td><td style="color:#111827;">${client.email}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#374151;">Password:</td><td style="color:#111827;font-family:monospace;font-size:15px;letter-spacing:1px;">${password}</td></tr>
+        </table>
+      </div>
+      <div style="text-align:center;margin:24px 0;">
+        <a href="${loginUrl}" style="display:inline-block;background:#1e40af;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;">Log In to Your Portal</a>
+      </div>
+      <p style="color:#6b7280;font-size:13px;">We recommend changing your password after your first login for security.</p>
+    `, 'Portal Account');
+
+    await sendMail({
+      to: client.email,
+      subject: "Your Snow Bro's Portal Login Credentials",
+      html
+    });
+
+    res.json({ message: `Credentials emailed to ${client.email}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin: Remove portal account (clear password) ───────────────────────────
+router.post('/:id/remove-portal-account', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await req.db.query('UPDATE clients SET password_hash=NULL WHERE id=$1', [req.params.id]);
+    res.json({ message: 'Portal account removed' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

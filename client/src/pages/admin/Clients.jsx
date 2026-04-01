@@ -20,7 +20,7 @@ const isPlaceholder = email => email && email.endsWith('@snowbros.placeholder');
 export default function AdminClients() {
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'active' | 'inactive' | 'placeholder'
+  const [filterStatus, setFilterStatus] = useState('all');
   const [modal, setModal] = useState(null);
   const [contractModal, setContractModal] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -32,15 +32,21 @@ export default function AdminClients() {
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Inline email editing state: { clientId, value, saving, error }
+  // Inline email editing state
   const [emailEdit, setEmailEdit] = useState(null);
   const emailInputRef = useRef(null);
 
-  // Per-row invite state: { [clientId]: 'idle' | 'sending' | 'sent' | 'error' }
+  // Per-row invite state
   const [inviteState, setInviteState] = useState({});
 
+  // Portal account modal state
+  const [portalModal, setPortalModal] = useState(null); // { client, mode: 'create'|'reset'|'credentials' }
+  const [portalPassword, setPortalPassword] = useState('');
+  const [portalResult, setPortalResult] = useState(null); // { credentials, message }
+  const [portalLoading, setPortalLoading] = useState(false);
+
   // Toast notification state
-  const [toast, setToast] = useState(null); // { msg, type: 'success'|'error' }
+  const [toast, setToast] = useState(null);
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
@@ -49,7 +55,6 @@ export default function AdminClients() {
   const load = () => api.get('/clients').then(r => setClients(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
 
-  // Focus email input when opened
   useEffect(() => {
     if (emailEdit && emailInputRef.current) emailInputRef.current.focus();
   }, [emailEdit]);
@@ -76,7 +81,6 @@ export default function AdminClients() {
     load();
   };
 
-  // Fixed: use dedicated PATCH endpoint so we don't need all fields
   const toggleActive = async (id, currentActive) => {
     try {
       await api.patch(`/clients/${id}/active`, { active: !currentActive });
@@ -123,6 +127,90 @@ export default function AdminClients() {
     } catch (err) {
       showToast(err.response?.data?.error || 'Failed to send invite', 'error');
       setInviteState(s => ({ ...s, [c.id]: 'idle' }));
+    }
+  };
+
+  // Portal account management
+  const openPortalCreate = (c) => {
+    setPortalModal({ client: c, mode: 'create' });
+    setPortalPassword('');
+    setPortalResult(null);
+  };
+  const openPortalReset = (c) => {
+    setPortalModal({ client: c, mode: 'reset' });
+    setPortalPassword('');
+    setPortalResult(null);
+  };
+  const closePortalModal = () => {
+    setPortalModal(null);
+    setPortalPassword('');
+    setPortalResult(null);
+  };
+
+  const handlePortalAction = async () => {
+    if (!portalModal) return;
+    setPortalLoading(true);
+    try {
+      const { client, mode } = portalModal;
+      const endpoint = mode === 'create'
+        ? `/clients/${client.id}/create-portal-account`
+        : `/clients/${client.id}/reset-password`;
+      const res = await api.post(endpoint, { password: portalPassword || '' });
+      setPortalResult(res.data);
+      await load();
+      showToast(res.data.message);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed', 'error');
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const sendCredentialsEmail = async () => {
+    if (!portalResult?.credentials || !portalModal) return;
+    setPortalLoading(true);
+    try {
+      const res = await api.post(`/clients/${portalModal.client.id}/send-credentials`, {
+        password: portalResult.credentials.password,
+        method: 'email'
+      });
+      showToast(res.data.message);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to send email', 'error');
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const sendCredentialsSMS = async () => {
+    if (!portalResult?.credentials || !portalModal) return;
+    setPortalLoading(true);
+    try {
+      const res = await api.post(`/clients/${portalModal.client.id}/send-credentials`, {
+        password: portalResult.credentials.password,
+        method: 'sms'
+      });
+      // Copy SMS text to clipboard
+      if (res.data.sms_text) {
+        try { await navigator.clipboard.writeText(res.data.sms_text); } catch {}
+        showToast(`SMS text copied to clipboard! Send to ${res.data.phone || 'client phone'}`);
+        setPortalResult(r => ({ ...r, sms_text: res.data.sms_text, phone: res.data.phone }));
+      }
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed', 'error');
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const removePortalAccount = async (c) => {
+    if (!confirm(`Remove portal access for ${c.first_name} ${c.last_name}? They will no longer be able to log in.`)) return;
+    try {
+      await api.post(`/clients/${c.id}/remove-portal-account`);
+      await load();
+      showToast(`Portal account removed for ${c.first_name} ${c.last_name}`);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed', 'error');
     }
   };
 
@@ -286,6 +374,8 @@ export default function AdminClients() {
   const placeholderCount = clients.filter(c => isPlaceholder(c.email)).length;
   const activeCount = clients.filter(c => c.active).length;
   const inactiveCount = clients.length - activeCount;
+  const portalCount = clients.filter(c => c.has_password).length;
+  const noPortalCount = clients.length - portalCount;
 
   const filtered = clients.filter(c => {
     const matchSearch = `${c.first_name} ${c.last_name} ${c.email}`.toLowerCase().includes(search.toLowerCase());
@@ -293,6 +383,8 @@ export default function AdminClients() {
     if (filterStatus === 'active') return c.active;
     if (filterStatus === 'inactive') return !c.active;
     if (filterStatus === 'placeholder') return isPlaceholder(c.email);
+    if (filterStatus === 'portal') return c.has_password;
+    if (filterStatus === 'no-portal') return !c.has_password;
     return true;
   });
 
@@ -308,13 +400,13 @@ export default function AdminClients() {
           maxWidth: 380, lineHeight: 1.4,
           animation: 'fadeIn .2s ease'
         }}>
-          {toast.type === 'error' ? '❌ ' : '✅ '}{toast.msg}
+          {toast.type === 'error' ? '--- ' : '--- '}{toast.msg}
         </div>
       )}
 
       <div className="flex-between page-header">
         <div>
-          <h1>👥 Clients</h1>
+          <h1>Clients</h1>
           <p>Manage your client list.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -343,7 +435,7 @@ export default function AdminClients() {
             }}
             title="Download a ZIP backup of all clients, employees, bookings, contracts and services as CSV files"
           >
-            📦 Export Backup
+            Export Backup
           </button>
           <button className="btn btn-primary" onClick={openAdd}>+ Add Client</button>
         </div>
@@ -355,20 +447,26 @@ export default function AdminClients() {
           All ({clients.length})
         </button>
         <button onClick={() => setFilterStatus('active')} style={{ padding: '8px 16px', background: filterStatus === 'active' ? '#16a34a' : '#f0fdf4', color: filterStatus === 'active' ? '#fff' : '#166534', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-          ✅ Active ({activeCount})
+          Active ({activeCount})
         </button>
         <button onClick={() => setFilterStatus('inactive')} style={{ padding: '8px 16px', background: filterStatus === 'inactive' ? '#dc2626' : '#fef2f2', color: filterStatus === 'inactive' ? '#fff' : '#991b1b', border: '1px solid #fecaca', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-          ❌ Inactive ({inactiveCount})
+          Inactive ({inactiveCount})
+        </button>
+        <button onClick={() => setFilterStatus('portal')} style={{ padding: '8px 16px', background: filterStatus === 'portal' ? '#7c3aed' : '#f5f3ff', color: filterStatus === 'portal' ? '#fff' : '#5b21b6', border: '1px solid #ddd6fe', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          Portal ({portalCount})
+        </button>
+        <button onClick={() => setFilterStatus('no-portal')} style={{ padding: '8px 16px', background: filterStatus === 'no-portal' ? '#6b7280' : '#f9fafb', color: filterStatus === 'no-portal' ? '#fff' : '#374151', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          No Portal ({noPortalCount})
         </button>
         {placeholderCount > 0 && (
           <button onClick={() => setFilterStatus('placeholder')} style={{ padding: '8px 16px', background: filterStatus === 'placeholder' ? '#d97706' : '#fffbeb', color: filterStatus === 'placeholder' ? '#fff' : '#92400e', border: '1px solid #fde68a', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            ⚠️ Placeholder Emails ({placeholderCount})
+            Placeholder Emails ({placeholderCount})
           </button>
         )}
       </div>
 
       <div className="card mb-2">
-        <input className="form-control" placeholder="Search clients by name or email…" value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="form-control" placeholder="Search clients by name or email..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="card">
@@ -378,6 +476,7 @@ export default function AdminClients() {
               <tr>
                 <th>Status</th>
                 <th>Name</th>
+                <th>Portal</th>
                 <th>Email</th>
                 <th>Phone</th>
                 <th>City</th>
@@ -386,7 +485,7 @@ export default function AdminClients() {
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--gray-400)', padding: '2rem' }}>No clients found</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--gray-400)', padding: '2rem' }}>No clients found</td></tr>
               )}
               {filtered.map(c => {
                 const placeholder = isPlaceholder(c.email);
@@ -414,6 +513,39 @@ export default function AdminClients() {
                     {/* Name */}
                     <td><strong>{c.first_name} {c.last_name}</strong></td>
 
+                    {/* Portal Status Badge */}
+                    <td>
+                      {c.has_password ? (
+                        <span
+                          title="Client has portal access — click to manage"
+                          onClick={() => openPortalReset(c)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            background: '#dcfce7', color: '#166534', border: '1px solid #86efac',
+                            borderRadius: 12, padding: '3px 10px', fontSize: 11, fontWeight: 700,
+                            cursor: 'pointer', whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                          Portal
+                        </span>
+                      ) : (
+                        <span
+                          title="No portal account — click to create one"
+                          onClick={() => !placeholder ? openPortalCreate(c) : startEmailEdit(c)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            background: '#f3f4f6', color: '#6b7280', border: '1px solid #d1d5db',
+                            borderRadius: 12, padding: '3px 10px', fontSize: 11, fontWeight: 700,
+                            cursor: 'pointer', whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#9ca3af', display: 'inline-block' }} />
+                          No Portal
+                        </span>
+                      )}
+                    </td>
+
                     {/* Email — inline editable */}
                     <td style={{ minWidth: 220 }}>
                       {isEditingEmail ? (
@@ -429,10 +561,10 @@ export default function AdminClients() {
                               disabled={emailEdit.saving}
                             />
                             <button onClick={saveEmail} disabled={emailEdit.saving} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
-                              {emailEdit.saving ? '…' : '✓'}
+                              {emailEdit.saving ? '...' : 'OK'}
                             </button>
                             <button onClick={cancelEmailEdit} disabled={emailEdit.saving} style={{ background: '#6b7280', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
-                              ✕
+                              X
                             </button>
                           </div>
                           {emailEdit.error && <span style={{ color: '#dc2626', fontSize: 11 }}>{emailEdit.error}</span>}
@@ -445,7 +577,7 @@ export default function AdminClients() {
                               style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, padding: '2px 8px', fontSize: 12, color: '#92400e', cursor: 'pointer' }}
                               onClick={() => startEmailEdit(c)}
                             >
-                              ⚠️ {c.email} <span style={{ fontSize: 10, opacity: 0.7 }}>✏️ edit</span>
+                              {c.email} <span style={{ fontSize: 10, opacity: 0.7 }}>edit</span>
                             </span>
                           ) : (
                             <span style={{ fontSize: 13 }}>{c.email}</span>
@@ -455,7 +587,7 @@ export default function AdminClients() {
                               onClick={() => startEmailEdit(c)}
                               title="Edit email"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', padding: '0 2px' }}
-                            >✏️</button>
+                            >edit</button>
                           )}
                         </div>
                       )}
@@ -466,34 +598,49 @@ export default function AdminClients() {
 
                     {/* Actions */}
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      {/* Portal Invite */}
+                      {/* Portal Invite / Create Account */}
                       {!placeholder ? (
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => sendInvite(c)}
-                          disabled={istate === 'sending'}
-                          title={c.has_password ? 'Resend portal invite (client already set up password)' : 'Send portal invite — client will set their own password'}
-                          style={{
-                            marginRight: 6,
-                            background: istate === 'sent' ? '#16a34a' : c.has_password ? '#6b7280' : '#7c3aed',
-                            color: '#fff', border: 'none', borderRadius: 6,
-                            padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer'
-                          }}
-                        >
-                          {istate === 'sending' ? '⏳ Sending…' : istate === 'sent' ? '✅ Sent!' : c.has_password ? '🔁 Resend Invite' : '✉️ Send Invite'}
-                        </button>
+                        c.has_password ? (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => openPortalReset(c)}
+                            title="Manage portal account — reset password"
+                            style={{
+                              marginRight: 6,
+                              background: '#6b7280',
+                              color: '#fff', border: 'none', borderRadius: 6,
+                              padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                            }}
+                          >
+                            Reset PW
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => openPortalCreate(c)}
+                            title="Create portal account for this client"
+                            style={{
+                              marginRight: 6,
+                              background: '#7c3aed',
+                              color: '#fff', border: 'none', borderRadius: 6,
+                              padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                            }}
+                          >
+                            Create Portal
+                          </button>
+                        )
                       ) : (
                         <button
                           className="btn btn-sm"
                           onClick={() => startEmailEdit(c)}
-                          title="Update email before sending invite"
+                          title="Update email before creating portal account"
                           style={{ marginRight: 6, background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                         >
-                          ⚠️ Fix Email
+                          Fix Email
                         </button>
                       )}
                       <button className="btn btn-sm btn-secondary" onClick={() => openEdit(c)} style={{ marginRight: 6 }}>Edit</button>
-                      <button className="btn btn-sm btn-info" onClick={() => openContract(c)} style={{ marginRight: 6 }}>📄 Contract</button>
+                      <button className="btn btn-sm btn-info" onClick={() => openContract(c)} style={{ marginRight: 6 }}>Contract</button>
                       <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>Delete</button>
                     </td>
                   </tr>
@@ -510,7 +657,7 @@ export default function AdminClients() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{modal === 'add' ? 'Add Client' : `Edit ${modal.first_name} ${modal.last_name}`}</h2>
-              <button className="close-btn" onClick={close}>×</button>
+              <button className="close-btn" onClick={close}>x</button>
             </div>
             <div className="modal-body">
               {msg && <div className={`alert alert-${msg.includes('Error') || msg.includes('error') ? 'error' : 'success'}`}>{msg}</div>}
@@ -529,7 +676,7 @@ export default function AdminClients() {
                       Email *
                       {isPlaceholder(form.email) && (
                         <span style={{ marginLeft: 8, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, padding: '1px 6px', fontSize: 11, color: '#92400e' }}>
-                          ⚠️ Placeholder — update to real email
+                          Placeholder — update to real email
                         </span>
                       )}
                     </label>
@@ -579,13 +726,154 @@ export default function AdminClients() {
         </div>
       )}
 
+      {/* Portal Account Modal — Create / Reset / Send Credentials */}
+      {portalModal && (
+        <div className="modal-overlay" onClick={closePortalModal}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-header">
+              <h2>
+                {portalModal.mode === 'create' ? 'Create Portal Account' : 'Reset Portal Password'}
+                {' — '}{portalModal.client.first_name} {portalModal.client.last_name}
+              </h2>
+              <button className="close-btn" onClick={closePortalModal}>x</button>
+            </div>
+            <div className="modal-body">
+              {!portalResult ? (
+                <>
+                  <p style={{ color: '#374151', marginBottom: 16 }}>
+                    {portalModal.mode === 'create'
+                      ? `Create a portal account for ${portalModal.client.first_name}. They will be able to log in at the client portal to view invoices, contracts, and track services.`
+                      : `Reset the portal password for ${portalModal.client.first_name}. Their current password will be replaced.`
+                    }
+                  </p>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600 }}>Password (leave blank to auto-generate)</label>
+                    <input
+                      type="text"
+                      value={portalPassword}
+                      onChange={e => setPortalPassword(e.target.value)}
+                      className="form-control"
+                      placeholder="Auto-generated if empty"
+                      autoFocus
+                    />
+                    <small style={{ color: '#6b7280' }}>Minimum 6 characters. If left blank, a password like "{portalModal.client.first_name.toLowerCase()}1234" will be generated.</small>
+                  </div>
+                  <div className="modal-footer" style={{ marginTop: 16 }}>
+                    <button type="button" className="btn btn-secondary" onClick={closePortalModal}>Cancel</button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handlePortalAction}
+                      disabled={portalLoading}
+                      style={{ background: portalModal.mode === 'create' ? '#7c3aed' : '#1d4ed8' }}
+                    >
+                      {portalLoading ? 'Processing...' : portalModal.mode === 'create' ? 'Create Account' : 'Reset Password'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 10, padding: 20, marginBottom: 16 }}>
+                    <p style={{ margin: '0 0 12px', fontWeight: 700, color: '#166534', fontSize: 16 }}>
+                      {portalModal.mode === 'create' ? 'Account Created!' : 'Password Reset!'}
+                    </p>
+                    <table style={{ fontSize: 14 }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ padding: '6px 16px 6px 0', fontWeight: 600, color: '#374151' }}>Email:</td>
+                          <td style={{ color: '#111827' }}>{portalResult.credentials.email}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '6px 16px 6px 0', fontWeight: 600, color: '#374151' }}>Password:</td>
+                          <td style={{ color: '#111827', fontFamily: 'monospace', fontSize: 16, letterSpacing: 1 }}>{portalResult.credentials.password}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '6px 16px 6px 0', fontWeight: 600, color: '#374151' }}>Login URL:</td>
+                          <td><a href={portalResult.credentials.login_url} target="_blank" rel="noopener noreferrer" style={{ color: '#1d4ed8' }}>{portalResult.credentials.login_url}</a></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <p style={{ fontWeight: 600, color: '#374151', marginBottom: 10 }}>Send credentials to client:</p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                    <button
+                      onClick={sendCredentialsEmail}
+                      disabled={portalLoading}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 8,
+                        padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer'
+                      }}
+                    >
+                      {portalLoading ? 'Sending...' : 'Send via Email'}
+                    </button>
+                    <button
+                      onClick={sendCredentialsSMS}
+                      disabled={portalLoading}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
+                        padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer'
+                      }}
+                    >
+                      {portalLoading ? 'Generating...' : 'Copy for SMS/Text'}
+                    </button>
+                    <button
+                      onClick={() => sendInvite(portalModal.client)}
+                      disabled={portalLoading}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8,
+                        padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer'
+                      }}
+                    >
+                      Send Setup Invite Instead
+                    </button>
+                  </div>
+
+                  {/* SMS text display */}
+                  {portalResult.sms_text && (
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                      <p style={{ margin: '0 0 6px', fontWeight: 600, fontSize: 12, color: '#6b7280' }}>SMS Text (copied to clipboard):</p>
+                      <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{portalResult.sms_text}</p>
+                      {portalResult.phone && <p style={{ margin: '6px 0 0', fontSize: 12, color: '#6b7280' }}>Send to: {portalResult.phone}</p>}
+                    </div>
+                  )}
+
+                  {/* Remove portal access option */}
+                  {portalModal.mode === 'reset' && (
+                    <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 8 }}>
+                      <button
+                        onClick={() => { removePortalAccount(portalModal.client); closePortalModal(); }}
+                        style={{
+                          background: 'none', border: '1px solid #fca5a5', borderRadius: 6,
+                          padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#dc2626', cursor: 'pointer'
+                        }}
+                      >
+                        Remove Portal Access
+                      </button>
+                      <span style={{ marginLeft: 8, fontSize: 11, color: '#9ca3af' }}>Client will no longer be able to log in</span>
+                    </div>
+                  )}
+
+                  <div className="modal-footer" style={{ marginTop: 16 }}>
+                    <button type="button" className="btn btn-secondary" onClick={closePortalModal}>Done</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Generate Contract Modal */}
       {contractModal && (
         <div className="modal-overlay" onClick={() => setContractModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
             <div className="modal-header">
-              <h2>📄 Generate Contract for {contractModal.first_name} {contractModal.last_name}</h2>
-              <button className="close-btn" onClick={() => setContractModal(null)}>×</button>
+              <h2>Generate Contract for {contractModal.first_name} {contractModal.last_name}</h2>
+              <button className="close-btn" onClick={() => setContractModal(null)}>x</button>
             </div>
             <div className="modal-body">
               {msg && <div className={`alert alert-${msg.includes('Error') || msg.includes('error') ? 'error' : 'success'}`}>{msg}</div>}
@@ -598,7 +886,7 @@ export default function AdminClients() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label style={{ fontSize: '16px', fontWeight: '700', color: '#1e40af', marginBottom: '12px' }}>📅 Agreement Term</label>
+                  <label style={{ fontSize: '16px', fontWeight: '700', color: '#1e40af', marginBottom: '12px' }}>Agreement Term</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div className="form-group">
                       <label>Start Date *</label>
@@ -640,7 +928,7 @@ export default function AdminClients() {
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setContractModal(null)}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={loading}>
-                    {loading ? 'Generating...' : '📧 Generate & Send Contract'}
+                    {loading ? 'Generating...' : 'Generate & Send Contract'}
                   </button>
                 </div>
               </form>
