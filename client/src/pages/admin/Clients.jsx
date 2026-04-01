@@ -294,7 +294,7 @@ export default function AdminClients() {
     <div class="section">
       <h2>1. Services Provided</h2>
       <p>${isSnow
-        ? "Snow removal services will be performed after snowfall accumulation reaches 2 inches or more, unless service is specifically requested by the Client. The Contractor reserves 12 hours from the end of the snowfall event to reach the Client's property."
+        ? "Snow removal services will be performed after snowfall accumulation reaches 2 inches or more, unless service is specifically requested by the Client. Snow Bro's has a 12-hour grace period from the end of snowfall to complete the contracted service."
         : "Lawn care services including mowing, trimming, and property maintenance as scheduled."
       }</p>
       <p><strong>Service Frequency:</strong> ${contractForm.frequency}</p>
@@ -314,9 +314,9 @@ export default function AdminClients() {
         <tr><th>Payment Terms</th><td>Due upon completion of service</td></tr>
       </table>
     </div>
-    <div class="section">
+    <div className="section">
       <h2>4. Cancellation Policy</h2>
-      <p>Either party may terminate this agreement with 24 hours notice. Late cancellations may be subject to a service charge.</p>
+      <p>Either party may terminate this agreement with 30 days written notice. Late cancellations may be subject to a service charge.</p>
     </div>
     <div class="section">
       <h2>5. Liability &amp; Indemnification</h2>
