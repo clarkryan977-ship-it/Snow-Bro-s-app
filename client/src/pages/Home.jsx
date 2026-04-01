@@ -99,40 +99,84 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── NWS Weather Widget ─────────────────────────────────── */}
+      {/* ── NWS Weather Widgets ────────────────────────────────────── */}
       <div style={{ background: '#fff', borderTop: '1px solid #e2e8f0', padding: '1.5rem 1rem' }}>
-        <div className="container" style={{ maxWidth: 700, margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem', marginBottom: '.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
-              <span style={{ fontSize: '1.3rem' }}>🌨️</span>
-              <span style={{ fontWeight: 700, fontSize: '1rem', color: '#1e3a5f' }}>Moorhead, MN Forecast</span>
-              <span style={{ fontSize: '.78rem', color: '#64748b' }}>· 56560</span>
+        <div className="container" style={{ maxWidth: 900, margin: '0 auto' }}>
+          <h2 style={{ textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, color: '#1e3a5f', marginBottom: '1.25rem' }}>
+            ❄️ Local Snow &amp; Weather — Moorhead, MN (56560)
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
+
+            {/* 7-day NWS Forecast */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.5rem', marginBottom: '.6rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '.95rem', color: '#1e3a5f' }}>🌨️ 7-Day Forecast</span>
+                <a
+                  href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678"
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: '.8rem', color: '#1d4ed8', textDecoration: 'none', fontWeight: 600 }}>
+                  Full NWS Forecast →
+                </a>
+              </div>
+              <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', lineHeight: 0 }}>
+                <a
+                  href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678"
+                  target="_blank" rel="noopener noreferrer">
+                  <img
+                    src="https://forecast.weather.gov/meteograms/Plotter.php?lat=46.8738&lon=-96.7678&wfo=FGF&zimage=0&plottype=meteogram&ifDaily=0&numDays=7&FC=0&menu=1&FcstType=digital"
+                    alt="NWS 7-day forecast for Moorhead MN"
+                    style={{ width: '100%', display: 'block', maxHeight: 220, objectFit: 'cover', objectPosition: 'top' }}
+                    onError={e => { e.target.style.display='none'; e.target.parentElement.parentElement.innerHTML='<div style="padding:1rem;text-align:center;color:#64748b;font-size:.85rem">Forecast temporarily unavailable — <a href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678" target="_blank" style="color:#1d4ed8">view on NWS</a></div>'; }}
+                  />
+                </a>
+              </div>
             </div>
+
+            {/* 24-Hour Snow Accumulation */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.5rem', marginBottom: '.6rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '.95rem', color: '#1e3a5f' }}>📊 24-Hr Snow Accumulation</span>
+                <a
+                  href="https://www.nohrsc.noaa.gov/snowfall/?region=us&var=sfav&range=24&unit=0&isll=46.8738&islo=-96.7678"
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: '.8rem', color: '#1d4ed8', textDecoration: 'none', fontWeight: 600 }}>
+                  NOHRSC Map →
+                </a>
+              </div>
+              <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', lineHeight: 0 }}>
+                <a
+                  href="https://www.nohrsc.noaa.gov/snowfall/?region=us&var=sfav&range=24&unit=0&isll=46.8738&islo=-96.7678"
+                  target="_blank" rel="noopener noreferrer">
+                  <img
+                    src="https://www.nohrsc.noaa.gov/snowfall_v2/data/202504/sfav_conus_24h_20250401.jpg"
+                    alt="24-hour snow accumulation map for Fargo-Moorhead area"
+                    style={{ width: '100%', display: 'block', maxHeight: 220, objectFit: 'cover', objectPosition: 'center' }}
+                    onError={e => {
+                      // Try the dynamic NOHRSC URL on error
+                      const today = new Date();
+                      const y = today.getFullYear();
+                      const m = String(today.getMonth()+1).padStart(2,'0');
+                      const d = String(today.getDate()).padStart(2,'0');
+                      const fallback = `https://www.nohrsc.noaa.gov/snowfall_v2/data/${y}${m}/sfav_conus_24h_${y}${m}${d}.jpg`;
+                      if (e.target.src !== fallback) {
+                        e.target.src = fallback;
+                      } else {
+                        e.target.style.display='none';
+                        e.target.parentElement.parentElement.innerHTML='<div style="padding:1rem;text-align:center;color:#64748b;font-size:.85rem">Accumulation map temporarily unavailable — <a href="https://www.nohrsc.noaa.gov/snowfall/?region=us&var=sfav&range=24&unit=0" target="_blank" style="color:#1d4ed8">view on NOHRSC</a></div>';
+                      }
+                    }}
+                  />
+                </a>
+              </div>
+            </div>
+
+          </div>
+          <div style={{ marginTop: '.75rem', textAlign: 'center' }}>
             <a
               href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678"
               target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: '.8rem', color: '#1d4ed8', textDecoration: 'none', fontWeight: 600 }}>
-              Full NWS Forecast →
-            </a>
-          </div>
-          <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', lineHeight: 0 }}>
-            <a
-              href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678"
-              target="_blank" rel="noopener noreferrer">
-              <img
-                src="https://forecast.weather.gov/meteograms/Plotter.php?lat=46.8738&lon=-96.7678&wfo=FGF&zimage=0&plottype=meteogram&ifDaily=0&numDays=7&FC=0&menu=1&FcstType=digital"
-                alt="NWS 7-day forecast for Moorhead MN"
-                style={{ width: '100%', display: 'block', maxHeight: 220, objectFit: 'cover', objectPosition: 'top' }}
-                onError={e => { e.target.style.display='none'; e.target.parentElement.parentElement.innerHTML='<div style="padding:1rem;text-align:center;color:#64748b;font-size:.85rem">Forecast temporarily unavailable — <a href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678" target="_blank" style="color:#1d4ed8">view on NWS</a></div>'; }}
-              />
-            </a>
-          </div>
-          <div style={{ marginTop: '.6rem', textAlign: 'center' }}>
-            <a
-              href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678"
-              target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: '.8rem', color: '#64748b', textDecoration: 'none' }}>
-              Source: National Weather Service · Forecast Office Grand Forks, ND
+              style={{ fontSize: '.78rem', color: '#94a3b8', textDecoration: 'none' }}>
+              Source: National Weather Service · NOHRSC · Forecast Office Grand Forks, ND
             </a>
           </div>
         </div>

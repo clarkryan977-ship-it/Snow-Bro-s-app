@@ -1,6 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import SocialLinks from './SocialLinks';
 
 export default function Navbar({ onMenuToggle }) {
   const { user, logout } = useAuth();
@@ -39,7 +38,6 @@ export default function Navbar({ onMenuToggle }) {
             <Link to="/pay" className="nav-link">Pay</Link>
             <Link to="/register" className="nav-link">Sign Up</Link>
             <Link to="/login" className="nav-link">Login</Link>
-            <SocialLinks dark={true} size="sm" />
           </>
         )}
         {user && user.role === 'client' && (
