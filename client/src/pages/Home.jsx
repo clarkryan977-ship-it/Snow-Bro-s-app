@@ -118,15 +118,16 @@ export default function Home() {
                   Full NWS Forecast →
                 </a>
               </div>
-              <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', lineHeight: 0 }}>
+              <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                 <a
                   href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678"
-                  target="_blank" rel="noopener noreferrer">
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'block', lineHeight: 0 }}>
                   <img
                     src="https://forecast.weather.gov/meteograms/Plotter.php?lat=46.8738&lon=-96.7678&wfo=FGF&zimage=0&plottype=meteogram&ifDaily=0&numDays=7&FC=0&menu=1&FcstType=digital"
                     alt="NWS 7-day forecast for Moorhead MN"
                     style={{ width: '100%', display: 'block', maxHeight: 220, objectFit: 'cover', objectPosition: 'top' }}
-                    onError={e => { e.target.style.display='none'; e.target.parentElement.parentElement.innerHTML='<div style="padding:1rem;text-align:center;color:#64748b;font-size:.85rem">Forecast temporarily unavailable — <a href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678" target="_blank" style="color:#1d4ed8">view on NWS</a></div>'; }}
+                    onError={e => { e.target.style.display='none'; e.target.parentElement.style.lineHeight = 'normal'; e.target.parentElement.parentElement.innerHTML='<div style="padding:2.5rem 1rem;text-align:center;color:#64748b;font-size:.85rem;line-height:1.5">Forecast temporarily unavailable<br/><a href="https://forecast.weather.gov/MapClick.php?CityName=Moorhead&state=MN&site=FGF&textField1=46.8738&textField2=-96.7678" target="_blank" style="color:#1d4ed8;font-weight:600">view on NWS</a></div>'; }}
                   />
                 </a>
               </div>
@@ -143,10 +144,11 @@ export default function Home() {
                   NOHRSC Map →
                 </a>
               </div>
-              <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0', lineHeight: 0 }}>
+              <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                 <a
                   href="https://www.nohrsc.noaa.gov/snowfall/?region=us&var=sfav&range=24&unit=0&isll=46.8738&islo=-96.7678"
-                  target="_blank" rel="noopener noreferrer">
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'block', lineHeight: 0 }}>
                   <img
                     src="https://www.nohrsc.noaa.gov/snowfall_v2/data/202504/sfav_conus_24h_20250401.jpg"
                     alt="24-hour snow accumulation map for Fargo-Moorhead area"
@@ -162,7 +164,8 @@ export default function Home() {
                         e.target.src = fallback;
                       } else {
                         e.target.style.display='none';
-                        e.target.parentElement.parentElement.innerHTML='<div style="padding:1rem;text-align:center;color:#64748b;font-size:.85rem">Accumulation map temporarily unavailable — <a href="https://www.nohrsc.noaa.gov/snowfall/?region=us&var=sfav&range=24&unit=0" target="_blank" style="color:#1d4ed8">view on NOHRSC</a></div>';
+                        e.target.parentElement.style.lineHeight = 'normal';
+                        e.target.parentElement.parentElement.innerHTML='<div style="padding:2.5rem 1rem;text-align:center;color:#64748b;font-size:.85rem;line-height:1.5">Accumulation map temporarily unavailable<br/><a href="https://www.nohrsc.noaa.gov/snowfall/?region=us&var=sfav&range=24&unit=0" target="_blank" style="color:#1d4ed8;font-weight:600">view on NOHRSC</a></div>';
                       }
                     }}
                   />
