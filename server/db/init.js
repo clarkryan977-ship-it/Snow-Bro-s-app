@@ -535,6 +535,24 @@ async function initDB() {
     )
   `).catch(() => {});
 
+  // ── Billing automation columns ──
+  const billingMigrations = [
+    // Contracts: billing parameters
+    "ALTER TABLE contracts ADD COLUMN IF NOT EXISTS billing_type TEXT DEFAULT 'per-visit'",
+    "ALTER TABLE contracts ADD COLUMN IF NOT EXISTS monthly_amount TEXT DEFAULT ''",
+    "ALTER TABLE contracts ADD COLUMN IF NOT EXISTS billing_day INTEGER DEFAULT 1",
+    "ALTER TABLE contracts ADD COLUMN IF NOT EXISTS last_billed_at TIMESTAMP",
+    // Invoices: auto-generation tracking
+    "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS contract_id INTEGER REFERENCES contracts(id) ON DELETE SET NULL",
+    "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_date DATE",
+    "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date DATE",
+    "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP",
+  ];
+  for (const sql of billingMigrations) {
+    await db.query(sql).catch(() => {});
+  }
+
   // ── Indexes ──
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)',

@@ -13,6 +13,36 @@ const btn = (bg, col = '#fff') => ({
   color: col, fontWeight: 700, cursor: 'pointer', fontSize: 14,
 });
 
+// ─── Billing Settings (shared across contract types) ─────────────────────────
+function BillingSettings({ form, handle }) {
+  return (
+    <div style={{ marginTop: 8, padding: '12px 14px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', marginBottom: 10 }}>Auto-Billing Settings</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div style={grp}>
+          <label style={lbl}>Billing Type</label>
+          <select name="billing_type" value={form.billing_type || 'per-visit'} onChange={handle} style={inp}>
+            <option value="per-visit">Per Visit</option>
+            <option value="monthly">Monthly</option>
+            <option value="none">No Auto-Billing</option>
+          </select>
+        </div>
+        <div style={grp}>
+          <label style={lbl}>Monthly Amount ($)</label>
+          <input type="number" name="monthly_amount" value={form.monthly_amount || ''} onChange={handle} min="0" step="0.01" style={inp} placeholder="e.g. 200" />
+        </div>
+        <div style={grp}>
+          <label style={lbl}>Billing Day (1-28)</label>
+          <input type="number" name="billing_day" value={form.billing_day || 1} onChange={handle} min="1" max="28" style={inp} />
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+        When set to "Monthly", invoices are auto-generated on the billing day each month for signed contracts.
+      </div>
+    </div>
+  );
+}
+
 // ─── Step 1: Type Selector ────────────────────────────────────────────────────
 function TypeSelector({ onSelect }) {
   const types = [
@@ -106,6 +136,7 @@ function SnowFields({ form, handle }) {
           <textarea name="service_details" value={form.service_details} onChange={handle} rows={3} style={{ ...inp, resize: 'vertical' }} />
         </div>
       </div>
+      <BillingSettings form={form} handle={handle} />
     </>
   );
 }
@@ -144,6 +175,7 @@ function LawnFields({ form, handle }) {
           <textarea name="service_details" value={form.service_details} onChange={handle} rows={3} style={{ ...inp, resize: 'vertical' }} />
         </div>
       </div>
+      <BillingSettings form={form} handle={handle} />
     </>
   );
 }
@@ -279,6 +311,7 @@ function LandscapeFields({ form, handle, lineItems, setLineItems }) {
         <label style={lbl}>Payment Terms</label>
         <input name="payment_terms" value={form.payment_terms} onChange={handle} style={inp} placeholder="e.g. All payments due per schedule above" />
       </div>
+      <BillingSettings form={form} handle={handle} />
     </>
   );
 }
@@ -313,6 +346,7 @@ function JunkFields({ form, handle }) {
           <textarea name="service_details" value={form.service_details} onChange={handle} rows={3} style={{ ...inp, resize: 'vertical' }} placeholder="Describe items to be removed, location, access notes…" />
         </div>
       </div>
+      <BillingSettings form={form} handle={handle} />
     </>
   );
 }
@@ -339,6 +373,7 @@ function GenerateModal({ clients, onClose, onSuccess }) {
       rate_per_visit: '75', monthly_rate: '',
       service_details: 'Snow plowing of driveway and walkways. Salting/sanding of entry points. Services triggered by 2+ inch snowfall.',
       payment_terms: 'Due within 7 days of invoice.',
+      billing_type: 'monthly', monthly_amount: '', billing_day: 1,
     },
     lawn_care: {
       title: `${yr} Lawn Care Service Agreement`,
@@ -346,6 +381,7 @@ function GenerateModal({ clients, onClose, onSuccess }) {
       monthly_rate: '200', frequency: 'Weekly',
       service_details: 'Weekly lawn mowing, edging, trimming, and blowing off hard surfaces.',
       payment_terms: 'Due on the 1st of each month.',
+      billing_type: 'monthly', monthly_amount: '200', billing_day: 1,
     },
     landscape: {
       title: `${yr} Landscape Service Agreement`,
@@ -355,6 +391,7 @@ function GenerateModal({ clients, onClose, onSuccess }) {
       deposit_amount: '500', milestone1_desc: 'Upon 50% project completion',
       milestone1_amount: '500', final_payment_amount: '0',
       payment_terms: 'All payments due per schedule. Late payments subject to 1.5% monthly finance charge.',
+      billing_type: 'none', monthly_amount: '', billing_day: 1,
     },
     junk_removal: {
       title: `${yr} Junk Removal / Construction Clean-Up Agreement`,
@@ -362,6 +399,7 @@ function GenerateModal({ clients, onClose, onSuccess }) {
       rate_per_visit: '150', monthly_rate: '',
       service_details: 'Haul-away of junk, debris, and construction waste as described. All items to be removed from designated area. Client responsible for ensuring access.',
       payment_terms: 'Due upon completion of service.',
+      billing_type: 'none', monthly_amount: '', billing_day: 1,
     },
   };
 
@@ -646,14 +684,14 @@ export default function AdminContracts() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ background: '#f8fafc' }}>
-              {['Title', 'Client', 'Type', 'Status', 'Signed', 'Date', 'Actions'].map(h => (
+              {['Title', 'Client', 'Type', 'Billing', 'Status', 'Signed', 'Date', 'Actions'].map(h => (
                 <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {contracts.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>No contracts yet</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>No contracts yet</td></tr>
             )}
             {contracts.map(c => {
               const badge = typeBadge(c.contract_type);
@@ -673,6 +711,19 @@ export default function AdminContracts() {
                     <span style={{ background: badge.bg, color: badge.color, fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
                       {badge.label}
                     </span>
+                  </td>
+                  <td style={{ padding: '12px 14px' }}>
+                    {c.billing_type === 'monthly' ? (
+                      <div>
+                        <span style={{ background: '#dbeafe', color: '#1e40af', fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 6 }}>Monthly</span>
+                        {c.monthly_amount && <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>${c.monthly_amount}/mo</div>}
+                        <div style={{ fontSize: 11, color: '#9ca3af' }}>Day {c.billing_day || 1}</div>
+                      </div>
+                    ) : c.billing_type === 'per-visit' ? (
+                      <span style={{ background: '#fef3c7', color: '#92400e', fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 6 }}>Per Visit</span>
+                    ) : (
+                      <span style={{ color: '#d1d5db', fontSize: 12 }}>—</span>
+                    )}
                   </td>
                   <td style={{ padding: '12px 14px' }}>
                     <span style={{

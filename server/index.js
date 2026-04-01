@@ -73,6 +73,10 @@ app.get('/{*path}', (req, res) => {
 
 // Initialize DB then start server
 initDB().then(() => {
+  // Start billing scheduler for automated monthly invoicing
+  const { startBillingScheduler } = require('./utils/billingScheduler');
+  startBillingScheduler(getPool());
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Snow Bro's server running on port ${PORT} (PostgreSQL)`);
   });

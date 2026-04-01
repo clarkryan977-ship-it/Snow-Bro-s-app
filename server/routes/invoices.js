@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { sendMail } = require('../utils/mailer');
 const { wrapEmail, BUSINESS } = require('../utils/emailHeader');
+const { runBillingCycle } = require('../utils/billingScheduler');
 const BASE_URL = process.env.BASE_URL || 'https://snowbros-production.up.railway.app';
 
 // ── Ensure new columns exist ─────────────────────────────────────────────────
@@ -11,6 +12,8 @@ router.use(async (req, res, next) => {
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_date DATE`).catch(() => {});
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date DATE`).catch(() => {});
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN DEFAULT FALSE`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS contract_id INTEGER`).catch(() => {});
   } catch (_) {}
   next();
 });
@@ -23,6 +26,25 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
       JOIN clients c ON i.client_id = c.id
       ORDER BY i.created_at DESC`);
     res.json(invoices);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get auto-generated invoices log (admin)
+router.get('/auto-generated', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`
+      SELECT i.*, c.first_name || ' ' || c.last_name as client_name, c.email as client_email,
+             co.title as contract_title, co.service_category
+      FROM invoices i
+      JOIN clients c ON i.client_id = c.id
+      LEFT JOIN contracts co ON i.contract_id = co.id
+      WHERE i.auto_generated = TRUE
+      ORDER BY i.created_at DESC
+      LIMIT 200
+    `);
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -52,21 +74,26 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create invoice (admin)
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { client_id, items, tax_rate, notes } = req.body;
+    const { client_id, items, tax_rate, notes, service_date, due_date } = req.body;
     if (!client_id || !items || items.length === 0) {
       return res.status(400).json({ error: 'Client and at least one line item required' });
     }
 
     // Generate invoice number
     const count = (await req.db.query('SELECT COUNT(*) as cnt FROM invoices')).rows[0].cnt;
-    const invoice_number = `INV-${String(count + 1001).padStart(5, '0')}`;
+    const invoice_number = `INV-${String(parseInt(count) + 1001).padStart(5, '0')}`;
 
     const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
     const taxRate = tax_rate || 0;
     const tax_amount = subtotal * (taxRate / 100);
     const total = subtotal + tax_amount;
 
-    const result = await req.db.query('INSERT INTO invoices (invoice_number, client_id, subtotal, tax_rate, tax_amount, total, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [invoice_number, client_id, subtotal, taxRate, tax_amount, total, notes || '']);
+    const result = await req.db.query(
+      `INSERT INTO invoices (invoice_number, client_id, subtotal, tax_rate, tax_amount, total, notes, service_date, due_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [invoice_number, client_id, subtotal, taxRate, tax_amount, total, notes || '',
+       service_date || null, due_date || null]
+    );
 
     const invoiceId = result.rows[0].id;
 
@@ -160,7 +187,7 @@ router.post('/:id/send', authenticateToken, requireAdmin, async (req, res) => {
       </table>
       ${inv.notes ? `<p style="color:#6b7280;font-size:13px;"><em>${inv.notes}</em></p>` : ''}
       <div style="text-align:center;margin:24px 0;">
-        <a href="${BASE_URL}/client/invoices" style="display:inline-block;background:#1e40af;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;">📄 View Invoice in Your Portal</a>
+        <a href="${BASE_URL}/client/invoices" style="display:inline-block;background:#1e40af;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;">View Invoice in Your Portal</a>
         <p style="margin:8px 0 0;color:#6b7280;font-size:12px;">Log in at <a href="${BASE_URL}/login" style="color:#1e40af;">${BASE_URL}/login</a> to view, download, or print this invoice.</p>
       </div>
       <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:16px 20px;border-radius:0 8px 8px 0;margin:20px 0;">
@@ -175,6 +202,48 @@ router.post('/:id/send', authenticateToken, requireAdmin, async (req, res) => {
     await req.db.query('UPDATE invoices SET sent_at = NOW(), status = CASE WHEN status = \'draft\' THEN \'sent\' ELSE status END WHERE id = $1', [inv.id]);
 
     res.json({ message: 'Invoice emailed successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send invoice via SMS (generates text for manual sending)
+router.post('/:id/send-sms', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: invRows } = await req.db.query(
+      `SELECT i.*, c.first_name, c.last_name, c.phone AS client_phone, c.email AS client_email
+       FROM invoices i JOIN clients c ON i.client_id = c.id
+       WHERE i.id = $1`, [req.params.id]);
+    const inv = invRows[0];
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+
+    const smsText = `Hi ${inv.first_name}! You have a new invoice from Snow Bro's:\n\nInvoice: ${inv.invoice_number}\nAmount: $${parseFloat(inv.total).toFixed(2)}\n${inv.due_date ? `Due: ${new Date(inv.due_date).toLocaleDateString()}\n` : ''}\nPay via:\n- Cash App: $SnowBros\n- Venmo: @SnowBros\n- Zelle: ${BUSINESS.phone}\n\nView details: ${BASE_URL}/login\nRef: ${inv.invoice_number}`;
+
+    res.json({
+      message: 'SMS text generated',
+      sms_text: smsText,
+      phone: inv.client_phone || ''
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manually trigger billing cycle (admin)
+router.post('/run-billing', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await runBillingCycle(req.db);
+    res.json({ message: 'Billing cycle completed', ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete invoice (admin)
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await req.db.query('DELETE FROM invoices WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Invoice deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

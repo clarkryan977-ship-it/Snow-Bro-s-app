@@ -625,17 +625,24 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
     const start_date   = body.start_date || '';
     const end_date     = body.end_date   || '';
 
+    // Billing automation fields
+    const billingType   = body.billing_type || 'per-visit';
+    const monthlyAmount = body.monthly_amount || body.monthly_rate || '';
+    const billingDay    = parseInt(body.billing_day) || 1;
+
     const { rows: result } = await req.db.query(`
       INSERT INTO contracts
         (title, client_id, uploaded_by, contract_type, service_category, rate, start_date, end_date,
-         deposit, frequency, service_details, sign_token, contract_html, filename, original_name, file_path)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         deposit, frequency, service_details, sign_token, contract_html, filename, original_name, file_path,
+         billing_type, monthly_amount, billing_day)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING id`,
       [
         title, client_id, req.user.id, contract_type, body.service_category || '',
         rateForDb, start_date, end_date, depositForDb,
         freqForDb, detailsForDb,
-        signToken, generatedHtml, 'generated', 'Generated Contract', 'generated'
+        signToken, generatedHtml, 'generated', 'Generated Contract', 'generated',
+        billingType, monthlyAmount, billingDay
       ]
     );
 
