@@ -169,7 +169,7 @@ function buildSnowRemovalHtml({
     </table>
 
     <h3 class="section-title">5. Cancellation &amp; Termination</h3>
-    <p class="body-p">Either party may terminate this agreement with 48 hours written notice. The Client is responsible for payment for all services rendered prior to termination.</p>
+    <p class="body-p">Either party may terminate this agreement with 30 days written notice. The Client is responsible for payment for all services rendered prior to termination.</p>
 
     <h3 class="section-title">6. Liability</h3>
     <p class="body-p">The Contractor shall not be liable for damage caused by pre-existing conditions, hidden obstacles under snow, or acts of nature. The Client agrees to mark any obstacles (sprinkler heads, curbs, garden edging) prior to the service season.</p>
