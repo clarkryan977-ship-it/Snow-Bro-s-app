@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../../utils/api';
 
 const STATUS_COLORS = { pending:'badge-yellow', confirmed:'badge-blue', completed:'badge-green', cancelled:'badge-red' };
@@ -12,6 +12,8 @@ export default function AdminBookings() {
   const [lightbox, setLightbox] = useState(null);
   const [detailModal, setDetailModal] = useState(null);
   const [accepting, setAccepting] = useState({});
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef();
 
   const load = () => api.get('/bookings').then(r => setBookings(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -26,7 +28,6 @@ export default function AdminBookings() {
     setAccepting(a => ({ ...a, [booking.id]: 'accepting' }));
     try {
       await api.put(`/bookings/${booking.id}`, { status: 'confirmed' });
-      // Send confirmation email to client
       await api.post(`/bookings/${booking.id}/confirm-email`).catch(() => {});
       load();
     } catch (e) {
@@ -53,6 +54,35 @@ export default function AdminBookings() {
     try {
       const { data } = await api.get(`/beforeafter/booking/${bookingId}`);
       setPhotos(p => ({ ...p, [bookingId]: data }));
+    } catch (e) {}
+  };
+
+  const uploadPhoto = async (bookingId, type) => {
+    if (!fileRef.current?.files?.length) {
+      alert('Please select a photo first.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('photo', fileRef.current.files[0]);
+      fd.append('photo_type', type);
+      fd.append('caption', type === 'before' ? 'Before (admin)' : 'After (admin)');
+      await api.post(`/beforeafter/booking/${bookingId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      fileRef.current.value = '';
+      await loadPhotos(bookingId);
+    } catch (e) {
+      alert('Upload failed: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const deletePhoto = async (photoId, bookingId) => {
+    if (!confirm('Delete this photo?')) return;
+    try {
+      await api.delete(`/beforeafter/${photoId}`);
+      setPhotos(p => ({ ...p, [bookingId]: (p[bookingId] || []).filter(ph => ph.id !== photoId) }));
     } catch (e) {}
   };
 
@@ -215,52 +245,83 @@ export default function AdminBookings() {
         </div>
       )}
 
-      {/* Photo Modal */}
+      {/* Photo Modal — Admin can view AND upload before/after photos for any service type */}
       {photoModal && (
         <div className="modal-overlay" onClick={() => setPhotoModal(null)}>
-          <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header" style={{ background: '#7c3aed', color: '#fff' }}>
               <h2>📷 Before / After Photos</h2>
               <button className="modal-close" style={{ color: '#fff' }} onClick={() => setPhotoModal(null)}>×</button>
             </div>
             <div className="modal-body">
-              <div style={{ fontSize: '.85rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '.85rem', color: 'var(--gray-500)', marginBottom: '1rem', fontWeight: 600 }}>
                 {photoModal.display_name} — {photoModal.service_name} — {photoModal.preferred_date}
               </div>
-              {(photos[photoModal.id] || []).length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-400)' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '.5rem' }}>📷</div>
-                  <p>No photos uploaded yet for this job.</p>
-                  <p style={{ fontSize: '.82rem' }}>Employees can upload before/after photos from their Assigned Jobs page.</p>
+
+              {/* Photo grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <div style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--blue-700)', textTransform: 'uppercase', marginBottom: '.5rem', textAlign: 'center', padding: '.3rem', background: 'var(--blue-50)', borderRadius: 6 }}>Before</div>
+                  {(photos[photoModal.id] || []).filter(p => p.photo_type === 'before').map(p => (
+                    <div key={p.id} style={{ position: 'relative', marginBottom: '.5rem' }}>
+                      <img src={p.file_path} alt="Before" style={{ width: '100%', borderRadius: 6, cursor: 'pointer', border: '2px solid var(--blue-200)', objectFit: 'cover', aspectRatio: '4/3' }} onClick={() => setLightbox(p)} />
+                      {p.employee_name && <div style={{ fontSize: '.7rem', color: 'var(--gray-400)', textAlign: 'center', marginTop: '.2rem' }}>by {p.employee_name}</div>}
+                      <button onClick={() => deletePhoto(p.id, photoModal.id)} style={{ position: 'absolute', top: -6, right: -6, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, fontSize: '.7rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+                    </div>
+                  ))}
+                  {(photos[photoModal.id] || []).filter(p => p.photo_type === 'before').length === 0 && (
+                    <div style={{ color: 'var(--gray-300)', fontSize: '.82rem', textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--gray-200)', borderRadius: 8 }}>No before photo</div>
+                  )}
                 </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <div style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--blue-700)', textTransform: 'uppercase', marginBottom: '.5rem', textAlign: 'center' }}>Before</div>
-                    {(photos[photoModal.id] || []).filter(p => p.photo_type === 'before').map(p => (
-                      <div key={p.id} style={{ marginBottom: '.5rem' }}>
-                        <img src={p.file_path} alt="Before" style={{ width: '100%', borderRadius: 6, cursor: 'pointer', border: '2px solid var(--blue-200)' }} onClick={() => setLightbox(p)} />
-                        {p.employee_name && <div style={{ fontSize: '.72rem', color: 'var(--gray-400)', textAlign: 'center', marginTop: '.2rem' }}>by {p.employee_name}</div>}
-                      </div>
-                    ))}
-                    {(photos[photoModal.id] || []).filter(p => p.photo_type === 'before').length === 0 && (
-                      <div style={{ color: 'var(--gray-300)', fontSize: '.82rem', textAlign: 'center', padding: '1rem', border: '2px dashed var(--gray-200)', borderRadius: 8 }}>No before photo</div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#059669', textTransform: 'uppercase', marginBottom: '.5rem', textAlign: 'center' }}>After</div>
-                    {(photos[photoModal.id] || []).filter(p => p.photo_type === 'after').map(p => (
-                      <div key={p.id} style={{ marginBottom: '.5rem' }}>
-                        <img src={p.file_path} alt="After" style={{ width: '100%', borderRadius: 6, cursor: 'pointer', border: '2px solid #059669' }} onClick={() => setLightbox(p)} />
-                        {p.employee_name && <div style={{ fontSize: '.72rem', color: 'var(--gray-400)', textAlign: 'center', marginTop: '.2rem' }}>by {p.employee_name}</div>}
-                      </div>
-                    ))}
-                    {(photos[photoModal.id] || []).filter(p => p.photo_type === 'after').length === 0 && (
-                      <div style={{ color: 'var(--gray-300)', fontSize: '.82rem', textAlign: 'center', padding: '1rem', border: '2px dashed var(--gray-200)', borderRadius: 8 }}>No after photo</div>
-                    )}
-                  </div>
+                <div>
+                  <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#059669', textTransform: 'uppercase', marginBottom: '.5rem', textAlign: 'center', padding: '.3rem', background: '#f0fdf4', borderRadius: 6 }}>After</div>
+                  {(photos[photoModal.id] || []).filter(p => p.photo_type === 'after').map(p => (
+                    <div key={p.id} style={{ position: 'relative', marginBottom: '.5rem' }}>
+                      <img src={p.file_path} alt="After" style={{ width: '100%', borderRadius: 6, cursor: 'pointer', border: '2px solid #059669', objectFit: 'cover', aspectRatio: '4/3' }} onClick={() => setLightbox(p)} />
+                      {p.employee_name && <div style={{ fontSize: '.7rem', color: 'var(--gray-400)', textAlign: 'center', marginTop: '.2rem' }}>by {p.employee_name}</div>}
+                      <button onClick={() => deletePhoto(p.id, photoModal.id)} style={{ position: 'absolute', top: -6, right: -6, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, fontSize: '.7rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+                    </div>
+                  ))}
+                  {(photos[photoModal.id] || []).filter(p => p.photo_type === 'after').length === 0 && (
+                    <div style={{ color: 'var(--gray-300)', fontSize: '.82rem', textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--gray-200)', borderRadius: 8 }}>No after photo</div>
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* Admin upload section */}
+              <div style={{ borderTop: '2px solid #ede9fe', paddingTop: '1rem', background: '#faf5ff', borderRadius: '0 0 8px 8px', padding: '1rem', marginTop: '.5rem' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', marginBottom: '.75rem' }}>
+                  📤 Upload Photo (Admin)
+                </div>
+                <div style={{ fontSize: '.78rem', color: 'var(--gray-500)', marginBottom: '.5rem' }}>
+                  Works for all service types: Snow Removal, Lawn Care, Landscaping, Junk Removal, etc.
+                </div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="form-control"
+                  style={{ marginBottom: '.75rem' }}
+                />
+                <div style={{ display: 'flex', gap: '.5rem' }}>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => uploadPhoto(photoModal.id, 'before')}
+                    disabled={uploading}
+                    style={{ flex: 1 }}
+                  >
+                    {uploading ? <span className="spinner" /> : '📷 Upload as Before'}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => uploadPhoto(photoModal.id, 'after')}
+                    disabled={uploading}
+                    style={{ flex: 1 }}
+                  >
+                    {uploading ? <span className="spinner" /> : '📷 Upload as After'}
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setPhotoModal(null)}>Close</button>

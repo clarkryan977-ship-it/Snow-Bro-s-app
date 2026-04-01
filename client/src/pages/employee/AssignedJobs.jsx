@@ -10,7 +10,11 @@ export default function EmployeeAssignedJobs() {
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState(null);
   const [completing, setCompleting] = useState({});
+  const [stopPhotoModal, setStopPhotoModal] = useState(null); // { stop, routeName, routeDate }
+  const [stopPhotos, setStopPhotos] = useState({});
+  const [stopUploading, setStopUploading] = useState(false);
   const fileRef = useRef();
+  const stopFileRef = useRef();
 
   const load = () => {
     api.get('/calendar/my-jobs').then(r => setJobs(r.data)).catch(() => {});
@@ -71,6 +75,36 @@ export default function EmployeeAssignedJobs() {
     try {
       const { data } = await api.get(`/beforeafter/booking/${bookingId}`);
       setPhotos(p => ({ ...p, [bookingId]: data }));
+    } catch (e) {}
+  };
+
+  const loadStopPhotos = async (stopId) => {
+    try {
+      const { data } = await api.get(`/beforeafter/stop/${stopId}`);
+      setStopPhotos(p => ({ ...p, [stopId]: data }));
+    } catch (e) {}
+  };
+
+  const uploadStopPhoto = async (stopId, type) => {
+    if (!stopFileRef.current?.files?.length) return;
+    setStopUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('photo', stopFileRef.current.files[0]);
+      fd.append('photo_type', type);
+      fd.append('caption', type === 'before' ? 'Before' : 'After');
+      await api.post(`/beforeafter/stop/${stopId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      stopFileRef.current.value = '';
+      await loadStopPhotos(stopId);
+    } catch (e) { alert('Upload failed'); }
+    finally { setStopUploading(false); }
+  };
+
+  const deleteStopPhoto = async (photoId, stopId) => {
+    if (!confirm('Delete this photo?')) return;
+    try {
+      await api.delete(`/beforeafter/${photoId}`);
+      setStopPhotos(p => ({ ...p, [stopId]: (p[stopId] || []).filter(ph => ph.id !== photoId) }));
     } catch (e) {}
   };
 
@@ -247,17 +281,29 @@ export default function EmployeeAssignedJobs() {
             const clientName = stop.first_name ? stop.first_name + ' ' + stop.last_name : (stop.stop_label || ('Stop ' + (idx + 1)));
             const addr = [stop.stop_address || stop.address, stop.stop_city || stop.city, stop.stop_state || stop.state, stop.stop_zip || stop.zip].filter(Boolean).join(', ');
             const navUrl = addr ? 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(addr) : null;
+            const stopPhotoCount = (stopPhotos[stop.id] || []).length;
             return (
-              <div key={stop.id} style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '.6rem .75rem', background: '#f8fafc', borderRadius: 8, marginBottom: 6, border: '1px solid #e2e8f0' }}>
-                <div style={{ background: 'var(--blue-700)', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.78rem', fontWeight: 700, flexShrink: 0 }}>{idx + 1}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: '.9rem' }}>{clientName}</div>
-                  <div style={{ fontSize: '.78rem', color: 'var(--gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addr || 'No address'}</div>
-                  {stop.booking_service_type && <div style={{ fontSize: '.72rem', color: '#7c3aed' }}>📋 {stop.booking_service_type}</div>}
+              <div key={stop.id} style={{ background: '#f8fafc', borderRadius: 8, marginBottom: 6, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', padding: '.6rem .75rem' }}>
+                  <div style={{ background: stop.completed ? '#16a34a' : 'var(--blue-700)', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.78rem', fontWeight: 700, flexShrink: 0 }}>{stop.completed ? '✓' : idx + 1}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '.9rem' }}>{clientName}</div>
+                    <div style={{ fontSize: '.78rem', color: 'var(--gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addr || 'No address'}</div>
+                    {stop.booking_service_type && <div style={{ fontSize: '.72rem', color: '#7c3aed' }}>📋 {stop.booking_service_type}</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: '.35rem', flexShrink: 0 }}>
+                    {navUrl && (
+                      <a href={navUrl} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" style={{ padding: '.25rem .5rem', fontSize: '.75rem' }}>🗺️</a>
+                    )}
+                    <button
+                      className="btn btn-sm"
+                      style={{ background: '#7c3aed', color: '#fff', padding: '.25rem .5rem', fontSize: '.75rem' }}
+                      onClick={() => { setStopPhotoModal({ stop, routeName: route.name, routeDate: route.route_date }); loadStopPhotos(stop.id); }}
+                    >
+                      📷{stopPhotoCount > 0 ? ` (${stopPhotoCount})` : ''}
+                    </button>
+                  </div>
                 </div>
-                {navUrl && (
-                  <a href={navUrl} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" style={{ flexShrink: 0 }}>🗺️</a>
-                )}
               </div>
             );
           })
@@ -420,6 +466,68 @@ export default function EmployeeAssignedJobs() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setPhotoModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Route Stop Before/After Photo Modal */}
+      {stopPhotoModal && (
+        <div className="modal-overlay" onClick={() => setStopPhotoModal(null)}>
+          <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header" style={{ background: '#7c3aed', color: '#fff' }}>
+              <h2>📷 Before & After Photos</h2>
+              <button className="modal-close" style={{ color: '#fff' }} onClick={() => setStopPhotoModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ fontSize: '.85rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>
+                {stopPhotoModal.stop.first_name ? stopPhotoModal.stop.first_name + ' ' + stopPhotoModal.stop.last_name : (stopPhotoModal.stop.stop_label || 'Stop')}
+                {stopPhotoModal.stop.booking_service_type ? ' — ' + stopPhotoModal.stop.booking_service_type : ''}
+                {stopPhotoModal.routeDate ? ' — ' + stopPhotoModal.routeDate : ''}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <div style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--blue-700)', textTransform: 'uppercase', marginBottom: '.5rem', textAlign: 'center' }}>Before</div>
+                  {(stopPhotos[stopPhotoModal.stop.id] || []).filter(p => p.photo_type === 'before').map(p => (
+                    <div key={p.id} style={{ position: 'relative', marginBottom: '.5rem' }}>
+                      <img src={p.file_path} alt="Before" style={{ width: '100%', borderRadius: 6, cursor: 'pointer', border: '2px solid var(--blue-200)' }} onClick={() => setLightbox(p)} />
+                      <button onClick={() => deleteStopPhoto(p.id, stopPhotoModal.stop.id)} style={{ position: 'absolute', top: -6, right: -6, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, fontSize: '.7rem', cursor: 'pointer' }}>×</button>
+                    </div>
+                  ))}
+                  {(stopPhotos[stopPhotoModal.stop.id] || []).filter(p => p.photo_type === 'before').length === 0 && (
+                    <div style={{ color: 'var(--gray-300)', fontSize: '.82rem', textAlign: 'center', padding: '1rem', border: '2px dashed var(--gray-200)', borderRadius: 8 }}>No before photo</div>
+                  )}
+                </div>
+                <div>
+                  <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#059669', textTransform: 'uppercase', marginBottom: '.5rem', textAlign: 'center' }}>After</div>
+                  {(stopPhotos[stopPhotoModal.stop.id] || []).filter(p => p.photo_type === 'after').map(p => (
+                    <div key={p.id} style={{ position: 'relative', marginBottom: '.5rem' }}>
+                      <img src={p.file_path} alt="After" style={{ width: '100%', borderRadius: 6, cursor: 'pointer', border: '2px solid #059669' }} onClick={() => setLightbox(p)} />
+                      <button onClick={() => deleteStopPhoto(p.id, stopPhotoModal.stop.id)} style={{ position: 'absolute', top: -6, right: -6, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, fontSize: '.7rem', cursor: 'pointer' }}>×</button>
+                    </div>
+                  ))}
+                  {(stopPhotos[stopPhotoModal.stop.id] || []).filter(p => p.photo_type === 'after').length === 0 && (
+                    <div style={{ color: 'var(--gray-300)', fontSize: '.82rem', textAlign: 'center', padding: '1rem', border: '2px dashed var(--gray-200)', borderRadius: 8 }}>No after photo</div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--blue-100)', paddingTop: '1rem' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--blue-700)', textTransform: 'uppercase', marginBottom: '.75rem' }}>Upload Photo</div>
+                <input ref={stopFileRef} type="file" accept="image/*" className="form-control" capture="environment" style={{ marginBottom: '.75rem' }} />
+                <div style={{ display: 'flex', gap: '.5rem' }}>
+                  <button className="btn btn-secondary" onClick={() => uploadStopPhoto(stopPhotoModal.stop.id, 'before')} disabled={stopUploading}>
+                    {stopUploading ? <span className="spinner" /> : '📷 Upload as Before'}
+                  </button>
+                  <button className="btn btn-primary" onClick={() => uploadStopPhoto(stopPhotoModal.stop.id, 'after')} disabled={stopUploading}>
+                    {stopUploading ? <span className="spinner" /> : '📷 Upload as After'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setStopPhotoModal(null)}>Close</button>
             </div>
           </div>
         </div>

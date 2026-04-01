@@ -55,6 +55,16 @@ export default function ClientServiceHistory() {
     loadPhotos(booking.id);
   };
 
+  // Pre-load photo counts for all bookings when they load
+  useEffect(() => {
+    if (bookings.length > 0) {
+      bookings.forEach(b => {
+        if (!photos[b.id]) loadPhotos(b.id);
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings]);
+
   return (
     <div style={{ maxWidth:800, margin:'0 auto', padding:'1.5rem 1rem' }}>
       <h1 style={{ fontSize:'1.5rem', fontWeight:700, marginBottom:'.5rem' }}>📋 Service History</h1>
@@ -114,13 +124,14 @@ export default function ClientServiceHistory() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
                   <span className={`badge badge-${b.status === 'completed' ? 'green' : b.status === 'confirmed' ? 'blue' : b.status === 'pending' ? 'yellow' : 'gray'}`} style={{ textTransform:'capitalize' }}>{b.status}</span>
-                  {b.status === 'completed' && (
+                  {/* Show Photos button for all service types and all statuses (not just completed) */}
+                  {(b.status === 'completed' || (photos[b.id] && photos[b.id].length > 0)) && (
                     <button
                       className="btn btn-sm"
                       style={{ background: '#7c3aed', color: '#fff', fontSize: '.78rem', padding: '.25rem .6rem' }}
                       onClick={() => openPhotos(b)}
                     >
-                      📷 Photos
+                      📷 Photos{photos[b.id] && photos[b.id].length > 0 ? ` (${photos[b.id].length})` : ''}
                     </button>
                   )}
                 </div>

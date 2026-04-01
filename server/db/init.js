@@ -420,6 +420,9 @@ async function initDB() {
   await db.query(`ALTER TABLE before_after_photos ADD COLUMN IF NOT EXISTS booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE`).catch(() => {});
   await db.query(`ALTER TABLE before_after_photos ALTER COLUMN time_record_id DROP NOT NULL`).catch(() => {});
   await db.query(`CREATE INDEX IF NOT EXISTS idx_beforeafter_booking ON before_after_photos(booking_id)`).catch(() => {});
+  // Before/after photos: add route_stop_id for route-stop-based photo uploads (all service types)
+  await db.query(`ALTER TABLE before_after_photos ADD COLUMN IF NOT EXISTS route_stop_id INTEGER REFERENCES route_stops(id) ON DELETE CASCADE`).catch(() => {});
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_beforeafter_stop ON before_after_photos(route_stop_id)`).catch(() => {});
   // Route order for bookings (employee Assigned Jobs page ordering)
   await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS route_order INTEGER DEFAULT 9999`).catch(() => {});
   await db.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''`).catch(() => {});
