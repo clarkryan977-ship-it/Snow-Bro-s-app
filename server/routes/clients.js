@@ -2,7 +2,33 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const https = require('https');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
+
+// ── Helper: geocode an address via Nominatim (OpenStreetMap) ──────────────────
+async function geocodeAddress(address, city, state, zip) {
+  const query = [address, city, state, zip].filter(Boolean).join(', ');
+  if (!query || query.trim() === ',') return null;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=us`;
+  return new Promise((resolve) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'SnowBros-RoutePlanner/1.0' } }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json && json.length > 0) {
+            resolve({ lat: parseFloat(json[0].lat), lon: parseFloat(json[0].lon) });
+          } else {
+            resolve(null);
+          }
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
+  });
+}
 
 // Get all clients (admin)
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
@@ -43,26 +69,62 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
       'INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, notes, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
       [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', password_hash]
     );
-    res.status(201).json({ id: result.rows[0].id, message: 'Client added' });
+    const newId = result.rows[0].id;
+    // Geocode in background (don't block response)
+    if (address && city) {
+      geocodeAddress(address, city, state, zip).then(coords => {
+        if (coords) {
+          req.db.query('UPDATE clients SET latitude=$1, longitude=$2 WHERE id=$3', [coords.lat, coords.lon, newId]).catch(() => {});
+        }
+      });
+    }
+    res.status(201).json({ id: newId, message: 'Client added' });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
     res.status(500).json({ error: err.message });
   }
 });
 
-// Update client (admin) — full update
+// Update client (admin) — full update; also accepts latitude/longitude
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { first_name, last_name, email, phone, address, city, state, zip, notes, active, service_type } = req.body;
+    const { first_name, last_name, email, phone, address, city, state, zip, notes, active, service_type, latitude, longitude } = req.body;
     if (!first_name || !last_name || !email) {
       return res.status(400).json({ error: 'first_name, last_name, and email are required' });
     }
     const activeVal = (active === false || active === 0 || active === '0') ? 0 : 1;
-    await req.db.query(
-      'UPDATE clients SET first_name=$1, last_name=$2, email=$3, phone=$4, address=$5, city=$6, state=$7, zip=$8, notes=$9, active=$10, service_type=$11 WHERE id=$12',
-      [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', activeVal, service_type || 'residential', req.params.id]
-    );
-    res.json({ message: 'Client updated' });
+
+    // If lat/lon are explicitly provided, use them; otherwise keep existing coords
+    let latVal = latitude !== undefined ? (latitude || null) : undefined;
+    let lonVal = longitude !== undefined ? (longitude || null) : undefined;
+
+    let query, params;
+    if (latVal !== undefined && lonVal !== undefined) {
+      // Update including coordinates
+      query = 'UPDATE clients SET first_name=$1, last_name=$2, email=$3, phone=$4, address=$5, city=$6, state=$7, zip=$8, notes=$9, active=$10, service_type=$11, latitude=$12, longitude=$13 WHERE id=$14 RETURNING *';
+      params = [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', activeVal, service_type || 'residential', latVal, lonVal, req.params.id];
+    } else {
+      // Don't overwrite existing coordinates
+      query = 'UPDATE clients SET first_name=$1, last_name=$2, email=$3, phone=$4, address=$5, city=$6, state=$7, zip=$8, notes=$9, active=$10, service_type=$11 WHERE id=$12 RETURNING *';
+      params = [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', notes || '', activeVal, service_type || 'residential', req.params.id];
+    }
+
+    const { rows } = await req.db.query(query, params);
+    if (rows.length === 0) return res.status(404).json({ error: 'Client not found' });
+
+    // If address changed and no coords provided, re-geocode in background
+    if (latVal === undefined && address && city) {
+      const existing = rows[0];
+      if (!existing.latitude || !existing.longitude) {
+        geocodeAddress(address, city, state, zip).then(coords => {
+          if (coords) {
+            req.db.query('UPDATE clients SET latitude=$1, longitude=$2 WHERE id=$3', [coords.lat, coords.lon, req.params.id]).catch(() => {});
+          }
+        });
+      }
+    }
+
+    res.json(rows[0]);
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
     res.status(500).json({ error: err.message });
@@ -91,6 +153,50 @@ router.patch('/:id/email', authenticateToken, requireAdmin, async (req, res) => 
     res.json({ message: 'Email updated' });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already in use by another client' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH geocode — set lat/lon for a single client
+router.patch('/:id/geocode', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ error: 'latitude and longitude required' });
+    }
+    await req.db.query('UPDATE clients SET latitude=$1, longitude=$2 WHERE id=$3', [latitude || null, longitude || null, req.params.id]);
+    res.json({ message: 'Coordinates updated', latitude, longitude });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /geocode-all — geocode all clients missing lat/lon (admin, runs in background)
+router.post('/geocode-all', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: clients } = await req.db.query(
+      "SELECT id, address, city, state, zip FROM clients WHERE (latitude IS NULL OR longitude IS NULL) AND address IS NOT NULL AND address != '' AND city IS NOT NULL AND city != ''"
+    );
+    res.json({ message: `Geocoding ${clients.length} clients in background`, count: clients.length });
+
+    // Process in background with rate limiting (1 req/sec for Nominatim)
+    (async () => {
+      let success = 0, fail = 0;
+      for (const c of clients) {
+        await new Promise(r => setTimeout(r, 1100)); // 1.1s delay for Nominatim rate limit
+        const coords = await geocodeAddress(c.address, c.city, c.state, c.zip);
+        if (coords) {
+          await req.db.query('UPDATE clients SET latitude=$1, longitude=$2 WHERE id=$3', [coords.lat, coords.lon, c.id]).catch(() => {});
+          success++;
+          console.log(`[geocode-all] ID ${c.id}: (${coords.lat}, ${coords.lon})`);
+        } else {
+          fail++;
+          console.log(`[geocode-all] ID ${c.id}: no result for "${c.address}, ${c.city}"`);
+        }
+      }
+      console.log(`[geocode-all] Done: ${success} geocoded, ${fail} failed`);
+    })();
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

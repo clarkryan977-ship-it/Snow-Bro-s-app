@@ -346,24 +346,22 @@ router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) =
   try {
     const { start_lat, start_lng } = req.body;
     const { rows: stops } = await req.db.query(`
-      SELECT rs.id, rs.position,
-        COALESCE(c.latitude, 0)  AS latitude,
-        COALESCE(c.longitude, 0) AS longitude
+       SELECT rs.id, rs.position,
+        c.latitude  AS latitude,
+        c.longitude AS longitude
       FROM route_stops rs
       LEFT JOIN clients c ON rs.client_id = c.id
       WHERE rs.route_id = $1
       ORDER BY rs.position ASC
     `, [req.params.id]);
-
     let startLat = parseFloat(start_lat) || 0;
     let startLng = parseFloat(start_lng) || 0;
     if (!startLat || !startLng) {
-      const first = stops.find(s => s.latitude && s.longitude);
+      const first = stops.find(s => s.latitude != null && s.longitude != null);
       if (first) { startLat = first.latitude; startLng = first.longitude; }
     }
-
-    const geoStops = stops.filter(s => s.latitude && s.longitude);
-    const noGeo    = stops.filter(s => !s.latitude || !s.longitude);
+    const geoStops = stops.filter(s => s.latitude != null && s.longitude != null);
+    const noGeo    = stops.filter(s => s.latitude == null || s.longitude == null);
     const ordered  = [];
     const remaining = [...geoStops];
     let curLat = startLat, curLng = startLng;
@@ -394,21 +392,19 @@ router.post('/:id/optimize-from-here', authenticateToken, requireAdmin, async (r
     const startLng = parseFloat(lng);
 
     const { rows: stops } = await req.db.query(`
-      SELECT rs.id, rs.position, rs.completed,
-        COALESCE(c.latitude, 0)  AS latitude,
-        COALESCE(c.longitude, 0) AS longitude
+       SELECT rs.id, rs.position, rs.completed,
+        c.latitude  AS latitude,
+        c.longitude AS longitude
       FROM route_stops rs
       LEFT JOIN clients c ON rs.client_id = c.id
       WHERE rs.route_id = $1
       ORDER BY rs.position ASC
     `, [req.params.id]);
-
     // Completed stops stay locked at the top in their current order
     const completed = stops.filter(s => s.completed === true || s.completed === 't');
     const pending   = stops.filter(s => s.completed !== true && s.completed !== 't');
-
-    const geoStops = pending.filter(s => s.latitude && s.longitude);
-    const noGeo    = pending.filter(s => !s.latitude || !s.longitude);
+    const geoStops = pending.filter(s => s.latitude != null && s.longitude != null);
+    const noGeo    = pending.filter(s => s.latitude == null || s.longitude == null);
 
     const ordered  = [];
     const remaining = [...geoStops];

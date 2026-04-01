@@ -547,6 +547,8 @@ export default function RoutePlanner() {
   const [editingRoute, setEditingRoute] = useState(null);
   const [showAddStop, setShowAddStop] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
+  const [geocodingAll, setGeocodingAll] = useState(false);
+  const [geocodeAllResult, setGeocodeAllResult] = useState(null);
   const [liveMode, setLiveMode] = useState(false);
   const [autoNavigate, setAutoNavigate] = useState(true);
   const [mobileView, setMobileView] = useState('routes');
@@ -664,6 +666,21 @@ export default function RoutePlanner() {
   const handleStopToggled = () => {
     loadRouteDetail(selectedRouteId);
     loadRoutes();
+  };
+
+  // Geocode all clients missing coordinates
+  const handleGeocodeAll = async () => {
+    if (!window.confirm('This will geocode all clients missing coordinates using OpenStreetMap. It runs in the background (~2 min for all clients). After it finishes, re-sort the route. Continue?')) return;
+    setGeocodingAll(true);
+    setGeocodeAllResult(null);
+    try {
+      const r = await api.post('/clients/geocode-all');
+      setGeocodeAllResult(r.data);
+    } catch (e) {
+      alert('Geocode failed: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setGeocodingAll(false);
+    }
   };
 
   // Sort from Start: geocode optional address, then nearest-neighbour all stops
@@ -931,7 +948,7 @@ export default function RoutePlanner() {
                     </button>
                   </div>
                   {/* Sort from My Location row */}
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                     <div style={{ flex: 1, fontSize: 12, color: '#64748b' }}>
                       {liveMode
                         ? 'Re-sort remaining stops from your current GPS position (completed stops stay locked).'
@@ -945,6 +962,26 @@ export default function RoutePlanner() {
                       {optimizing === 'here' ? '⏳ Locating…' : '📍 Sort from My Location'}
                     </button>
                   </div>
+                  {/* Geocode All row — only in planning mode */}
+                  {!liveMode && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ flex: 1, fontSize: 12, color: '#64748b' }}>
+                        First time? Geocode all client addresses so geo-sort has coordinates to work with.
+                      </div>
+                      <button
+                        onClick={handleGeocodeAll}
+                        disabled={geocodingAll || !!optimizing}
+                        title="Geocode all clients missing lat/lon using OpenStreetMap (runs in background ~2 min)"
+                        style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: (geocodingAll || !!optimizing) ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: (geocodingAll || !!optimizing) ? 0.6 : 1 }}>
+                        {geocodingAll ? '⏳ Geocoding…' : '🌐 Geocode All Addresses'}
+                      </button>
+                    </div>
+                  )}
+                  {geocodeAllResult && (
+                    <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 7, padding: '6px 12px', marginTop: 8, fontSize: 12, color: '#92400e' }}>
+                      ✅ Geocoding started for {geocodeAllResult.count} client{geocodeAllResult.count !== 1 ? 's' : ''}. Coordinates update in the background — wait ~2 min then re-sort.
+                    </div>
+                  )}
                 </div>
               </div>
 
