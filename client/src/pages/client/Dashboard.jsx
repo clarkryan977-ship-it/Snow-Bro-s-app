@@ -51,7 +51,6 @@ function EtaWidget() {
     my_stop_completed, all_done, stops_ahead, eta: etaTime,
     eta_window, stop_number, total_stops, route_name, route_type,
     minutes_per_stop,
-    // GPS fields
     crew_nearby, gps_distance_miles, gps_eta_minutes, gps_updated_at,
     live_session_active, snow_condition,
   } = eta;
@@ -74,7 +73,7 @@ function EtaWidget() {
     );
   }
 
-  // ── GPS NEARBY (within 0.5 miles) — highest priority alert ──────
+  // ── GPS NEARBY (within 0.5 miles) ────────────────────────────────
   if (crew_nearby && gps_distance_miles !== null) {
     const distLabel = gps_distance_miles < 0.1
       ? 'right around the corner'
@@ -104,7 +103,7 @@ function EtaWidget() {
     );
   }
 
-  // ── NEXT STOP (no GPS or GPS not nearby) ────────────────────────
+  // ── NEXT STOP ────────────────────────────────────────────────────
   if (stops_ahead === 0) {
     return (
       <div style={widgetStyle('#1e3a5f', '#1d4ed8')}>
@@ -112,7 +111,6 @@ function EtaWidget() {
         <div style={{ color: '#fbbf24', fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>
           {route_type === 'snow' ? 'Your driveway is NEXT!' : "You're the next stop!"}
         </div>
-        {/* If GPS is live, show GPS-based ETA */}
         {gps_eta_minutes !== null && live_session_active ? (
           <div style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginTop: 8 }}>
             Arrives around {minsToClockTime(gps_eta_minutes)}
@@ -139,11 +137,8 @@ function EtaWidget() {
     );
   }
 
-  // ── 1 STOP AHEAD ────────────────────────────────────────────────
+  // ── 1 STOP AHEAD ─────────────────────────────────────────────────
   if (stops_ahead === 1) {
-    const minAway = gps_eta_minutes !== null && live_session_active
-      ? gps_eta_minutes
-      : (minutes_per_stop || 15);
     const clockTime1 = gps_eta_minutes !== null && live_session_active
       ? minsToClockTime(gps_eta_minutes)
       : etaTime;
@@ -173,10 +168,7 @@ function EtaWidget() {
     );
   }
 
-  // ── MULTIPLE STOPS AHEAD ─────────────────────────────────────────
-  const minAway = gps_eta_minutes !== null && live_session_active
-    ? gps_eta_minutes
-    : (stops_ahead * (minutes_per_stop || 15));
+  // ── MULTIPLE STOPS AHEAD ──────────────────────────────────────────
   const clockTimeMulti = gps_eta_minutes !== null && live_session_active
     ? minsToClockTime(gps_eta_minutes)
     : etaTime;
@@ -221,7 +213,6 @@ function widgetStyle(bg1, bg2) {
   };
 }
 
-// Convert minutes from now into a clock time string like "2:45 PM"
 function minsToClockTime(minutes) {
   const d = new Date(Date.now() + minutes * 60 * 1000);
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -235,10 +226,115 @@ function formatTimeAgo(isoStr) {
   return `${Math.floor(diff / 3600)}h ago`;
 }
 
+// ─── Touch-Up Request Modal ───────────────────────────────────────────────────
+function TouchUpModal({ onClose }) {
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post('/touchup', { note });
+      setSubmitted(true);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to submit request. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 9999, padding: '1rem',
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: 16, padding: '28px 24px',
+        maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)',
+      }}>
+        {submitted ? (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 52, marginBottom: 12 }}>✅</div>
+            <h2 style={{ margin: '0 0 8px', color: '#14532d', fontSize: '1.3rem' }}>Request Sent!</h2>
+            <p style={{ color: '#374151', fontSize: 14, margin: '0 0 20px' }}>
+              We've been notified and will follow up with you shortly.
+            </p>
+            <button
+              onClick={onClose}
+              style={{
+                background: '#1e3a5f', color: '#fff', border: 'none',
+                borderRadius: 8, padding: '10px 28px', fontSize: 15,
+                fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#1e3a5f' }}>🔁 Request a Touch-Up</h2>
+              <button
+                onClick={onClose}
+                style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#6b7280', lineHeight: 1 }}
+              >×</button>
+            </div>
+            <p style={{ color: '#374151', fontSize: 14, margin: '0 0 14px' }}>
+              Did we miss a spot? Need a re-plow or touch-up? Let us know and we'll get back to you.
+            </p>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Describe what needs attention (e.g. missed back driveway, need re-plow after city plow came through)..."
+              rows={4}
+              style={{
+                width: '100%', borderRadius: 8, border: '1px solid #d1d5db',
+                padding: '10px 12px', fontSize: 14, resize: 'vertical',
+                fontFamily: 'inherit', boxSizing: 'border-box',
+              }}
+            />
+            {error && (
+              <div style={{ color: '#dc2626', fontSize: 13, marginTop: 8 }}>{error}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button
+                onClick={onClose}
+                style={{
+                  flex: 1, background: '#f1f5f9', color: '#374151', border: 'none',
+                  borderRadius: 8, padding: '10px 0', fontSize: 14, cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                style={{
+                  flex: 2, background: '#1e3a5f', color: '#fff', border: 'none',
+                  borderRadius: 8, padding: '10px 0', fontSize: 14,
+                  fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.7 : 1,
+                }}
+              >
+                {submitting ? 'Sending…' : 'Submit Request'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function ClientDashboard() {
   const { user } = useAuth();
   const [contracts, setContracts] = useState([]);
+  const [showTouchUp, setShowTouchUp] = useState(false);
 
   useEffect(() => {
     api.get('/contracts/my').then(r => setContracts(r.data)).catch(() => {});
@@ -266,8 +362,24 @@ export default function ClientDashboard() {
         <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>Your Snow Bro's client portal</p>
       </div>
 
-      {/* ETA Widget — always first, most prominent */}
+      {/* ETA Widget */}
       <EtaWidget />
+
+      {/* Touch-Up Request Button */}
+      <button
+        onClick={() => setShowTouchUp(true)}
+        style={{
+          width: '100%', background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)',
+          color: '#fff', border: 'none', borderRadius: 12, padding: '14px 20px',
+          fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 16,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          boxShadow: '0 4px 14px rgba(30,58,95,.3)',
+        }}
+      >
+        <span style={{ fontSize: 20 }}>🔁</span>
+        Request a Touch-Up
+        <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.85 }}>— missed spot, re-plow, etc.</span>
+      </button>
 
       {/* Pending contracts alert */}
       {pending > 0 && (
@@ -299,6 +411,9 @@ export default function ClientDashboard() {
           </Link>
         ))}
       </div>
+
+      {/* Touch-Up Modal */}
+      {showTouchUp && <TouchUpModal onClose={() => setShowTouchUp(false)} />}
     </div>
   );
 }

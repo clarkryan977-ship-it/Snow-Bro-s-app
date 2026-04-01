@@ -581,6 +581,23 @@ async function initDB() {
     await db.query(sql).catch(() => {});
   }
 
+  // ── Touch-up requests (client portal) ──
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS touch_up_requests (
+      id SERIAL PRIMARY KEY,
+      client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+      client_name TEXT DEFAULT '',
+      client_address TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      admin_notes TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `).catch(() => {});
+  // ── Event notes on routes ──
+  await db.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS event_note TEXT DEFAULT ''`).catch(() => {});
+
   // ── Indexes ──
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)',
