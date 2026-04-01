@@ -192,4 +192,33 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// ── GET /time/employee/:id — Alias used by Payroll frontend (→ same as /all?employee_id=:id) ──
+router.get('/employee/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const start_date = req.query.start || req.query.start_date;
+    const end_date   = req.query.end   || req.query.end_date;
+    let where = 'WHERE tr.employee_id = $1 AND tr.clock_out IS NOT NULL';
+    const params = [req.params.id];
+    if (start_date) { params.push(start_date); where += ` AND tr.clock_in >= $${params.length}::date`; }
+    if (end_date)   { params.push(end_date);   where += ` AND tr.clock_in < ($${params.length}::date + INTERVAL '1 day')`; }
+    const { rows } = await req.db.query(
+      `SELECT tr.id, tr.clock_in, tr.clock_out,
+              CASE
+                WHEN tr.duration_minutes IS NOT NULL AND tr.duration_minutes > 0
+                  THEN ROUND(tr.duration_minutes / 60.0, 2)
+                WHEN tr.clock_out IS NOT NULL
+                  THEN ROUND(EXTRACT(EPOCH FROM (tr.clock_out - tr.clock_in)) / 3600.0, 2)
+                ELSE 0
+              END AS hours_worked,
+              tr.job_address, tr.scope_of_work, tr.job_notes
+       FROM time_records tr
+       ${where}
+       ORDER BY tr.clock_in DESC`,
+      params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

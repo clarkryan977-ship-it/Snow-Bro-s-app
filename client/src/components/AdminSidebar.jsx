@@ -23,6 +23,7 @@ const links = [
   { to: '/admin/gps', label: '📍 GPS Tracking' },
   { to: '/admin/routes', label: '🗺️ Route Planner' },
   { to: '/admin/documents', label: '📁 Employee Docs' },
+  { to: '/admin/applications', label: '📋 Job Applications' },
   { section: 'Marketing' },
   { to: '/admin/emails', label: '📧 Email Blast' },
   { to: '/admin/gallery', label: '🖼️ Photo Gallery' },

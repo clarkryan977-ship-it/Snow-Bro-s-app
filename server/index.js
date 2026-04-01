@@ -55,6 +55,7 @@ app.use('/api/push',          require('./routes/push'));
 app.use('/api/documents',     require('./routes/documents'));
 app.use('/api/booking-requests', require('./routes/bookingrequests'));
 app.use('/api/export',           require('./routes/export'));
+app.use('/api/applications',     require('./routes/applications'));
 
 // ── Serve uploaded files ──
 app.use('/uploads', express.static(UPLOADS_ROOT, { maxAge: '1h', etag: true, lastModified: true }));

@@ -535,6 +535,34 @@ async function initDB() {
     )
   `).catch(() => {});
 
+  // ── Job Applications table ──
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS job_applications (
+      id SERIAL PRIMARY KEY,
+      full_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      city TEXT DEFAULT '',
+      state TEXT DEFAULT '',
+      zip TEXT DEFAULT '',
+      position TEXT NOT NULL,
+      availability TEXT DEFAULT '',
+      experience TEXT DEFAULT '',
+      references_info TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      admin_notes TEXT DEFAULT '',
+      reviewed_at TIMESTAMP,
+      reviewed_by INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  // ── Employee documents: add label and uploaded_by for admin uploads ──
+  await db.query(`ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS label TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES employees(id) ON DELETE SET NULL`).catch(() => {});
+
   // ── Billing automation columns ──
   const billingMigrations = [
     // Contracts: billing parameters
