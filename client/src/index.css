@@ -151,11 +151,11 @@ tbody tr:hover { background: var(--blue-50); }
   background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
   color: #fff; padding: 0 1rem;
   display: flex; align-items: center; justify-content: space-between;
-  height: 56px; position: sticky; top: 0; z-index: 100;
+  height: 56px; position: sticky; top: 0; z-index: 1000;
   box-shadow: 0 2px 8px rgba(15,37,87,.35);
 }
 .nav-brand { font-size: 1.1rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: .5rem; }
-.nav-links { display: flex; gap: .25rem; align-items: center; flex-wrap: wrap; }
+.nav-links { display: flex; gap: .25rem; align-items: center; flex-wrap: nowrap; overflow: hidden; }
 .nav-link { color: rgba(255,255,255,.85); padding: .4rem .7rem; border-radius: var(--radius); font-size: .85rem; font-weight: 500; transition: background .15s; }
 .nav-link:hover, .nav-link.active { background: rgba(255,255,255,.15); color: #fff; text-decoration: none; }
 
@@ -188,6 +188,8 @@ tbody tr:hover { background: var(--blue-50); }
   }
   .sidebar.open { left: 0; }
   .main-content { padding: 1rem; }
+  .nav-links { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 0; }
+  .nav-links::-webkit-scrollbar { display: none; }
 }
 
 /* ── Stats grid ─────────────────────────────────────────────────────────── */
