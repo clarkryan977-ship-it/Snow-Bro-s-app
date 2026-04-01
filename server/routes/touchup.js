@@ -64,12 +64,14 @@ router.post('/', authenticateToken, async (req, res) => {
 // ── Get all touch-up requests (admin) ────────────────────────────────────────
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { rows } = await req.db.query(
-      `SELECT t.*, c.phone, c.email as client_email
+    const { status } = req.query;
+    let sql = `SELECT t.*, c.phone, c.email as client_email
        FROM touch_up_requests t
-       LEFT JOIN clients c ON c.id = t.client_id
-       ORDER BY t.created_at DESC`
-    );
+       LEFT JOIN clients c ON c.id = t.client_id`;
+    const params = [];
+    if (status) { sql += ` WHERE t.status = $1`; params.push(status); }
+    sql += ` ORDER BY t.created_at DESC`;
+    const { rows } = await req.db.query(sql, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

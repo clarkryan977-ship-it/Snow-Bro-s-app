@@ -112,7 +112,7 @@ router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
                   WHEN tr.duration_minutes IS NOT NULL AND tr.duration_minutes > 0
                     THEN tr.duration_minutes
                   WHEN tr.clock_out IS NOT NULL
-                    THEN ROUND(EXTRACT(EPOCH FROM (tr.clock_out - tr.clock_in)) / 60.0, 2)
+                    THEN ROUND(CAST(EXTRACT(EPOCH FROM (tr.clock_out - tr.clock_in)) AS NUMERIC) / 60.0, 2)
                   ELSE 0
                 END
               ), 0) AS total_minutes
@@ -158,9 +158,9 @@ router.get('/employee/:id/entries', authenticateToken, requireAdmin, async (req,
       `SELECT tr.id, tr.clock_in, tr.clock_out,
               CASE
                 WHEN tr.duration_minutes IS NOT NULL AND tr.duration_minutes > 0
-                  THEN ROUND(tr.duration_minutes / 60.0, 2)
+                  THEN ROUND(CAST(tr.duration_minutes AS NUMERIC) / 60.0, 2)
                 WHEN tr.clock_out IS NOT NULL
-                  THEN ROUND(EXTRACT(EPOCH FROM (tr.clock_out - tr.clock_in)) / 3600.0, 2)
+                  THEN ROUND(CAST(EXTRACT(EPOCH FROM (tr.clock_out - tr.clock_in)) AS NUMERIC) / 3600.0, 2)
                 ELSE 0
               END AS hours_worked,
               tr.job_address, tr.scope_of_work, tr.job_notes

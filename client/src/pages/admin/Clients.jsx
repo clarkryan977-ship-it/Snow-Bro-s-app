@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 
 const EMPTY = { first_name:'', last_name:'', email:'', phone:'', address:'', city:'', state:'', zip:'', notes:'', password:'' };
@@ -18,6 +19,7 @@ const BUSINESS_INFO = {
 const isPlaceholder = email => email && email.endsWith('@snowbros.placeholder');
 
 export default function AdminClients() {
+  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -641,6 +643,24 @@ export default function AdminClients() {
                       )}
                       <button className="btn btn-sm btn-secondary" onClick={() => openEdit(c)} style={{ marginRight: 6 }}>Edit</button>
                       <button className="btn btn-sm btn-info" onClick={() => openContract(c)} style={{ marginRight: 6 }}>Contract</button>
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => navigate('/admin/estimates', {
+                          state: {
+                            prefill: {
+                              client_id: c.id,
+                              customer_name: `${c.first_name} ${c.last_name}`.trim(),
+                              customer_email: (!c.email || c.email.endsWith('@snowbros.placeholder')) ? '' : c.email,
+                              customer_phone: c.phone || '',
+                              customer_address: [c.address, c.city, c.state, c.zip].filter(Boolean).join(', '),
+                            }
+                          }
+                        })}
+                        title="Create a new estimate pre-filled with this client's info"
+                        style={{ marginRight: 6, background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        + Estimate
+                      </button>
                       <button className="btn btn-sm btn-danger" onClick={() => del(c.id)}>Delete</button>
                     </td>
                   </tr>

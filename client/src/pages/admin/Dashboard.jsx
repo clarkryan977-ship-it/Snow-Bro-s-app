@@ -8,6 +8,26 @@ import { subscribeToPush } from '../../utils/pushNotifications';
 export default function AdminDashboard() {
   const [stats, setStats] = useState({ clients: 0, bookings: 0, invoices: 0, employees: 0, contracts: 0 });
   const [pushStatus, setPushStatus] = useState(null); // null | 'subscribed' | 'denied' | 'unsupported'
+  const [touchUps, setTouchUps] = useState([]);
+  const [dismissedTouchUps, setDismissedTouchUps] = useState(new Set());
+
+  const loadTouchUps = () => {
+    api.get('/touchup?status=pending').then(r => setTouchUps(r.data || [])).catch(() => {});
+  };
+
+  const handleAckTouchUp = async (id) => {
+    try {
+      await api.put(`/touchup/${id}/status`, { status: 'acknowledged' });
+      setDismissedTouchUps(prev => new Set([...prev, id]));
+      loadTouchUps();
+    } catch { alert('Failed to acknowledge request'); }
+  };
+
+  useEffect(() => {
+    loadTouchUps();
+    const interval = setInterval(loadTouchUps, 60000); // refresh every minute
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -49,6 +69,36 @@ export default function AdminDashboard() {
         <h1>📊 Admin Dashboard</h1>
         <p>Welcome back! Here's an overview of your business.</p>
       </div>
+
+      {/* ── Touch-Up Request Alerts ── */}
+      {touchUps.filter(t => !dismissedTouchUps.has(t.id)).length > 0 && (
+        <div style={{ marginBottom: '1.25rem' }}>
+          {touchUps.filter(t => !dismissedTouchUps.has(t.id)).map(t => (
+            <div key={t.id} style={{
+              background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
+              color: '#fff', borderRadius: 10, padding: '1rem 1.25rem',
+              marginBottom: '.75rem', display: 'flex', alignItems: 'flex-start',
+              justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem',
+              boxShadow: '0 2px 8px rgba(220,38,38,.3)',
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '1rem' }}>🔧 Touch-Up Request</div>
+                <div style={{ fontSize: '.9rem', marginTop: 4, fontWeight: 600 }}>
+                  {t.client_name} — {t.client_address || 'Address on file'}
+                </div>
+                {t.note && <div style={{ fontSize: '.85rem', opacity: .9, marginTop: 4 }}>Note: {t.note}</div>}
+                <div style={{ fontSize: '.75rem', opacity: .75, marginTop: 4 }}>
+                  {new Date(t.created_at).toLocaleString()}
+                </div>
+              </div>
+              <button
+                onClick={() => handleAckTouchUp(t.id)}
+                style={{ background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.4)', color: '#fff', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontWeight: 600, fontSize: '.85rem', whiteSpace: 'nowrap' }}
+              >✓ Acknowledge</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Push Notification Banner ── */}
       {pushStatus === 'prompt' && (

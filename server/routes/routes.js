@@ -166,14 +166,14 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
 
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time } = req.body;
+    const { name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time, event_note } = req.body;
     if (!name) return res.status(400).json({ error: 'Route name is required' });
     const empIds = JSON.stringify(Array.isArray(assigned_employee_ids) ? assigned_employee_ids : []);
     const { rows } = await req.db.query(
-      `INSERT INTO routes (name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO routes (name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time, event_note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [name, type || 'snow', route_date || null, description || '', empIds,
-       parseInt(minutes_per_stop) || 15, route_start_time || '00:00']
+       parseInt(minutes_per_stop) || 15, route_start_time || '00:00', event_note || '']
     );
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -211,14 +211,14 @@ router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
 
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time } = req.body;
+    const { name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time, event_note } = req.body;
     const empIds = JSON.stringify(Array.isArray(assigned_employee_ids) ? assigned_employee_ids : []);
     await req.db.query(
       `UPDATE routes SET name=$1, type=$2, route_date=$3, description=$4, assigned_employee_ids=$5,
-       minutes_per_stop=$6, route_start_time=$7, updated_at=NOW()
-       WHERE id=$8`,
+       minutes_per_stop=$6, route_start_time=$7, event_note=$8, updated_at=NOW()
+       WHERE id=$9`,
       [name, type || 'snow', route_date || null, description || '', empIds,
-       parseInt(minutes_per_stop) || 15, route_start_time || '00:00', req.params.id]
+       parseInt(minutes_per_stop) || 15, route_start_time || '00:00', event_note || '', req.params.id]
     );
     res.json({ message: 'Route updated' });
   } catch (err) { res.status(500).json({ error: err.message }); }

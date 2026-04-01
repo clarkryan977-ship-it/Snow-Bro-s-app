@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import api from '../../utils/api';
 import BusinessHeader from '../../components/BusinessHeader';
 
@@ -27,13 +28,33 @@ export default function AdminEstimates() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
 
+  const location = useLocation();
+  const prefill = location.state?.prefill || null;
+
   const [form, setForm] = useState({
-    customer_name: '', customer_email: '', customer_phone: '',
+    client_id: '', customer_name: '', customer_email: '', customer_phone: '',
     customer_address: '', tax_rate: 0, notes: '', valid_until: '',
     items: [{ ...EMPTY_ITEM }]
   });
 
   useEffect(() => { load(); }, []);
+
+  // Auto-open new estimate form if navigated here with prefill data
+  useEffect(() => {
+    if (prefill) {
+      setEditEst(null);
+      setForm({
+        client_id: prefill.client_id || '',
+        customer_name: prefill.customer_name || '',
+        customer_email: prefill.customer_email || '',
+        customer_phone: prefill.customer_phone || '',
+        customer_address: prefill.customer_address || '',
+        tax_rate: 0, notes: '', valid_until: '',
+        items: [{ ...EMPTY_ITEM }]
+      });
+      setShowForm(true);
+    }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true);
@@ -47,7 +68,7 @@ export default function AdminEstimates() {
 
   function openNew() {
     setEditEst(null);
-    setForm({ customer_name: '', customer_email: '', customer_phone: '', customer_address: '', tax_rate: 0, notes: '', valid_until: '', items: [{ ...EMPTY_ITEM }] });
+    setForm({ client_id: '', customer_name: '', customer_email: '', customer_phone: '', customer_address: '', tax_rate: 0, notes: '', valid_until: '', items: [{ ...EMPTY_ITEM }] });
     setShowForm(true);
   }
 
@@ -56,6 +77,7 @@ export default function AdminEstimates() {
       const { data } = await api.get(`/estimates/${id}`);
       setEditEst(data);
       setForm({
+        client_id: data.client_id || '',
         customer_name: data.customer_name, customer_email: data.customer_email,
         customer_phone: data.customer_phone, customer_address: data.customer_address,
         tax_rate: data.tax_rate, notes: data.notes, valid_until: data.valid_until || '',
@@ -99,7 +121,8 @@ export default function AdminEstimates() {
     e.preventDefault();
     setErr(''); setMsg('');
     const { subtotal, taxAmount, total } = calcTotals();
-    const payload = { ...form, subtotal, tax_amount: taxAmount, total };
+    const payload = { ...form, subtotal, tax_amount: taxAmount, total,
+      client_id: form.client_id || null };
     try {
       if (editEst) {
         await api.put(`/estimates/${editEst.id}`, payload);
@@ -182,6 +205,11 @@ export default function AdminEstimates() {
                   <td>
                     <div style={{ fontWeight: 600 }}>{est.customer_name}</div>
                     <div style={{ fontSize: '.78rem', color: 'var(--gray-500)' }}>{est.customer_email}</div>
+                    {est.client_id && (
+                      <div style={{ fontSize: '.72rem', color: '#166534', background: '#dcfce7', borderRadius: 4, padding: '1px 6px', display: 'inline-block', marginTop: 2 }}>
+                        🔗 Client record
+                      </div>
+                    )}
                   </td>
                   <td><strong>${Number(est.total).toFixed(2)}</strong></td>
                   <td><span className={`badge ${STATUS_COLORS[est.status] || 'badge-gray'}`}>{est.status}</span></td>
@@ -192,7 +220,7 @@ export default function AdminEstimates() {
                       <button className="btn btn-secondary btn-sm" onClick={() => openEdit(est.id)}>Edit</button>
                       <button className="btn btn-primary btn-sm" onClick={() => emailEst(est.id)} disabled={emailLoading || !est.customer_email}>Email</button>
                       {est.status !== 'accepted' && (
-                        <button className="btn btn-outline btn-sm" onClick={() => { setConvertModal(est); setConvertClientId(''); }}>→ Invoice</button>
+                        <button className="btn btn-outline btn-sm" onClick={() => { setConvertModal(est); setConvertClientId(est.client_id ? String(est.client_id) : ''); }}>→ Invoice</button>
                       )}
                       <button className="btn btn-danger btn-sm" onClick={() => deleteEst(est.id)}>Del</button>
                     </div>
@@ -215,6 +243,12 @@ export default function AdminEstimates() {
             <form onSubmit={submit}>
               <div className="modal-body">
                 {err && <div className="alert alert-error">{err}</div>}
+                {form.client_id && (
+                  <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 6, padding: '8px 14px', marginBottom: 12, fontSize: '.85rem', color: '#166534', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>🔗</span>
+                    <span><strong>Linked to client record</strong> — changes to the form below are for this estimate only and will not update the client record.</span>
+                  </div>
+                )}
                 <h3 style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--blue-700)', marginBottom: '.75rem' }}>Customer Information</h3>
                 <div className="form-row">
                   <div className="form-group">
@@ -394,7 +428,7 @@ export default function AdminEstimates() {
                 {emailLoading ? <span className="spinner" /> : '📧 Email to Customer'}
               </button>
               {viewEst.status !== 'accepted' && (
-                <button className="btn btn-outline" onClick={() => { setViewEst(null); setConvertModal(viewEst); setConvertClientId(''); }}>
+                <button className="btn btn-outline" onClick={() => { setViewEst(null); setConvertModal(viewEst); setConvertClientId(viewEst.client_id ? String(viewEst.client_id) : ''); }}>
                   → Convert to Invoice
                 </button>
               )}

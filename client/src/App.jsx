@@ -46,6 +46,7 @@ const AdminAvailabilityCalendar = lazy(() => import('./pages/admin/AvailabilityC
 const AdminEmployeeDocuments = lazy(() => import('./pages/admin/EmployeeDocuments'));
 const AdminBookingRequests = lazy(() => import('./pages/admin/BookingRequests'));
 const AdminApplications = lazy(() => import('./pages/admin/Applications'));
+const AdminTouchUpRequests = lazy(() => import('./pages/admin/TouchUpRequests'));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import('./pages/employee/Dashboard'));
@@ -217,6 +218,7 @@ export default function App() {
               <Route path="/admin/documents" element={<AdminEmployeeDocuments />} />
               <Route path="/admin/booking-requests" element={<AdminBookingRequests />} />
               <Route path="/admin/applications" element={<AdminApplications />} />
+              <Route path="/admin/touchup" element={<AdminTouchUpRequests />} />
             </Route>
           </Route>
 

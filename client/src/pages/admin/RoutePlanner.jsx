@@ -420,6 +420,7 @@ function RouteFormModal({ route, employees, onSave, onClose }) {
   );
   const [type, setType] = useState(route ? (route.type || 'snow') : 'snow');
   const [description, setDescription] = useState(route ? (route.description || '') : '');
+  const [eventNote, setEventNote] = useState(route ? (route.event_note || '') : '');
   const [minutesPerStop, setMinutesPerStop] = useState(route ? (route.minutes_per_stop || 15) : 15);
   const [startTime, setStartTime] = useState(
     route && route.route_start_time
@@ -445,6 +446,7 @@ function RouteFormModal({ route, employees, onSave, onClose }) {
         assigned_employee_ids: selectedEmpIds,
         minutes_per_stop: parseInt(minutesPerStop) || 15,
         route_start_time: startTime,
+        event_note: eventNote.trim(),
       });
     } finally { setSaving(false); }
   };
@@ -506,6 +508,12 @@ function RouteFormModal({ route, employees, onSave, onClose }) {
 
         <label style={lbl}>Description (optional)</label>
         <input style={inp} value={description} onChange={e => setDescription(e.target.value)} placeholder="Notes about this route…" />
+
+        <label style={lbl}>📝 Daily Event Note</label>
+        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, marginBottom: 4 }}>Visible to assigned crew and optionally shown on client portal for this day's service</div>
+        <textarea style={{ ...inp, minHeight: 80, resize: 'vertical', fontFamily: 'inherit' }}
+          value={eventNote} onChange={e => setEventNote(e.target.value)}
+          placeholder="e.g. Heavy snow expected – start early. Skip back lot for 3rd Ave clients." />
 
         <label style={lbl}>Assign Employees</label>
         <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 8 }}>

@@ -12,6 +12,7 @@ const links = [
   { section: 'Clients' },
   { to: '/admin/clients', label: '👥 Clients' },
   { to: '/admin/reviews', label: '⭐ Reviews' },
+  { to: '/admin/touchup', label: '🔧 Touch-Up Requests' },
   { section: 'Billing' },
   { to: '/admin/estimates', label: '📝 Estimates' },
   { to: '/admin/invoices', label: '🧾 Invoices' },

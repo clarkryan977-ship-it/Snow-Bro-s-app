@@ -33,7 +33,7 @@ router.post('/clock-out', authenticateToken, async (req, res) => {
     const { rows: result } = await req.db.query(
       `UPDATE time_records
        SET clock_out = NOW(),
-           duration_minutes = ROUND(EXTRACT(EPOCH FROM (NOW() - clock_in)) / 60.0, 2)
+           duration_minutes = ROUND(CAST(EXTRACT(EPOCH FROM (NOW() - clock_in)) / 60.0 AS NUMERIC), 2)
        WHERE id = $1 RETURNING *`,
       [active[0].id]);
 
@@ -79,7 +79,7 @@ router.get('/my-records', authenticateToken, async (req, res) => {
     const { limit = 50, offset = 0 } = req.query;
     const { rows } = await req.db.query(
       `SELECT id, clock_in, clock_out,
-              ROUND(duration_minutes / 60.0, 2) AS hours_worked,
+              ROUND(CAST(duration_minutes AS NUMERIC) / 60.0, 2) AS hours_worked,
               duration_minutes,
               job_address, job_contact, scope_of_work, job_notes, created_at
        FROM time_records
@@ -112,7 +112,7 @@ router.get('/all', authenticateToken, requireAdmin, async (req, res) => {
               e.first_name || ' ' || e.last_name AS employee_name,
               e.email AS employee_email,
               tr.clock_in, tr.clock_out,
-              ROUND(tr.duration_minutes / 60.0, 2) AS hours_worked,
+              ROUND(CAST(tr.duration_minutes AS NUMERIC) / 60.0, 2) AS hours_worked,
               tr.duration_minutes,
               tr.job_address, tr.job_contact, tr.scope_of_work, tr.job_notes,
               tr.created_at
@@ -143,7 +143,7 @@ router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
               e.first_name || ' ' || e.last_name AS employee_name,
               e.email,
               COUNT(tr.id) AS total_shifts,
-              ROUND(SUM(tr.duration_minutes) / 60.0, 2) AS total_hours,
+              ROUND(CAST(COALESCE(SUM(tr.duration_minutes), 0) AS NUMERIC) / 60.0, 2) AS total_hours,
               COALESCE(e.hourly_rate, 0) AS hourly_rate
        FROM employees e
        LEFT JOIN time_records tr ON tr.employee_id = e.id ${where}
@@ -166,7 +166,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
        SET clock_in = COALESCE($1, clock_in),
            clock_out = $2,
            duration_minutes = CASE
-             WHEN $2 IS NOT NULL THEN ROUND(EXTRACT(EPOCH FROM ($2::timestamp - COALESCE($1, clock_in)::timestamp)) / 60.0, 2)
+             WHEN $2 IS NOT NULL THEN ROUND(CAST(EXTRACT(EPOCH FROM ($2::timestamp - COALESCE($1, clock_in)::timestamp)) AS NUMERIC) / 60.0, 2)
              ELSE duration_minutes
            END,
            job_address = COALESCE($3, job_address),
@@ -192,7 +192,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// ── GET /time/employee/:id — Alias used by Payroll frontend (→ same as /all?employee_id=:id) ──
+// ── GET /time/employee/:id — Alias used by Payroll frontend ──────────────────
 router.get('/employee/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const start_date = req.query.start || req.query.start_date;
@@ -205,9 +205,9 @@ router.get('/employee/:id', authenticateToken, requireAdmin, async (req, res) =>
       `SELECT tr.id, tr.clock_in, tr.clock_out,
               CASE
                 WHEN tr.duration_minutes IS NOT NULL AND tr.duration_minutes > 0
-                  THEN ROUND(tr.duration_minutes / 60.0, 2)
+                  THEN ROUND(CAST(tr.duration_minutes AS NUMERIC) / 60.0, 2)
                 WHEN tr.clock_out IS NOT NULL
-                  THEN ROUND(EXTRACT(EPOCH FROM (tr.clock_out - tr.clock_in)) / 3600.0, 2)
+                  THEN ROUND(CAST(EXTRACT(EPOCH FROM (tr.clock_out - tr.clock_in)) AS NUMERIC) / 3600.0, 2)
                 ELSE 0
               END AS hours_worked,
               tr.job_address, tr.scope_of_work, tr.job_notes
