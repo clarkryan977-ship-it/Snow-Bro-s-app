@@ -252,6 +252,21 @@ router.patch('/:id/complete', authenticateToken, async (req, res) => {
   }
 });
 
+// ── Reopen booking (undo completion) ──────────────────────────────────────────
+router.patch('/:id/uncomplete', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rowCount } = await req.db.query(
+      `UPDATE bookings SET status = 'confirmed', completed_at = NULL WHERE id = $1`,
+      [id]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'Booking not found' });
+    res.json({ message: 'Job reopened' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Get my bookings (authenticated client) ────────────────────────────────────
 router.get('/my', authenticateToken, async (req, res) => {
   try {
