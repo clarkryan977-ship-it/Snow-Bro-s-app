@@ -254,6 +254,36 @@ function AddStopPanel({ routeId, existingStopIds, onAdded }) {
     }
   };
 
+  const [importingAll, setImportingAll] = useState(false);
+  const [importResult, setImportResult] = useState(null); // { added, skipped }
+
+  const importAllClients = async () => {
+    const toAdd = clients.filter(c => c.active && !existingStopIds.has(c.id + '_client'));
+    if (toAdd.length === 0) {
+      setImportResult({ added: 0, skipped: clients.filter(c => c.active).length });
+      return;
+    }
+    setImportingAll(true);
+    setImportResult(null);
+    let added = 0, skipped = 0;
+    for (const client of toAdd) {
+      try {
+        await api.post('/routes/' + routeId + '/stops', {
+          client_id: client.id,
+          stop_label: client.first_name + ' ' + client.last_name,
+          address: client.address || '',
+          city: client.city || '',
+          state: client.state || '',
+          zip: client.zip || '',
+        });
+        added++;
+      } catch { skipped++; }
+    }
+    setImportingAll(false);
+    setImportResult({ added, skipped });
+    onAdded();
+  };
+
   const addClientStop = async (client) => {
     setAdding(a => ({ ...a, [client.id]: true }));
     try {
@@ -326,6 +356,25 @@ function AddStopPanel({ routeId, existingStopIds, onAdded }) {
 
       {tab === 'clients' && (
         <div>
+          {/* Import All button */}
+          <button
+            onClick={importAllClients}
+            disabled={importingAll || loading}
+            style={{
+              width: '100%', padding: '9px 0', marginBottom: 8, borderRadius: 8,
+              background: importingAll ? '#94a3b8' : '#16a34a', color: '#fff',
+              border: 'none', fontWeight: 700, fontSize: 13, cursor: importingAll ? 'default' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}>
+            {importingAll ? '⏳ Importing…' : '⬇️ Import All Active Clients'}
+          </button>
+          {importResult && (
+            <div style={{ background: importResult.added > 0 ? '#dcfce7' : '#fef9c3', border: '1px solid ' + (importResult.added > 0 ? '#86efac' : '#fde047'), borderRadius: 7, padding: '7px 12px', marginBottom: 8, fontSize: 12, color: '#166534' }}>
+              {importResult.added > 0
+                ? `✅ Added ${importResult.added} stop${importResult.added !== 1 ? 's' : ''}${importResult.skipped > 0 ? ` · ${importResult.skipped} already on route` : ''}`
+                : `All active clients are already on this route.`}
+            </div>
+          )}
           <input type="text" placeholder="Search clients…" value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #e2e8f0', marginBottom: 8, fontSize: 13, boxSizing: 'border-box' }} />
           {loading

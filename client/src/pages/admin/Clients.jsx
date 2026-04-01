@@ -321,22 +321,19 @@ export default function AdminClients() {
           <button
             onClick={async () => {
               try {
-                const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-                if (!token) throw new Error('Not authenticated — please log in again');
-                const r = await fetch('/api/export/backup', { headers: { Authorization: 'Bearer ' + token } });
-                if (!r.ok) throw new Error('Export failed: ' + r.status);
-                const blob = await r.blob();
+                const res = await api.get('/export/backup', { responseType: 'blob' });
+                const blob = new Blob([res.data], { type: 'application/zip' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                const cd = r.headers.get('content-disposition') || '';
+                const cd = res.headers['content-disposition'] || '';
                 const m = cd.match(/filename="([^"]+)"/);
                 a.download = m ? m[1] : 'snowbros-backup.zip';
                 document.body.appendChild(a); a.click();
                 document.body.removeChild(a); URL.revokeObjectURL(url);
                 showToast('Backup downloaded successfully!');
               } catch (e) {
-                showToast('Export failed: ' + e.message, 'error');
+                showToast('Export failed: ' + (e.response?.status || e.message), 'error');
               }
             }}
             style={{
