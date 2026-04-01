@@ -423,8 +423,8 @@ function RouteFormModal({ route, employees, onSave, onClose }) {
   const [minutesPerStop, setMinutesPerStop] = useState(route ? (route.minutes_per_stop || 15) : 15);
   const [startTime, setStartTime] = useState(
     route && route.route_start_time
-      ? (typeof route.route_start_time === 'string' ? route.route_start_time.slice(0, 5) : '06:00')
-      : '06:00'
+      ? (typeof route.route_start_time === 'string' ? route.route_start_time.slice(0, 5) : '00:00')
+      : '00:00'
   );
   const [selectedEmpIds, setSelectedEmpIds] = useState(() => {
     if (!route) return [];
@@ -493,8 +493,8 @@ function RouteFormModal({ route, employees, onSave, onClose }) {
           </div>
           <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 6 }}>
             Clients see: "Stop 5 of 20 · arriving ~{(() => {
-              const h = parseInt(startTime?.split(':')[0]) || 6;
-              const m = parseInt(startTime?.split(':')[1]) || 0;
+              const h = parseInt(startTime?.split(':')[0] ?? '0') || 0;
+              const m = parseInt(startTime?.split(':')[1] ?? '0') || 0;
               const total = h * 60 + m + 4 * (parseInt(minutesPerStop) || 15);
               const hh = Math.floor(total / 60) % 24;
               const mm = total % 60;

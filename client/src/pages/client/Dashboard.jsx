@@ -89,7 +89,7 @@ function EtaWidget() {
           {gps_eta_minutes !== null && gps_eta_minutes <= 2
             ? 'Arriving any minute!'
             : gps_eta_minutes !== null
-              ? `~${gps_eta_minutes} min away (${distLabel})`
+              ? `Arrives around ${minsToClockTime(gps_eta_minutes)} (${distLabel})`
               : `Crew is ${distLabel}`}
         </div>
         {gps_updated_at && (
@@ -115,11 +115,11 @@ function EtaWidget() {
         {/* If GPS is live, show GPS-based ETA */}
         {gps_eta_minutes !== null && live_session_active ? (
           <div style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginTop: 8 }}>
-            ~{gps_eta_minutes} min away
+            Arrives around {minsToClockTime(gps_eta_minutes)}
           </div>
         ) : (
           <div style={{ color: '#fff', fontSize: 26, fontWeight: 900, marginTop: 8 }}>
-            Arriving ~{etaTime}
+            Arrives around {etaTime}
           </div>
         )}
         {gps_distance_miles !== null && (
@@ -144,6 +144,9 @@ function EtaWidget() {
     const minAway = gps_eta_minutes !== null && live_session_active
       ? gps_eta_minutes
       : (minutes_per_stop || 15);
+    const clockTime1 = gps_eta_minutes !== null && live_session_active
+      ? minsToClockTime(gps_eta_minutes)
+      : etaTime;
     return (
       <div style={widgetStyle('#1e3a5f', '#2d4f7c')}>
         <div style={{ fontSize: 40, marginBottom: 8 }}>❄️</div>
@@ -151,10 +154,7 @@ function EtaWidget() {
           1 stop ahead of you
         </div>
         <div style={{ color: '#93c5fd', fontSize: 24, fontWeight: 800, marginTop: 6 }}>
-          About {minAway} min away
-        </div>
-        <div style={{ color: '#fff', fontSize: 18, fontWeight: 700, marginTop: 4 }}>
-          Estimated arrival: {etaTime}
+          Arrives around {clockTime1}
         </div>
         {gps_distance_miles !== null && (
           <div style={{ color: 'rgba(255,255,255,.65)', fontSize: 13, marginTop: 4 }}>
@@ -177,7 +177,9 @@ function EtaWidget() {
   const minAway = gps_eta_minutes !== null && live_session_active
     ? gps_eta_minutes
     : (stops_ahead * (minutes_per_stop || 15));
-  const hrAway = minAway >= 60 ? `${Math.floor(minAway / 60)}h ${minAway % 60}m` : `${minAway} min`;
+  const clockTimeMulti = gps_eta_minutes !== null && live_session_active
+    ? minsToClockTime(gps_eta_minutes)
+    : etaTime;
   return (
     <div style={widgetStyle('#1e3a5f', '#2d4f7c')}>
       <div style={{ fontSize: 40, marginBottom: 8 }}>❄️</div>
@@ -185,10 +187,7 @@ function EtaWidget() {
         {stops_ahead} stops ahead of you
       </div>
       <div style={{ color: '#93c5fd', fontSize: 22, fontWeight: 800, marginTop: 6 }}>
-        About {hrAway} away
-      </div>
-      <div style={{ color: '#fff', fontSize: 18, fontWeight: 700, marginTop: 4 }}>
-        Estimated arrival: {etaTime}
+        Arrives around {clockTimeMulti}
       </div>
       {gps_distance_miles !== null && (
         <div style={{ color: 'rgba(255,255,255,.65)', fontSize: 13, marginTop: 4 }}>
@@ -220,6 +219,12 @@ function widgetStyle(bg1, bg2) {
     marginBottom: 20,
     boxShadow: '0 4px 20px rgba(0,0,0,.18)',
   };
+}
+
+// Convert minutes from now into a clock time string like "2:45 PM"
+function minsToClockTime(minutes) {
+  const d = new Date(Date.now() + minutes * 60 * 1000);
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 function formatTimeAgo(isoStr) {

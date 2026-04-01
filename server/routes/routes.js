@@ -36,7 +36,7 @@ function nearestNeighborOrder(stops) {
 
 // Format minutes offset from a base time string "HH:MM" into "H:MM AM/PM"
 function addMinutesToTime(baseTime, minutes) {
-  const [h, m] = (baseTime || '06:00').split(':').map(Number);
+  const [h, m] = (baseTime || '00:00').split(':').map(Number);
   const total = h * 60 + m + Math.round(minutes);
   const hh = Math.floor(total / 60) % 24;
   const mm = total % 60;
@@ -173,7 +173,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
       `INSERT INTO routes (name, type, route_date, description, assigned_employee_ids, minutes_per_stop, route_start_time)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [name, type || 'snow', route_date || null, description || '', empIds,
-       parseInt(minutes_per_stop) || 15, route_start_time || '06:00']
+       parseInt(minutes_per_stop) || 15, route_start_time || '00:00']
     );
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -218,7 +218,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
        minutes_per_stop=$6, route_start_time=$7, updated_at=NOW()
        WHERE id=$8`,
       [name, type || 'snow', route_date || null, description || '', empIds,
-       parseInt(minutes_per_stop) || 15, route_start_time || '06:00', req.params.id]
+       parseInt(minutes_per_stop) || 15, route_start_time || '00:00', req.params.id]
     );
     res.json({ message: 'Route updated' });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -507,8 +507,8 @@ router.get('/my-eta', authenticateToken, async (req, res) => {
       const myStop = myStopRows[0];
       const minutesPerStop = parseInt(route.minutes_per_stop) || 15;
       const startTime = route.route_start_time
-        ? (typeof route.route_start_time === 'string' ? route.route_start_time.slice(0, 5) : '06:00')
-        : '06:00';
+        ? (typeof route.route_start_time === 'string' ? route.route_start_time.slice(0, 5) : '00:00')
+        : '00:00';
 
       const { rows: totalRows } = await req.db.query(
         `SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1`, [route.id]
