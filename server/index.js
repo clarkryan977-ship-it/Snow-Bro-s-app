@@ -57,6 +57,7 @@ app.use('/api/booking-requests', require('./routes/bookingrequests'));
 app.use('/api/export',           require('./routes/export'));
 app.use('/api/applications',     require('./routes/applications'));
 app.use('/api/touchup',          require('./routes/touchup'));
+app.use('/api/weather',          require('./routes/weather'));
 
 // ── Serve uploaded files ──
 app.use('/uploads', express.static(UPLOADS_ROOT, { maxAge: '1h', etag: true, lastModified: true }));
