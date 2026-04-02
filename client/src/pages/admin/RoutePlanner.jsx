@@ -809,7 +809,7 @@ export default function RoutePlanner() {
     setOptimizing('here');
     try {
       const pos = await new Promise((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, maximumAge: 30000 })
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, maximumAge: 0, enableHighAccuracy: true })
       );
       const { latitude: lat, longitude: lng } = pos.coords;
       await api.post('/routes/' + selectedRouteId + '/optimize-from-here', { lat, lng });

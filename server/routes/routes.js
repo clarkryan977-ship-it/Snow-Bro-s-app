@@ -384,7 +384,7 @@ router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) =
     const { start_lat, start_lng } = req.body;
     // Use stop-level coordinates (stop_lat/stop_lng) if available, fall back to client home coords
     // This fixes Fargo stops being sorted as Moorhead when the client lives in Moorhead
-    const { rows: stops } = await req.db.query(`
+    const { rows: rawStops2 } = await req.db.query(`
        SELECT rs.id, rs.position,
         COALESCE(rs.stop_lat, c.latitude)  AS latitude,
         COALESCE(rs.stop_lng, c.longitude) AS longitude
@@ -393,14 +393,20 @@ router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) =
       WHERE rs.route_id = $1
       ORDER BY rs.position ASC
     `, [req.params.id]);
+    // Normalise lat/lng to numbers (pg returns NUMERIC columns as strings)
+    const stops = rawStops2.map(s => ({
+      ...s,
+      latitude:  s.latitude  != null && s.latitude  !== '' ? parseFloat(s.latitude)  : null,
+      longitude: s.longitude != null && s.longitude !== '' ? parseFloat(s.longitude) : null,
+    }));
     let startLat = parseFloat(start_lat) || 0;
     let startLng = parseFloat(start_lng) || 0;
     if (!startLat || !startLng) {
-      const first = stops.find(s => s.latitude != null && s.longitude != null);
+      const first = stops.find(s => s.latitude != null && !isNaN(s.latitude) && s.longitude != null && !isNaN(s.longitude));
       if (first) { startLat = first.latitude; startLng = first.longitude; }
     }
-    const geoStops = stops.filter(s => s.latitude != null && s.longitude != null);
-    const noGeo    = stops.filter(s => s.latitude == null || s.longitude == null);
+    const geoStops = stops.filter(s => s.latitude != null && !isNaN(s.latitude) && s.longitude != null && !isNaN(s.longitude));
+    const noGeo    = stops.filter(s => s.latitude == null  || isNaN(s.latitude)  || s.longitude == null  || isNaN(s.longitude));
     const ordered  = [];
     const remaining = [...geoStops];
     let curLat = startLat, curLng = startLng;
@@ -429,8 +435,9 @@ router.post('/:id/optimize-from-here', authenticateToken, requireAdmin, async (r
     if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required' });
     const startLat = parseFloat(lat);
     const startLng = parseFloat(lng);
+    console.log(`[optimize-from-here] routeId=${req.params.id} startLat=${startLat} startLng=${startLng}`);
 
-    const { rows: stops } = await req.db.query(`
+    const { rows: rawStops } = await req.db.query(`
        SELECT rs.id, rs.position, rs.completed,
         COALESCE(rs.stop_lat, c.latitude)  AS latitude,
         COALESCE(rs.stop_lng, c.longitude) AS longitude
@@ -439,11 +446,17 @@ router.post('/:id/optimize-from-here', authenticateToken, requireAdmin, async (r
       WHERE rs.route_id = $1
       ORDER BY rs.position ASC
     `, [req.params.id]);
+    // Normalise lat/lng to numbers (pg returns NUMERIC columns as strings)
+    const stops = rawStops.map(s => ({
+      ...s,
+      latitude:  s.latitude  != null && s.latitude  !== '' ? parseFloat(s.latitude)  : null,
+      longitude: s.longitude != null && s.longitude !== '' ? parseFloat(s.longitude) : null,
+    }));
     // Completed stops stay locked at the top in their current order
     const completed = stops.filter(s => s.completed === true || s.completed === 't');
     const pending   = stops.filter(s => s.completed !== true && s.completed !== 't');
-    const geoStops = pending.filter(s => s.latitude != null && s.longitude != null);
-    const noGeo    = pending.filter(s => s.latitude == null || s.longitude == null);
+    const geoStops = pending.filter(s => s.latitude != null && !isNaN(s.latitude) && s.longitude != null && !isNaN(s.longitude));
+    const noGeo    = pending.filter(s => s.latitude == null  || isNaN(s.latitude)  || s.longitude == null  || isNaN(s.longitude));
 
     const ordered  = [];
     const remaining = [...geoStops];
