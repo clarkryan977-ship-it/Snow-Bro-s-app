@@ -92,9 +92,156 @@ function RouteCard({ route, isSelected, onSelect, onEdit, onDelete }) {
   );
 }
 
-// ─── LiveStopCard ─────────────────────────────────────────────────────────────
+// ─── StopPhotoModal ─────────────────────────────────────────────
+function StopPhotoModal({ stop, onClose }) {
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+  const fileRef = useRef();
+
+  const clientName = stop.first_name
+    ? stop.first_name + ' ' + stop.last_name
+    : (stop.stop_label || 'Stop');
+
+  const load = async () => {
+    try {
+      const { data } = await api.get('/beforeafter/stop/' + stop.id);
+      setPhotos(data);
+    } catch (e) { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, [stop.id]);
+
+  const upload = async (photoType) => {
+    if (!fileRef.current?.files?.length) {
+      alert('Please select a photo first.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('photo', fileRef.current.files[0]);
+      fd.append('photo_type', photoType);
+      if (stop.booking_id) fd.append('booking_id', stop.booking_id);
+      await api.post('/beforeafter/stop/' + stop.id, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (fileRef.current) fileRef.current.value = '';
+      await load();
+    } catch (e) {
+      alert('Upload failed: ' + (e.response?.data?.error || e.message));
+    } finally { setUploading(false); }
+  };
+
+  const deletePhoto = async (photoId) => {
+    if (!confirm('Delete this photo?')) return;
+    try {
+      await api.delete('/beforeafter/' + photoId);
+      setPhotos(p => p.filter(x => x.id !== photoId));
+    } catch (e) { alert('Delete failed'); }
+  };
+
+  const beforePhotos = photos.filter(p => p.photo_type === 'before');
+  const afterPhotos  = photos.filter(p => p.photo_type === 'after');
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 20, position: 'relative' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#1e3a5f' }}>📷 Before & After Photos</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#64748b', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>{clientName}{stop.booking_service_type ? ' — ' + stop.booking_service_type : ''}</div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Loading photos…</div>
+        ) : (
+          <>
+            {/* Before photos */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', textTransform: 'uppercase', marginBottom: 8 }}>Before</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {beforePhotos.length === 0 && (
+                  <div style={{ color: '#94a3b8', fontSize: 12, padding: '1rem', border: '2px dashed #e2e8f0', borderRadius: 8, width: '100%', textAlign: 'center' }}>No before photos yet</div>
+                )}
+                {beforePhotos.map(p => (
+                  <div key={p.id} style={{ position: 'relative' }}>
+                    <img src={p.file_path} alt="Before" onClick={() => setLightbox(p)} style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: '2px solid #e2e8f0' }} />
+                    <button onClick={() => deletePhoto(p.id)} style={{ position: 'absolute', top: -6, right: -6, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, fontSize: 12, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* After photos */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', textTransform: 'uppercase', marginBottom: 8 }}>After</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {afterPhotos.length === 0 && (
+                  <div style={{ color: '#94a3b8', fontSize: 12, padding: '1rem', border: '2px dashed #e2e8f0', borderRadius: 8, width: '100%', textAlign: 'center' }}>No after photos yet</div>
+                )}
+                {afterPhotos.map(p => (
+                  <div key={p.id} style={{ position: 'relative' }}>
+                    <img src={p.file_path} alt="After" onClick={() => setLightbox(p)} style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: '2px solid #86efac' }} />
+                    <button onClick={() => deletePhoto(p.id)} style={{ position: 'absolute', top: -6, right: -6, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, fontSize: 12, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Upload section */}
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', textTransform: 'uppercase', marginBottom: 10 }}>Upload Photo</div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'block', marginBottom: 12, fontSize: 13, width: '100%' }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => upload('before')}
+                  disabled={uploading}
+                  style={{ flex: 1, background: '#f1f5f9', color: '#1e3a5f', border: '2px solid #cbd5e1', borderRadius: 8, padding: '8px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {uploading ? '…' : '📷 Upload as Before'}
+                </button>
+                <button
+                  onClick={() => upload('after')}
+                  disabled={uploading}
+                  style={{ flex: 1, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {uploading ? '…' : '📷 Upload as After'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        <button onClick={onClose} style={{ marginTop: 16, width: '100%', background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>Close</button>
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.9)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setLightbox(null)}
+        >
+          <img src={lightbox.file_path} alt="" style={{ maxWidth: '95vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }} />
+          <div style={{ position: 'absolute', bottom: 20, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: 13, textTransform: 'capitalize' }}>{lightbox.photo_type} photo</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── LiveStopCard ─────────────────────────────────────────────
 function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }) {
   const [loading, setLoading] = useState(false);
+  const [showPhotos, setShowPhotos] = useState(false);
   const isDone = stop.completed === true || stop.completed === 't';
   const clientName = stop.first_name
     ? stop.first_name + ' ' + stop.last_name
@@ -126,6 +273,7 @@ function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }
   };
 
   return (
+    <>
     <div style={{
       background: isDone ? '#f0fdf4' : '#fff',
       border: '2px solid ' + (isDone ? '#86efac' : '#e2e8f0'),
@@ -166,6 +314,12 @@ function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }
           </a>
         )}
         <button
+          onClick={() => setShowPhotos(true)}
+          title="View / upload before & after photos"
+          style={{ background: '#fdf4ff', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center' }}>
+          📷
+        </button>
+        <button
           onClick={handleToggle}
           disabled={loading}
           style={{
@@ -181,12 +335,15 @@ function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }
         </button>
       </div>
     </div>
+    {showPhotos && <StopPhotoModal stop={stop} onClose={() => setShowPhotos(false)} />}
+    </>
   );
 }
 
 // ─── StopCard (planning mode — with Done/Undo toggle) ─────────────────────────
 function StopCard({ stop, index, total, routeId, onRemove, onMoveUp, onMoveDown, onToggle }) {
   const [loading, setLoading] = useState(false);
+  const [showPhotos, setShowPhotos] = useState(false);
   const isDone = stop.completed === true || stop.completed === 't';
   const clientName = stop.first_name
     ? stop.first_name + ' ' + stop.last_name
@@ -210,6 +367,7 @@ function StopCard({ stop, index, total, routeId, onRemove, onMoveUp, onMoveDown,
   };
 
   return (
+    <>
     <div style={{
       background: isDone ? '#f0fdf4' : '#fff',
       border: '1px solid ' + (isDone ? '#86efac' : '#e2e8f0'),
@@ -265,12 +423,20 @@ function StopCard({ stop, index, total, routeId, onRemove, onMoveUp, onMoveDown,
           }}>
           {loading ? '…' : isDone ? 'Undo' : '✓ Done'}
         </button>
+        <button
+          onClick={() => setShowPhotos(true)}
+          title="View / upload before & after photos"
+          style={{ background: '#fdf4ff', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13 }}>
+          📷
+        </button>
         <button onClick={() => onRemove(stop.id)}
           style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13 }}>
           ✕
         </button>
       </div>
     </div>
+    {showPhotos && <StopPhotoModal stop={stop} onClose={() => setShowPhotos(false)} />}
+    </>
   );
 }
 
@@ -656,6 +822,7 @@ export default function RoutePlanner() {
   const [showSnowModal, setShowSnowModal] = useState(false);
   const [crewLat, setCrewLat] = useState(null);
   const [crewLng, setCrewLng] = useState(null);
+  const [locationError, setLocationError] = useState(null); // null | 'denied' | 'timeout' | 'other'
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -843,9 +1010,10 @@ export default function RoutePlanner() {
   const handleSortFromHere = async () => {
     if (!selectedRouteId) return;
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by this browser.');
+      setLocationError('unsupported');
       return;
     }
+    setLocationError(null);
     setOptimizing('here');
     try {
       const pos = await new Promise((resolve, reject) =>
@@ -855,9 +1023,9 @@ export default function RoutePlanner() {
       await api.post('/routes/' + selectedRouteId + '/optimize-from-here', { lat, lng });
       loadRouteDetail(selectedRouteId);
     } catch (e) {
-      if (e.code === 1) alert('Location permission denied. Please allow location access and try again.');
-      else if (e.code === 3) alert('Location request timed out. Please try again.');
-      else alert('Sort failed: ' + (e.response?.data?.error || e.message));
+      if (e.code === 1) setLocationError('denied');
+      else if (e.code === 3) setLocationError('timeout');
+      else setLocationError('other:' + (e.response?.data?.error || e.message));
     } finally { setOptimizing(false); }
   };
 
@@ -1096,6 +1264,60 @@ export default function RoutePlanner() {
                       {optimizing === 'here' ? '⏳ Locating…' : '📍 Sort from My Location'}
                     </button>
                   </div>
+                  {/* Location error message */}
+                  {locationError && (
+                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 14px', marginBottom: 8, fontSize: 13, color: '#7f1d1d', lineHeight: 1.6 }}>
+                      {locationError === 'denied' && (
+                        <>
+                          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>📍 Location Access is Blocked</div>
+                          <div style={{ marginBottom: 8 }}>Snow Bro's needs your location to sort stops from where you are. Your browser is currently blocking it. Here's how to fix it:</div>
+                          <div style={{ background: '#fff', borderRadius: 6, padding: '10px 12px', marginBottom: 8, border: '1px solid #fca5a5' }}>
+                            <div style={{ fontWeight: 700, marginBottom: 4 }}>📱 On iPhone (Safari):</div>
+                            <div>1. Go to your iPhone <strong>Settings</strong></div>
+                            <div>2. Scroll down and tap <strong>Safari</strong></div>
+                            <div>3. Tap <strong>Location</strong> → set to <strong>Allow</strong></div>
+                            <div style={{ marginTop: 4, color: '#991b1b' }}>Then come back and tap "Sort from My Location" again.</div>
+                          </div>
+                          <div style={{ background: '#fff', borderRadius: 6, padding: '10px 12px', marginBottom: 8, border: '1px solid #fca5a5' }}>
+                            <div style={{ fontWeight: 700, marginBottom: 4 }}>🤖 On Android (Chrome):</div>
+                            <div>1. Tap the <strong>🔒 lock icon</strong> in the address bar at the top</div>
+                            <div>2. Tap <strong>Permissions</strong> or <strong>Site Settings</strong></div>
+                            <div>3. Tap <strong>Location</strong> → set to <strong>Allow</strong></div>
+                            <div style={{ marginTop: 4, color: '#991b1b' }}>Then come back and tap "Sort from My Location" again.</div>
+                          </div>
+                          <div style={{ background: '#fff', borderRadius: 6, padding: '10px 12px', border: '1px solid #fca5a5' }}>
+                            <div style={{ fontWeight: 700, marginBottom: 4 }}>💻 On a Computer (Chrome/Edge):</div>
+                            <div>1. Click the <strong>🔒 lock icon</strong> in the address bar</div>
+                            <div>2. Click <strong>Site settings</strong></div>
+                            <div>3. Find <strong>Location</strong> → change to <strong>Allow</strong></div>
+                            <div style={{ marginTop: 4, color: '#991b1b' }}>Refresh the page, then tap "Sort from My Location" again.</div>
+                          </div>
+                          <button onClick={() => setLocationError(null)} style={{ marginTop: 10, background: 'none', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer', color: '#7f1d1d' }}>✕ Dismiss</button>
+                        </>
+                      )}
+                      {locationError === 'timeout' && (
+                        <>
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>⏱️ Location Timed Out</div>
+                          <div>Your device took too long to get a GPS fix. Try stepping outside or moving to an area with better signal, then tap "Sort from My Location" again.</div>
+                          <button onClick={() => setLocationError(null)} style={{ marginTop: 8, background: 'none', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer', color: '#7f1d1d' }}>✕ Dismiss</button>
+                        </>
+                      )}
+                      {locationError === 'unsupported' && (
+                        <>
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>❌ Location Not Supported</div>
+                          <div>Your browser doesn't support GPS location. Try using Chrome or Safari on a phone or tablet.</div>
+                          <button onClick={() => setLocationError(null)} style={{ marginTop: 8, background: 'none', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer', color: '#7f1d1d' }}>✕ Dismiss</button>
+                        </>
+                      )}
+                      {locationError && locationError.startsWith('other:') && (
+                        <>
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Sort Failed</div>
+                          <div>{locationError.replace('other:', '')}</div>
+                          <button onClick={() => setLocationError(null)} style={{ marginTop: 8, background: 'none', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer', color: '#7f1d1d' }}>✕ Dismiss</button>
+                        </>
+                      )}
+                    </div>
+                  )}
                   {/* Geocode All row — only in planning mode */}
                   {!liveMode && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
