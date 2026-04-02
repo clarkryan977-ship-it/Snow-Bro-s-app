@@ -633,7 +633,7 @@ export default function RoutePlanner() {
   }, [filterDate, showAllDates]);
 
   useEffect(() => {
-    api.get('/employees').then(r => setEmployees((r.data || []).filter(e => e.role !== 'admin'))).catch(() => {});
+    api.get('/employees').then(r => setEmployees(r.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => { loadRoutes(); }, [loadRoutes]);
