@@ -154,12 +154,13 @@ function RequireAdminOrManager() {
   return <Outlet />;
 }
 
-// Exact role match (used for employee portal)
+// Role check — allows the specified role OR admin/manager (used for employee portal)
 function RequireRole({ role }) {
   const { user, loading } = useAuth();
   if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== role) return <Navigate to="/" replace />;
+  const allowed = [role, 'admin', 'manager'];
+  if (!allowed.includes(user.role)) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 

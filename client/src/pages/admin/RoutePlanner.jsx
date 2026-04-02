@@ -185,7 +185,7 @@ function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }
 }
 
 // ─── StopCard (planning mode — no complete button) ────────────────────────────
-function StopCard({ stop, index, onRemove }) {
+function StopCard({ stop, index, total, onRemove, onMoveUp, onMoveDown }) {
   const clientName = stop.first_name
     ? stop.first_name + ' ' + stop.last_name
     : (stop.stop_label || ('Stop ' + (index + 1)));
@@ -193,6 +193,23 @@ function StopCard({ stop, index, onRemove }) {
   const url  = mapsUrl(stop);
   return (
     <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Up/Down reorder buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+        <button
+          onClick={() => onMoveUp(stop.id)}
+          disabled={index === 0}
+          title="Move up"
+          style={{ background: index === 0 ? '#f1f5f9' : '#e0f2fe', border: 'none', borderRadius: 4, width: 22, height: 22, cursor: index === 0 ? 'default' : 'pointer', fontSize: 11, color: index === 0 ? '#cbd5e1' : '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          ▲
+        </button>
+        <button
+          onClick={() => onMoveDown(stop.id)}
+          disabled={index === total - 1}
+          title="Move down"
+          style={{ background: index === total - 1 ? '#f1f5f9' : '#e0f2fe', border: 'none', borderRadius: 4, width: 22, height: 22, cursor: index === total - 1 ? 'default' : 'pointer', fontSize: 11, color: index === total - 1 ? '#cbd5e1' : '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          ▼
+        </button>
+      </div>
       <div style={{ background: '#1e3a5f', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
         {index + 1}
       </div>
@@ -709,6 +726,25 @@ export default function RoutePlanner() {
     loadRoutes();
   };
 
+  // Move a stop up or down in the list by swapping positions with its neighbour
+  const handleMoveStop = async (stopId, direction) => {
+    if (!selectedRoute || !selectedRouteId) return;
+    const stops = selectedRoute.stops || [];
+    const idx = stops.findIndex(s => s.id === stopId);
+    if (idx === -1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= stops.length) return;
+    // Build new order with the two stops swapped
+    const newOrder = stops.map(s => s.id);
+    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+    try {
+      await api.put('/routes/' + selectedRouteId + '/reorder', { stop_ids: newOrder });
+      loadRouteDetail(selectedRouteId, true);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to reorder stops');
+    }
+  };
+
   // Geocode all clients missing coordinates
   const handleGeocodeAll = async () => {
     if (!window.confirm('This will geocode all clients missing coordinates using OpenStreetMap. It runs in the background (~2 min for all clients). After it finishes, re-sort the route. Continue?')) return;
@@ -1096,7 +1132,15 @@ export default function RoutePlanner() {
                   })
                 ) : (
                   stops.map((stop, idx) => (
-                    <StopCard key={stop.id} stop={stop} index={idx} onRemove={handleRemoveStop} />
+                    <StopCard
+                      key={stop.id}
+                      stop={stop}
+                      index={idx}
+                      total={stops.length}
+                      onRemove={handleRemoveStop}
+                      onMoveUp={(id) => handleMoveStop(id, 'up')}
+                      onMoveDown={(id) => handleMoveStop(id, 'down')}
+                    />
                   ))
                 )}
               </div>
