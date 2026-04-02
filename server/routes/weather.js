@@ -37,6 +37,8 @@ function stripTags(html) {
     .replace(/&nbsp;/g, ' ')
     .replace(/&deg;/g, '°')
     .replace(/&#176;/g, '°')
+    .replace(/[\r\n\t]+/g, ' ')   // collapse newlines/tabs to space
+    .replace(/\s{2,}/g, ' ')       // collapse multiple spaces
     .trim();
 }
 
