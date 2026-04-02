@@ -263,7 +263,7 @@ function AddStopPanel({ routeId, existingStopIds, stops, onAdded, onRemoved }) {
   };
 
   const removeBookingStop = async (booking) => {
-    const stop = stops.find(s => s.booking_id === booking.id);
+    const stop = stops.find(s => s.booking_id == booking.id);
     if (!stop) return;
     setAdding(a => ({ ...a, [booking.id]: true }));
     try {
@@ -326,7 +326,7 @@ function AddStopPanel({ routeId, existingStopIds, stops, onAdded, onRemoved }) {
   };
 
   const removeClientStop = async (client) => {
-    const stop = stops.find(s => s.client_id === client.id && !s.booking_id);
+    const stop = stops.find(s => s.client_id == client.id && !s.booking_id);
     if (!stop) return;
     setAdding(a => ({ ...a, [client.id]: true }));
     try {
