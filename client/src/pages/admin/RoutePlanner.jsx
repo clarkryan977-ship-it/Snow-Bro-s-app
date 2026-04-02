@@ -218,7 +218,7 @@ function StopCard({ stop, index, onRemove }) {
 }
 
 // ─── AddStopPanel ─────────────────────────────────────────────────────────────
-function AddStopPanel({ routeId, existingStopIds, onAdded }) {
+function AddStopPanel({ routeId, existingStopIds, stops, onAdded, onRemoved }) {
   const [tab, setTab] = useState('bookings');
   const [bookings, setBookings] = useState([]);
   const [clients, setClients] = useState([]);
@@ -257,6 +257,20 @@ function AddStopPanel({ routeId, existingStopIds, onAdded }) {
       onAdded();
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to add stop');
+    } finally {
+      setAdding(a => ({ ...a, [booking.id]: false }));
+    }
+  };
+
+  const removeBookingStop = async (booking) => {
+    const stop = stops.find(s => s.booking_id === booking.id);
+    if (!stop) return;
+    setAdding(a => ({ ...a, [booking.id]: true }));
+    try {
+      await api.delete('/routes/' + routeId + '/stops/' + stop.id);
+      onRemoved();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to remove stop');
     } finally {
       setAdding(a => ({ ...a, [booking.id]: false }));
     }
@@ -311,6 +325,20 @@ function AddStopPanel({ routeId, existingStopIds, onAdded }) {
     }
   };
 
+  const removeClientStop = async (client) => {
+    const stop = stops.find(s => s.client_id === client.id && !s.booking_id);
+    if (!stop) return;
+    setAdding(a => ({ ...a, [client.id]: true }));
+    try {
+      await api.delete('/routes/' + routeId + '/stops/' + stop.id);
+      onRemoved();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to remove stop');
+    } finally {
+      setAdding(a => ({ ...a, [client.id]: false }));
+    }
+  };
+
   const tabStyle = (active) => ({
     flex: 1, padding: '8px 0', border: 'none', borderRadius: 6,
     background: active ? '#1e3a5f' : 'transparent',
@@ -351,9 +379,9 @@ function AddStopPanel({ routeId, existingStopIds, onAdded }) {
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{cname}</div>
                       <div style={{ fontSize: 11, color: '#64748b' }}>{b.service_type} · {b.address || b.job_address || 'No address'}</div>
                     </div>
-                    <button onClick={() => addBookingStop(b)} disabled={done || adding[b.id]}
-                      style={{ background: done ? '#d1fae5' : '#1e3a5f', color: done ? '#065f46' : '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: done ? 'default' : 'pointer', fontWeight: 600, flexShrink: 0 }}>
-                      {done ? '✓' : adding[b.id] ? '…' : '+ Add'}
+                    <button onClick={() => done ? removeBookingStop(b) : addBookingStop(b)} disabled={adding[b.id]}
+                      style={{ background: done ? '#fee2e2' : '#1e3a5f', color: done ? '#991b1b' : '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                      {adding[b.id] ? '…' : done ? '✕ Remove' : '+ Add'}
                     </button>
                   </div>
                 );
@@ -398,9 +426,9 @@ function AddStopPanel({ routeId, existingStopIds, onAdded }) {
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{c.first_name} {c.last_name}</div>
                       <div style={{ fontSize: 11, color: '#64748b' }}>{c.address || 'No address'}</div>
                     </div>
-                    <button onClick={() => addClientStop(c)} disabled={done || adding[c.id]}
-                      style={{ background: done ? '#d1fae5' : '#1e3a5f', color: done ? '#065f46' : '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: done ? 'default' : 'pointer', fontWeight: 600, flexShrink: 0 }}>
-                      {done ? '✓' : adding[c.id] ? '…' : '+ Add'}
+                    <button onClick={() => done ? removeClientStop(c) : addClientStop(c)} disabled={adding[c.id]}
+                      style={{ background: done ? '#fee2e2' : '#1e3a5f', color: done ? '#991b1b' : '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                      {adding[c.id] ? '…' : done ? '✕ Remove' : '+ Add'}
                     </button>
                   </div>
                 );
@@ -997,7 +1025,9 @@ export default function RoutePlanner() {
                 <AddStopPanel
                   routeId={selectedRouteId}
                   existingStopIds={existingStopIds}
+                  stops={stops}
                   onAdded={handleStopAdded}
+                  onRemoved={handleStopAdded}
                 />
               )}
 
