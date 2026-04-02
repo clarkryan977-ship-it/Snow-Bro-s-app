@@ -621,13 +621,13 @@ export default function RoutePlanner() {
 
   useEffect(() => { loadRoutes(); }, [loadRoutes]);
 
-  const loadRouteDetail = useCallback((id) => {
+  const loadRouteDetail = useCallback((id, silent = false) => {
     if (!id) { setSelectedRoute(null); return; }
-    setLoadingStops(true);
+    if (!silent) setLoadingStops(true);
     api.get('/routes/' + id)
       .then(r => setSelectedRoute(r.data))
       .catch(() => setSelectedRoute(null))
-      .finally(() => setLoadingStops(false));
+      .finally(() => { if (!silent) setLoadingStops(false); });
   }, []);
 
   // Auto-refresh in live mode every 15s + GPS broadcasting every 30s
@@ -692,17 +692,20 @@ export default function RoutePlanner() {
   const handleRemoveStop = async (stopId) => {
     if (!selectedRouteId) return;
     await api.delete('/routes/' + selectedRouteId + '/stops/' + stopId);
-    loadRouteDetail(selectedRouteId);
+    // Use silent=true so the loading spinner doesn't flash and unmount the stop list
+    loadRouteDetail(selectedRouteId, true);
     loadRoutes();
   };
 
   const handleStopAdded = () => {
-    loadRouteDetail(selectedRouteId);
+    // Use silent=true so the loading spinner doesn't flash and unmount AddStopPanel
+    loadRouteDetail(selectedRouteId, true);
     loadRoutes();
   };
 
   const handleStopToggled = () => {
-    loadRouteDetail(selectedRouteId);
+    // Use silent=true so the loading spinner doesn't flash and unmount LiveStopCard list
+    loadRouteDetail(selectedRouteId, true);
     loadRoutes();
   };
 
