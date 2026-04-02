@@ -601,6 +601,10 @@ async function initDB() {
   // ── Event notes on routes ──
   await db.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS event_note TEXT DEFAULT ''`).catch(() => {});
 
+  // ── Stop-level coordinates for accurate geo-sorting (Fargo vs Moorhead fix) ──
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS stop_lat DOUBLE PRECISION`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS stop_lng DOUBLE PRECISION`).catch(() => {});
+
   // ── Indexes ──
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)',

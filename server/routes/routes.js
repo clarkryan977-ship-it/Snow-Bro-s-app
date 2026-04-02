@@ -34,6 +34,28 @@ function nearestNeighborOrder(stops) {
   return [...ordered, ...noGeo];
 }
 
+// Geocode a stop address using Nominatim (returns { lat, lng } or null)
+async function geocodeStopAddress(address, city, state, zip) {
+  if (!address && !city) return null;
+  const q = [address, city, state, zip].filter(Boolean).join(', ');
+  try {
+    const https = require('https');
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' +
+      encodeURIComponent(q) + '&limit=1&countrycodes=us';
+    const data = await new Promise((resolve, reject) => {
+      const req = https.get(url, { headers: { 'User-Agent': 'SnowBros-RoutePlanner/1.0' } }, (res) => {
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve([]); } });
+      });
+      req.on('error', reject);
+      req.setTimeout(8000, () => { req.destroy(); reject(new Error('timeout')); });
+    });
+    if (data && data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch { /* ignore geocode failures */ }
+  return null;
+}
+
 // Format minutes offset from a base time string "HH:MM" into "H:MM AM/PM"
 function addMinutesToTime(baseTime, minutes) {
   const [h, m] = (baseTime || '00:00').split(':').map(Number);
@@ -273,11 +295,26 @@ router.post('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
     if (existing.length > 0) return res.status(409).json({ error: 'Stop already on this route' });
 
     const { rows: maxRows } = await req.db.query('SELECT COALESCE(MAX(position), -1) AS m FROM route_stops WHERE route_id = $1', [req.params.id]);
+
+    // Geocode the stop-level address so geo-sort uses the correct location
+    // (e.g. a Fargo booking for a client whose home address is in Moorhead)
+    let stopLat = null, stopLng = null;
+    if (address || city) {
+      const coords = await geocodeStopAddress(address, city, state, zip);
+      if (coords) { stopLat = coords.lat; stopLng = coords.lng; }
+    }
+    // If no stop-level address was provided, fall back to client's stored coordinates
+    if (stopLat === null) {
+      const { rows: clientRows } = await req.db.query('SELECT latitude, longitude FROM clients WHERE id = $1', [client_id]);
+      if (clientRows[0]) { stopLat = clientRows[0].latitude; stopLng = clientRows[0].longitude; }
+    }
+
     const { rows: result } = await req.db.query(
-      `INSERT INTO route_stops (route_id, client_id, booking_id, position, frequency, notes, stop_label, address, city, state, zip)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      `INSERT INTO route_stops (route_id, client_id, booking_id, position, frequency, notes, stop_label, address, city, state, zip, stop_lat, stop_lng)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
       [req.params.id, client_id, booking_id || null, maxRows[0].m + 1,
-       frequency || 'weekly', notes || '', stop_label || '', address || '', city || '', state || '', zip || '']
+       frequency || 'weekly', notes || '', stop_label || '', address || '', city || '', state || '', zip || '',
+       stopLat, stopLng]
     );
     res.status(201).json({ id: result[0].id, message: 'Stop added' });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -345,10 +382,12 @@ router.put('/:id/reorder', authenticateToken, requireAdmin, async (req, res) => 
 router.post('/:id/optimize', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { start_lat, start_lng } = req.body;
+    // Use stop-level coordinates (stop_lat/stop_lng) if available, fall back to client home coords
+    // This fixes Fargo stops being sorted as Moorhead when the client lives in Moorhead
     const { rows: stops } = await req.db.query(`
        SELECT rs.id, rs.position,
-        c.latitude  AS latitude,
-        c.longitude AS longitude
+        COALESCE(rs.stop_lat, c.latitude)  AS latitude,
+        COALESCE(rs.stop_lng, c.longitude) AS longitude
       FROM route_stops rs
       LEFT JOIN clients c ON rs.client_id = c.id
       WHERE rs.route_id = $1
@@ -393,8 +432,8 @@ router.post('/:id/optimize-from-here', authenticateToken, requireAdmin, async (r
 
     const { rows: stops } = await req.db.query(`
        SELECT rs.id, rs.position, rs.completed,
-        c.latitude  AS latitude,
-        c.longitude AS longitude
+        COALESCE(rs.stop_lat, c.latitude)  AS latitude,
+        COALESCE(rs.stop_lng, c.longitude) AS longitude
       FROM route_stops rs
       LEFT JOIN clients c ON rs.client_id = c.id
       WHERE rs.route_id = $1
@@ -425,6 +464,46 @@ router.post('/:id/optimize-from-here', authenticateToken, requireAdmin, async (r
       await req.db.query('UPDATE route_stops SET position = $1 WHERE id = $2', [idx, finalOrder[idx].id]);
     }
     res.json({ message: 'Route re-optimized from location', count: finalOrder.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /:id/geocode-stops — retroactively geocode existing stops that have an address but no stop_lat/stop_lng
+// This fixes stops added before the stop-level geocoding was implemented
+router.post('/:id/geocode-stops', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: stops } = await req.db.query(`
+      SELECT rs.id, rs.address, rs.city, rs.state, rs.zip,
+        c.address AS c_address, c.city AS c_city, c.state AS c_state, c.zip AS c_zip,
+        c.latitude AS c_lat, c.longitude AS c_lng
+      FROM route_stops rs
+      LEFT JOIN clients c ON rs.client_id = c.id
+      WHERE rs.route_id = $1 AND rs.stop_lat IS NULL
+    `, [req.params.id]);
+
+    let geocoded = 0, skipped = 0;
+    for (const stop of stops) {
+      const addr = stop.address || stop.c_address;
+      const city = stop.city || stop.c_city;
+      const state = stop.state || stop.c_state;
+      const zip = stop.zip || stop.c_zip;
+      if (addr || city) {
+        const coords = await geocodeStopAddress(addr, city, state, zip);
+        if (coords) {
+          await req.db.query('UPDATE route_stops SET stop_lat=$1, stop_lng=$2 WHERE id=$3', [coords.lat, coords.lng, stop.id]);
+          geocoded++;
+        } else if (stop.c_lat && stop.c_lng) {
+          // Fall back to client coords if geocode fails
+          await req.db.query('UPDATE route_stops SET stop_lat=$1, stop_lng=$2 WHERE id=$3', [stop.c_lat, stop.c_lng, stop.id]);
+          geocoded++;
+        } else { skipped++; }
+      } else if (stop.c_lat && stop.c_lng) {
+        await req.db.query('UPDATE route_stops SET stop_lat=$1, stop_lng=$2 WHERE id=$3', [stop.c_lat, stop.c_lng, stop.id]);
+        geocoded++;
+      } else { skipped++; }
+      // Nominatim rate limit: 1 request/second
+      await new Promise(r => setTimeout(r, 1100));
+    }
+    res.json({ message: 'Geocoding complete', geocoded, skipped, total: stops.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

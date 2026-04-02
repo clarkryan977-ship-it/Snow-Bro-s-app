@@ -585,6 +585,8 @@ export default function RoutePlanner() {
   const [optimizing, setOptimizing] = useState(false);
   const [geocodingAll, setGeocodingAll] = useState(false);
   const [geocodeAllResult, setGeocodeAllResult] = useState(null);
+  const [geocodingStops, setGeocodingStops] = useState(false);
+  const [geocodeStopsResult, setGeocodeStopsResult] = useState(null);
   const [liveMode, setLiveMode] = useState(false);
   const [autoNavigate, setAutoNavigate] = useState(true);
   const [mobileView, setMobileView] = useState('routes');
@@ -716,6 +718,23 @@ export default function RoutePlanner() {
       alert('Geocode failed: ' + (e.response?.data?.error || e.message));
     } finally {
       setGeocodingAll(false);
+    }
+  };
+
+  // Geocode existing stops for this route (backfill stop_lat/stop_lng)
+  const handleGeocodeStops = async () => {
+    if (!selectedRouteId) return;
+    if (!window.confirm('This will geocode all stops on this route that are missing coordinates. It may take ~1 second per stop. Continue?')) return;
+    setGeocodingStops(true);
+    setGeocodeStopsResult(null);
+    try {
+      const r = await api.post('/routes/' + selectedRouteId + '/geocode-stops');
+      setGeocodeStopsResult(r.data);
+      loadRouteDetail(selectedRouteId);
+    } catch (e) {
+      alert('Geocode failed: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setGeocodingStops(false);
     }
   };
 
@@ -1016,6 +1035,26 @@ export default function RoutePlanner() {
                   {geocodeAllResult && (
                     <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 7, padding: '6px 12px', marginTop: 8, fontSize: 12, color: '#92400e' }}>
                       ✅ Geocoding started for {geocodeAllResult.count} client{geocodeAllResult.count !== 1 ? 's' : ''}. Coordinates update in the background — wait ~2 min then re-sort.
+                    </div>
+                  )}
+                  {/* Geocode Stops row — fixes Fargo/Moorhead mislabeling for existing stops */}
+                  {!liveMode && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ flex: 1, fontSize: 12, color: '#64748b' }}>
+                        Fix address mislabeling (e.g. Fargo showing as Moorhead)? Geocode stop-level addresses for this route.
+                      </div>
+                      <button
+                        onClick={handleGeocodeStops}
+                        disabled={geocodingStops || !!optimizing}
+                        title="Geocode stop-level addresses for this route so geo-sort uses the correct city coordinates"
+                        style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: (geocodingStops || !!optimizing) ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: (geocodingStops || !!optimizing) ? 0.6 : 1 }}>
+                        {geocodingStops ? '⏳ Geocoding Stops…' : '📍 Geocode Stop Addresses'}
+                      </button>
+                    </div>
+                  )}
+                  {geocodeStopsResult && (
+                    <div style={{ background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 7, padding: '6px 12px', marginTop: 4, fontSize: 12, color: '#065f46' }}>
+                      ✅ Geocoded {geocodeStopsResult.geocoded} stop{geocodeStopsResult.geocoded !== 1 ? 's' : ''}{geocodeStopsResult.skipped > 0 ? ` (${geocodeStopsResult.skipped} skipped — no address)` : ''}. Re-sort to apply.
                     </div>
                   )}
                 </div>
