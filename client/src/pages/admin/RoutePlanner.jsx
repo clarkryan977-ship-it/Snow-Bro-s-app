@@ -184,15 +184,39 @@ function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }
   );
 }
 
-// ─── StopCard (planning mode — no complete button) ────────────────────────────
-function StopCard({ stop, index, total, onRemove, onMoveUp, onMoveDown }) {
+// ─── StopCard (planning mode — with Done/Undo toggle) ─────────────────────────
+function StopCard({ stop, index, total, routeId, onRemove, onMoveUp, onMoveDown, onToggle }) {
+  const [loading, setLoading] = useState(false);
+  const isDone = stop.completed === true || stop.completed === 't';
   const clientName = stop.first_name
     ? stop.first_name + ' ' + stop.last_name
     : (stop.stop_label || ('Stop ' + (index + 1)));
   const addr = getStopAddress(stop);
   const url  = mapsUrl(stop);
+
+  const handleToggle = async () => {
+    setLoading(true);
+    try {
+      const endpoint = isDone
+        ? `/routes/${routeId}/stops/${stop.id}/uncomplete`
+        : `/routes/${routeId}/stops/${stop.id}/complete`;
+      await api.patch(endpoint);
+      onToggle();
+    } catch (e) {
+      alert('Failed to update stop');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{
+      background: isDone ? '#f0fdf4' : '#fff',
+      border: '1px solid ' + (isDone ? '#86efac' : '#e2e8f0'),
+      borderRadius: 8, padding: '10px 12px', marginBottom: 8,
+      display: 'flex', alignItems: 'center', gap: 10,
+      opacity: isDone ? 0.8 : 1,
+    }}>
       {/* Up/Down reorder buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
         <button
@@ -210,12 +234,16 @@ function StopCard({ stop, index, total, onRemove, onMoveUp, onMoveDown }) {
           ▼
         </button>
       </div>
-      <div style={{ background: '#1e3a5f', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-        {index + 1}
+      {/* Stop number badge */}
+      <div style={{ background: isDone ? '#22c55e' : '#1e3a5f', color: '#fff', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+        {isDone ? '✓' : index + 1}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>{clientName}</div>
+        <div style={{ fontWeight: 600, fontSize: 14, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#16a34a' : '#1a1a2e' }}>{clientName}</div>
         <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addr}</div>
+        {isDone && stop.completed_at && (
+          <div style={{ fontSize: 11, color: '#16a34a', marginTop: 2 }}>✓ Done at {fmtTime(stop.completed_at)}</div>
+        )}
         {stop.booking_service_type && <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 2 }}>{'📋 ' + stop.booking_service_type}</div>}
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -225,6 +253,18 @@ function StopCard({ stop, index, total, onRemove, onMoveUp, onMoveDown }) {
             🗺️
           </a>
         )}
+        <button
+          onClick={handleToggle}
+          disabled={loading}
+          style={{
+            background: isDone ? '#fff' : '#22c55e',
+            color: isDone ? '#64748b' : '#fff',
+            border: isDone ? '2px solid #e2e8f0' : 'none',
+            borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+            fontSize: 13, fontWeight: 700, minWidth: 64,
+          }}>
+          {loading ? '…' : isDone ? 'Undo' : '✓ Done'}
+        </button>
         <button onClick={() => onRemove(stop.id)}
           style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13 }}>
           ✕
@@ -1137,9 +1177,11 @@ export default function RoutePlanner() {
                       stop={stop}
                       index={idx}
                       total={stops.length}
+                      routeId={selectedRouteId}
                       onRemove={handleRemoveStop}
                       onMoveUp={(id) => handleMoveStop(id, 'up')}
                       onMoveDown={(id) => handleMoveStop(id, 'down')}
+                      onToggle={handleStopToggled}
                     />
                   ))
                 )}
