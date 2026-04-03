@@ -688,6 +688,8 @@ async function initDB() {
     ['eta_start_time', '08:00', 'ETA Start Time', 'Default start time for route ETAs'],
     ['eta_jobs_per_hour', '2', 'ETA Jobs Per Hour', 'Jobs per hour per crew'],
     ['eta_num_crews', '1', 'ETA Number of Crews', 'Number of active crews'],
+    ['weather_station', 'KFAR', 'Weather Station Code', 'NWS observation station code (e.g. KFAR for Fargo, KMSP for Minneapolis)'],
+    ['weather_station_name', 'Fargo, ND', 'Weather Station Name', 'Human-readable name for the weather station location'],
   ];
   for (const [key, value, label, description] of settingsSeed) {
     await db.query(

@@ -66,6 +66,56 @@ export default function AdminSettings() {
     }
   };
 
+  // ── Weather station lookup state ──
+  const [stationQuery, setStationQuery] = useState('');
+  const [stationLookupLoading, setStationLookupLoading] = useState(false);
+  const [stationLookupResults, setStationLookupResults] = useState(null);
+  const [stationLookupError, setStationLookupError] = useState(null);
+  const [stationValidating, setStationValidating] = useState(false);
+  const [stationValidMsg, setStationValidMsg] = useState(null);
+
+  const lookupStation = async () => {
+    if (!stationQuery.trim()) return;
+    setStationLookupLoading(true);
+    setStationLookupError(null);
+    setStationLookupResults(null);
+    try {
+      const { data } = await api.get(`/weather/lookup-station?q=${encodeURIComponent(stationQuery.trim())}`);
+      setStationLookupResults(data);
+    } catch (e) {
+      setStationLookupError(e.response?.data?.error || 'Lookup failed. Try a different city or zip.');
+    } finally {
+      setStationLookupLoading(false);
+    }
+  };
+
+  const selectStation = (code, name) => {
+    set('weather_station', code);
+    set('weather_station_name', name);
+    setStationLookupResults(null);
+    setStationQuery('');
+    setStationValidMsg({ type: 'success', text: `✓ Station set to ${code} — ${name}. Click Save Settings to apply.` });
+  };
+
+  const validateStationCode = async () => {
+    const code = (form.weather_station || '').toUpperCase().trim();
+    if (!code) return;
+    setStationValidating(true);
+    setStationValidMsg(null);
+    try {
+      const { data } = await api.get(`/weather/validate-station?code=${code}`);
+      if (data.valid) {
+        setStationValidMsg({ type: 'success', text: `✓ Station ${code} is valid and has live data.` });
+      } else {
+        setStationValidMsg({ type: 'error', text: data.error || `Station ${code} not found.` });
+      }
+    } catch (e) {
+      setStationValidMsg({ type: 'error', text: 'Validation failed. Check your connection.' });
+    } finally {
+      setStationValidating(false);
+    }
+  };
+
   const discountEnabled = form.first_time_discount_enabled === '1';
   const discountType = form.first_time_discount_type || 'fixed';
   const discountAmount = form.first_time_discount_amount || '10';
@@ -206,6 +256,124 @@ export default function AdminSettings() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Weather Location ── */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ marginBottom: '1.25rem' }}>
+          <h2 style={{ fontSize: '1.1rem', marginBottom: '.25rem' }}>🌤️ Weather Location</h2>
+          <p style={{ fontSize: '.85rem', color: 'var(--gray-500)', margin: 0 }}>
+            Set the NWS weather station used for the weather widget on the dashboard. Search by city or zip to find your nearest station.
+          </p>
+        </div>
+
+        {stationValidMsg && (
+          <div className={`alert alert-${stationValidMsg.type === 'success' ? 'success' : 'error'}`} style={{ marginBottom: '1rem' }}>
+            {stationValidMsg.text}
+          </div>
+        )}
+
+        {/* Current station */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '.75rem', alignItems: 'flex-end', marginBottom: '1.25rem' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontWeight: 600 }}>Station Code
+              <span style={{ fontWeight: 400, color: 'var(--gray-400)', marginLeft: '.5rem', fontSize: '.8rem' }}>(4-letter NWS code, e.g. KFAR, KMSP, KORD)</span>
+            </label>
+            <input
+              className="form-control"
+              value={form.weather_station || ''}
+              onChange={e => { set('weather_station', e.target.value.toUpperCase()); setStationValidMsg(null); }}
+              placeholder="e.g. KFAR"
+              style={{ fontFamily: 'monospace', letterSpacing: '.1em', textTransform: 'uppercase', maxWidth: 160 }}
+              maxLength={6}
+            />
+          </div>
+          <button
+            className="btn btn-secondary"
+            onClick={validateStationCode}
+            disabled={stationValidating || !form.weather_station}
+            style={{ whiteSpace: 'nowrap', marginBottom: 0 }}
+          >
+            {stationValidating ? <span className="spinner" /> : '✓ Test Station'}
+          </button>
+        </div>
+
+        <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+          <label style={{ fontWeight: 600 }}>Station Display Name
+            <span style={{ fontWeight: 400, color: 'var(--gray-400)', marginLeft: '.5rem', fontSize: '.8rem' }}>(shown on the weather widget)</span>
+          </label>
+          <input
+            className="form-control"
+            value={form.weather_station_name || ''}
+            onChange={e => set('weather_station_name', e.target.value)}
+            placeholder="e.g. Fargo, ND"
+          />
+        </div>
+
+        {/* City/zip lookup helper */}
+        <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: '1.25rem' }}>
+          <p style={{ fontSize: '.85rem', fontWeight: 600, marginBottom: '.5rem', color: 'var(--gray-700)' }}>
+            🔍 Don't know your station code? Search by city or zip:
+          </p>
+          <div style={{ display: 'flex', gap: '.5rem', marginBottom: '.75rem' }}>
+            <input
+              className="form-control"
+              value={stationQuery}
+              onChange={e => setStationQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && lookupStation()}
+              placeholder="e.g. Minneapolis MN or 55401"
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-secondary"
+              onClick={lookupStation}
+              disabled={stationLookupLoading || !stationQuery.trim()}
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {stationLookupLoading ? <span className="spinner" /> : '🔍 Find Stations'}
+            </button>
+          </div>
+
+          {stationLookupError && (
+            <div className="alert alert-error" style={{ marginBottom: '.75rem', fontSize: '.85rem' }}>
+              {stationLookupError}
+            </div>
+          )}
+
+          {stationLookupResults && (
+            <div>
+              <p style={{ fontSize: '.8rem', color: 'var(--gray-500)', marginBottom: '.5rem' }}>
+                Nearest stations to <strong>{stationLookupResults.geocodedAs?.split(',').slice(0, 2).join(',')}</strong>:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
+                {stationLookupResults.stations.map(s => (
+                  <div
+                    key={s.stationCode}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '.6rem .9rem', borderRadius: 8, border: '1px solid var(--gray-200)',
+                      background: form.weather_station === s.stationCode ? 'var(--blue-50)' : '#fff',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => selectStation(s.stationCode, s.stationName)}
+                  >
+                    <div>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '.95rem', marginRight: '.5rem' }}>{s.stationCode}</span>
+                      <span style={{ fontSize: '.88rem', color: 'var(--gray-600)' }}>{s.stationName}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+                      <span style={{ fontSize: '.78rem', color: 'var(--gray-400)' }}>~{s.distMiles} mi</span>
+                      {form.weather_station === s.stationCode
+                        ? <span style={{ color: 'var(--blue-600)', fontWeight: 700, fontSize: '.85rem' }}>✓ Selected</span>
+                        : <button className="btn btn-sm btn-secondary" style={{ padding: '.2rem .6rem', fontSize: '.78rem' }}>Use This</button>
+                      }
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '2.5rem' }}>
