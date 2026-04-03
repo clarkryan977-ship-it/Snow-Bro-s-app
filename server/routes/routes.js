@@ -317,8 +317,26 @@ router.get('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
 
 router.post('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { client_id, booking_id, frequency, notes, stop_label, address, city, state, zip } = req.body;
+    let { client_id, booking_id, frequency, notes, stop_label, address, city, state, zip } = req.body;
     if (!client_id) return res.status(400).json({ error: 'client_id required' });
+
+    // ── Auto-link to booking if not provided ──────────────────────────
+    // If no booking_id was sent, try to find an active/confirmed booking for this client on this route's date
+    if (!booking_id) {
+      const { rows: routeRows } = await req.db.query('SELECT route_date FROM routes WHERE id = $1', [req.params.id]);
+      if (routeRows[0] && routeRows[0].route_date) {
+        const { rows: matchingBookings } = await req.db.query(
+          `SELECT id FROM bookings 
+           WHERE client_id = $1 AND preferred_date = $2 AND status IN ('confirmed', 'pending')
+           LIMIT 1`,
+          [client_id, routeRows[0].route_date]
+        );
+        if (matchingBookings[0]) {
+          booking_id = matchingBookings[0].id;
+          console.log(`[route-stops] Auto-linked stop to booking #${booking_id} for client #${client_id}`);
+        }
+      }
+    }
 
     const { rows: cnt } = await req.db.query('SELECT COUNT(*)::int AS c FROM route_stops WHERE route_id = $1', [req.params.id]);
     if (cnt[0].c >= 200) return res.status(400).json({ error: 'Route is at the 200-stop limit' });
@@ -388,12 +406,70 @@ router.patch('/:routeId/stops/:stopId/complete', authenticateToken, async (req, 
     const byId   = req.user.id;
     const byName = req.user.name || req.user.email || 'Unknown';
     const byRole = req.user.role || 'employee';
+    
+    // 1. Update the stop as completed
     await req.db.query(
       `UPDATE route_stops SET completed = TRUE, completed_at = NOW(),
        completed_by_id = $3, completed_by_name = $4, completed_by_role = $5
        WHERE id = $1 AND route_id = $2`,
       [req.params.stopId, req.params.routeId, byId, byName, byRole]
     );
+
+    // 2. Fetch details for the notification email
+    const { rows: stopDetails } = await req.db.query(`
+      SELECT rs.*, c.email, c.first_name, c.last_name, r.name as route_name
+      FROM route_stops rs
+      JOIN clients c ON rs.client_id = c.id
+      JOIN routes r ON rs.route_id = r.id
+      WHERE rs.id = $1
+    `, [req.params.stopId]);
+
+    const stop = stopDetails[0];
+    if (stop && stop.email) {
+      const { sendMail } = require('../utils/mailer');
+      const serviceAddress = [stop.address, stop.city, stop.state, stop.zip].filter(Boolean).join(', ');
+      const completionTime = new Date().toLocaleString('en-US', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
+        hour: 'numeric', minute: '2-digit', hour12: true 
+      });
+
+      const html = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #2c3e50; text-align: center;">Your Snow Bro's service is complete!</h2>
+          <p>Hi ${stop.first_name || 'there'},</p>
+          <p>Great news! Your service for today has been completed. Our crew has finished the work at your property.</p>
+          
+          <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 5px 0;"><strong>Service Address:</strong> ${serviceAddress || 'Address on file'}</p>
+            <p style="margin: 5px 0;"><strong>Completed At:</strong> ${completionTime}</p>
+            <p style="margin: 5px 0;"><strong>Completed By:</strong> ${byName} (${byRole})</p>
+          </div>
+
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="https://snowbros-production.up.railway.app/client/history" 
+               style="background: #3498db; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+               View in Portal
+            </a>
+          </div>
+
+          <p style="font-size: 0.9em; color: #7f8c8d; text-align: center;">
+            Thank you for choosing Snow Bro's! If you have any questions, feel free to reply to this email.
+          </p>
+        </div>
+      `;
+
+      try {
+        await sendMail({
+          to: stop.email,
+          subject: "Your Snow Bro's service is complete!",
+          html
+        });
+      } catch (mailErr) {
+        console.error('[MAILER] Failed to send job completion email:', mailErr.message);
+        // Don't fail the whole request if mail fails
+      }
+    }
+
     res.json({ message: 'Stop marked complete' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1081,6 +1157,37 @@ router.get('/history/:id/export.pdf', authenticateToken, requireAdmin, async (re
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(Buffer.from(pdfBytes));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Fix orphaned stops ──────────────────────────────────────────
+// POST /fix-orphans — links any route_stops with NULL booking_id to a matching booking if one exists
+router.post('/fix-orphans', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: routes } = await req.db.query('SELECT id, route_date FROM routes WHERE route_date IS NOT NULL');
+    let totalFixed = 0;
+
+    for (const route of routes) {
+      const { rows: orphans } = await req.db.query(
+        'SELECT id, client_id FROM route_stops WHERE route_id = $1 AND booking_id IS NULL',
+        [route.id]
+      );
+
+      for (const stop of orphans) {
+        const { rows: matching } = await req.db.query(
+          `SELECT id FROM bookings 
+           WHERE client_id = $1 AND preferred_date = $2 AND status IN ('confirmed', 'pending')
+           LIMIT 1`,
+          [stop.client_id, route.route_date]
+        );
+
+        if (matching[0]) {
+          await req.db.query('UPDATE route_stops SET booking_id = $1 WHERE id = $2', [matching[0].id, stop.id]);
+          totalFixed++;
+        }
+      }
+    }
+    res.json({ message: `Fixed ${totalFixed} orphaned stops` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
