@@ -34,25 +34,60 @@ function nearestNeighborOrder(stops) {
   return [...ordered, ...noGeo];
 }
 
-// Geocode a stop address using Nominatim (returns { lat, lng } or null)
+// Geocode a stop address using Nominatim with multi-attempt fallback strategy.
+// Handles directional suffixes ("Main Ave S"), missing zip codes, and partial addresses.
 async function geocodeStopAddress(address, city, state, zip) {
   if (!address && !city) return null;
-  const q = [address, city, state, zip].filter(Boolean).join(', ');
-  try {
-    const https = require('https');
-    const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' +
-      encodeURIComponent(q) + '&limit=1&countrycodes=us';
-    const data = await new Promise((resolve, reject) => {
-      const req = https.get(url, { headers: { 'User-Agent': 'SnowBros-RoutePlanner/1.0' } }, (res) => {
-        let body = '';
-        res.on('data', d => body += d);
-        res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve([]); } });
+  const https = require('https');
+
+  // Helper: fire a single Nominatim request
+  const tryNominatim = (q) => new Promise((resolve) => {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' +
+      encodeURIComponent(q);
+    const req = https.get(url, { headers: { 'User-Agent': 'SnowBros-RoutePlanner/1.0 (prosnowbros@prosnowbros.com)' } }, (res) => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (data && data[0]) resolve({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+          else resolve(null);
+        } catch { resolve(null); }
       });
-      req.on('error', reject);
-      req.setTimeout(8000, () => { req.destroy(); reject(new Error('timeout')); });
     });
-    if (data && data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-  } catch { /* ignore geocode failures */ }
+    req.on('error', () => resolve(null));
+    req.setTimeout(10000, () => { req.destroy(); resolve(null); });
+  });
+
+  // Strip trailing directional suffix (S, N, E, W, NE, SW, etc.) from address
+  const stripDir = (a) => a ? a.replace(/\s+[NSEW]{1,2}\.?$/i, '').trim() : a;
+  // Strip street type abbreviations that confuse Nominatim (St, Ave, Blvd, Dr, Ln, Ct, Pl, Rd)
+  const stripStreetType = (a) => a ? a.replace(/\s+(St|Ave|Blvd|Dr|Ln|Ct|Pl|Rd|Way|Cir|Tr|Trl)\.?$/i, '').trim() : a;
+
+  const addr = address ? address.trim() : '';
+  const addrNoDir = stripDir(addr);
+  const addrNoType = addrNoDir !== addr ? stripStreetType(addrNoDir) : stripStreetType(addr);
+  const cityState = [city, state].filter(Boolean).join(', ');
+
+  // Build ordered list of query attempts (most specific to least)
+  const queries = [];
+  if (addr && cityState)         queries.push([addr, cityState].join(', '));
+  if (addrNoDir !== addr && cityState) queries.push([addrNoDir, cityState].join(', '));
+  if (addrNoType && addrNoType !== addrNoDir && cityState) queries.push([addrNoType, cityState].join(', '));
+  if (addr && zip)               queries.push([addr, zip].join(', '));
+  if (addrNoDir !== addr && zip) queries.push([addrNoDir, zip].join(', '));
+  if (cityState)                 queries.push(cityState);
+
+  for (const q of queries) {
+    const result = await tryNominatim(q);
+    if (result) {
+      console.log(`[geocode] OK "${q}" -> ${result.lat},${result.lng}`);
+      return result;
+    }
+    // Respect Nominatim 1 req/sec rate limit between attempts
+    await new Promise(r => setTimeout(r, 1100));
+  }
+  console.log(`[geocode] FAILED all attempts for: ${[address, city, state, zip].filter(Boolean).join(', ')}`);
   return null;
 }
 
@@ -350,9 +385,14 @@ router.put('/:routeId/stops/:stopId', authenticateToken, requireAdmin, async (re
 // ─── Mark stop complete / uncomplete ─────────────────────────────
 router.patch('/:routeId/stops/:stopId/complete', authenticateToken, async (req, res) => {
   try {
+    const byId   = req.user.id;
+    const byName = req.user.name || req.user.email || 'Unknown';
+    const byRole = req.user.role || 'employee';
     await req.db.query(
-      `UPDATE route_stops SET completed = TRUE, completed_at = NOW() WHERE id = $1 AND route_id = $2`,
-      [req.params.stopId, req.params.routeId]
+      `UPDATE route_stops SET completed = TRUE, completed_at = NOW(),
+       completed_by_id = $3, completed_by_name = $4, completed_by_role = $5
+       WHERE id = $1 AND route_id = $2`,
+      [req.params.stopId, req.params.routeId, byId, byName, byRole]
     );
     res.json({ message: 'Stop marked complete' });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -361,7 +401,9 @@ router.patch('/:routeId/stops/:stopId/complete', authenticateToken, async (req, 
 router.patch('/:routeId/stops/:stopId/uncomplete', authenticateToken, async (req, res) => {
   try {
     await req.db.query(
-      `UPDATE route_stops SET completed = FALSE, completed_at = NULL WHERE id = $1 AND route_id = $2`,
+      `UPDATE route_stops SET completed = FALSE, completed_at = NULL,
+       completed_by_id = NULL, completed_by_name = '', completed_by_role = ''
+       WHERE id = $1 AND route_id = $2`,
       [req.params.stopId, req.params.routeId]
     );
     res.json({ message: 'Stop unmarked' });
@@ -480,44 +522,69 @@ router.post('/:id/optimize-from-here', authenticateToken, requireAdmin, async (r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /:id/geocode-stops — retroactively geocode existing stops that have an address but no stop_lat/stop_lng
-// This fixes stops added before the stop-level geocoding was implemented
+// POST /:id/geocode-stops — geocode all stops in a route using multi-attempt Nominatim strategy
+// Supports ?force=true to re-geocode stops that already have coordinates
 router.post('/:id/geocode-stops', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const force = req.query.force === 'true' || req.body.force === true;
+    const whereClause = force ? 'WHERE rs.route_id = $1' : 'WHERE rs.route_id = $1 AND rs.stop_lat IS NULL';
+
     const { rows: stops } = await req.db.query(`
       SELECT rs.id, rs.address, rs.city, rs.state, rs.zip,
+        c.first_name, c.last_name,
         c.address AS c_address, c.city AS c_city, c.state AS c_state, c.zip AS c_zip,
         c.latitude AS c_lat, c.longitude AS c_lng
       FROM route_stops rs
       LEFT JOIN clients c ON rs.client_id = c.id
-      WHERE rs.route_id = $1 AND rs.stop_lat IS NULL
+      ${whereClause}
+      ORDER BY rs.position ASC
     `, [req.params.id]);
 
+    if (stops.length === 0) {
+      return res.json({ message: 'All stops already geocoded', geocoded: 0, skipped: 0, total: 0 });
+    }
+
+    // Respond immediately so the browser doesn't time out; geocoding runs in background
+    res.json({ message: 'Geocoding started', total: stops.length });
+
+    // Background geocoding
     let geocoded = 0, skipped = 0;
     for (const stop of stops) {
-      const addr = stop.address || stop.c_address;
-      const city = stop.city || stop.c_city;
-      const state = stop.state || stop.c_state;
-      const zip = stop.zip || stop.c_zip;
-      if (addr || city) {
-        const coords = await geocodeStopAddress(addr, city, state, zip);
-        if (coords) {
-          await req.db.query('UPDATE route_stops SET stop_lat=$1, stop_lng=$2 WHERE id=$3', [coords.lat, coords.lng, stop.id]);
-          geocoded++;
-        } else if (stop.c_lat && stop.c_lng) {
-          // Fall back to client coords if geocode fails
-          await req.db.query('UPDATE route_stops SET stop_lat=$1, stop_lng=$2 WHERE id=$3', [stop.c_lat, stop.c_lng, stop.id]);
-          geocoded++;
-        } else { skipped++; }
-      } else if (stop.c_lat && stop.c_lng) {
-        await req.db.query('UPDATE route_stops SET stop_lat=$1, stop_lng=$2 WHERE id=$3', [stop.c_lat, stop.c_lng, stop.id]);
+      // Prefer stop-specific address over client home address
+      const addr  = (stop.address  && stop.address.trim())  ? stop.address.trim()  : (stop.c_address  || '');
+      const city  = (stop.city     && stop.city.trim())     ? stop.city.trim()     : (stop.c_city     || '');
+      const state = (stop.state    && stop.state.trim())    ? stop.state.trim()    : (stop.c_state    || '');
+      const zip   = (stop.zip      && stop.zip.trim())      ? stop.zip.trim()      : (stop.c_zip      || '');
+      const clientName = `${stop.first_name || ''} ${stop.last_name || ''}`.trim();
+
+      // Try Nominatim with multi-attempt fallback
+      const coords = await geocodeStopAddress(addr, city, state, zip);
+      if (coords) {
+        await req.db.query('UPDATE route_stops SET stop_lat=$1, stop_lng=$2 WHERE id=$3',
+          [coords.lat, coords.lng, stop.id]);
         geocoded++;
-      } else { skipped++; }
-      // Nominatim rate limit: 1 request/second
-      await new Promise(r => setTimeout(r, 1100));
+        console.log(`[geocode-stops] ${clientName}: geocoded to ${coords.lat},${coords.lng}`);
+      } else if (stop.c_lat && stop.c_lng) {
+        // Final fallback: use client home coordinates
+        const cLat = parseFloat(stop.c_lat), cLng = parseFloat(stop.c_lng);
+        if (!isNaN(cLat) && !isNaN(cLng)) {
+          await req.db.query('UPDATE route_stops SET stop_lat=$1, stop_lng=$2 WHERE id=$3',
+            [cLat, cLng, stop.id]);
+          geocoded++;
+          console.log(`[geocode-stops] ${clientName}: used client home coords ${cLat},${cLng}`);
+        } else { skipped++; console.log(`[geocode-stops] ${clientName}: SKIPPED (no valid coords)`); }
+      } else {
+        skipped++;
+        console.log(`[geocode-stops] ${clientName}: SKIPPED (no address, no client coords)`);
+      }
+      // Nominatim rate limit: 1 req/sec (already enforced inside geocodeStopAddress between attempts)
+      // Add a small extra buffer between stops
+      await new Promise(r => setTimeout(r, 200));
     }
-    res.json({ message: 'Geocoding complete', geocoded, skipped, total: stops.length });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    console.log(`[geocode-stops] Done: ${geocoded} geocoded, ${skipped} skipped of ${stops.length} total`);
+  } catch (err) {
+    console.error('[geocode-stops] Error:', err.message);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -691,6 +758,329 @@ router.get('/my-eta', authenticateToken, async (req, res) => {
     }
 
     res.json(result || { found: false, message: 'No service scheduled today' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  ROUTE HISTORY & EXPORT
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /history — list all routes that have at least one completed stop, with summary
+router.get('/history', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { date_from, date_to, search } = req.query;
+    let sql = `
+      SELECT r.id, r.name, r.type, r.route_date, r.description, r.assigned_employee_ids,
+             r.route_start_time, r.event_note,
+             COUNT(rs.id)::int                                        AS total_stops,
+             SUM(CASE WHEN rs.completed THEN 1 ELSE 0 END)::int       AS completed_stops,
+             MIN(rs.completed_at)                                      AS first_completed_at,
+             MAX(rs.completed_at)                                      AS last_completed_at
+      FROM routes r
+      JOIN route_stops rs ON rs.route_id = r.id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (date_from) { params.push(date_from); sql += ` AND r.route_date >= $${params.length}`; }
+    if (date_to)   { params.push(date_to);   sql += ` AND r.route_date <= $${params.length}`; }
+    if (search)    { params.push(`%${search}%`); sql += ` AND (r.name ILIKE $${params.length} OR r.description ILIKE $${params.length})`; }
+    sql += `
+      GROUP BY r.id, r.name, r.type, r.route_date, r.description, r.assigned_employee_ids, r.route_start_time, r.event_note
+      HAVING SUM(CASE WHEN rs.completed THEN 1 ELSE 0 END) > 0
+      ORDER BY r.route_date DESC NULLS LAST, r.name ASC
+    `;
+    const { rows: routes } = await req.db.query(sql, params);
+
+    // Resolve employee names for assigned_employee_ids
+    const { rows: employees } = await req.db.query(`SELECT id, first_name, last_name FROM employees ORDER BY first_name`);
+    const empMap = {};
+    employees.forEach(e => { empMap[e.id] = `${e.first_name} ${e.last_name}`; });
+
+    for (const r of routes) {
+      try {
+        const ids = JSON.parse(r.assigned_employee_ids || '[]');
+        r.assigned_employees = ids.map(id => empMap[id] || empMap[String(id)] || `Employee #${id}`);
+      } catch { r.assigned_employees = []; }
+    }
+    res.json(routes);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /history/:id — full detail of one route with all stops sorted by completion order, with weather context
+router.get('/history/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: routeRows } = await req.db.query('SELECT * FROM routes WHERE id = $1', [req.params.id]);
+    if (!routeRows[0]) return res.status(404).json({ error: 'Route not found' });
+    const route = routeRows[0];
+
+    const { rows: stops } = await req.db.query(`
+      SELECT rs.*,
+        c.first_name, c.last_name,
+        COALESCE(rs.address, c.address, '') AS stop_address,
+        COALESCE(rs.city,    c.city,    '') AS stop_city,
+        COALESCE(rs.state,   c.state,   '') AS stop_state,
+        COALESCE(rs.zip,     c.zip,     '') AS stop_zip,
+        svc.name AS booking_service_type,
+        b.status AS booking_status
+      FROM route_stops rs
+      LEFT JOIN clients c ON rs.client_id = c.id
+      LEFT JOIN bookings b ON rs.booking_id = b.id
+      LEFT JOIN services svc ON b.service_id = svc.id
+      WHERE rs.route_id = $1
+      ORDER BY
+        CASE WHEN rs.completed THEN 0 ELSE 1 END ASC,
+        rs.completed_at ASC NULLS LAST,
+        rs.position ASC
+    `, [req.params.id]);
+
+    // Attach nearest weather snapshot to each completed stop
+    // Uses a single query per stop (nearest observation within 2 hours of completion)
+    for (const stop of stops) {
+      if (stop.completed && stop.completed_at) {
+        try {
+          const { rows: wx } = await req.db.query(`
+            SELECT id, observed_at, air_temp, wind, weather, sky_cond,
+                   precip_1hr, precip_3hr, precip_6hr, humidity, visibility, wind_chill
+            FROM weather_snapshots
+            WHERE ABS(EXTRACT(EPOCH FROM (observed_at - $1::timestamptz))) < 7200
+            ORDER BY ABS(EXTRACT(EPOCH FROM (observed_at - $1::timestamptz))) ASC
+            LIMIT 1
+          `, [stop.completed_at]);
+          stop.weather_at_completion = wx[0] || null;
+        } catch { stop.weather_at_completion = null; }
+      } else {
+        stop.weather_at_completion = null;
+      }
+    }
+
+    // Also compute cumulative precip since route start (for service verification)
+    const routeStart = stops.find(s => s.completed && s.completed_at)?.completed_at;
+    if (routeStart) {
+      try {
+        const { rows: precipRows } = await req.db.query(`
+          SELECT COALESCE(SUM(CAST(NULLIF(REGEXP_REPLACE(precip_1hr, '[^0-9.]', '', 'g'), '') AS NUMERIC)), 0) AS total_precip_in
+          FROM weather_snapshots
+          WHERE observed_at >= $1::timestamptz - INTERVAL '1 hour'
+            AND observed_at <= NOW()
+        `, [routeStart]);
+        route.total_precip_since_route_start = precipRows[0]?.total_precip_in || 0;
+      } catch { route.total_precip_since_route_start = null; }
+    }
+
+    try { route.assigned_employees = JSON.parse(route.assigned_employee_ids || '[]'); } catch { route.assigned_employees = []; }
+    route.stops = stops;
+    res.json(route);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /history/:id/export.csv — download completed route as CSV
+router.get('/history/:id/export.csv', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows: routeRows } = await req.db.query('SELECT * FROM routes WHERE id = $1', [req.params.id]);
+    if (!routeRows[0]) return res.status(404).json({ error: 'Route not found' });
+    const route = routeRows[0];
+
+    const { rows: stops } = await req.db.query(`
+      SELECT rs.position, rs.completed, rs.completed_at, rs.completed_by_name, rs.completed_by_role,
+        rs.notes, rs.stop_label, rs.frequency,
+        c.first_name, c.last_name,
+        COALESCE(rs.address, c.address, '') AS stop_address,
+        COALESCE(rs.city,    c.city,    '') AS stop_city,
+        COALESCE(rs.state,   c.state,   '') AS stop_state,
+        COALESCE(rs.zip,     c.zip,     '') AS stop_zip,
+        svc.name AS service_type
+      FROM route_stops rs
+      LEFT JOIN clients c ON rs.client_id = c.id
+      LEFT JOIN bookings b ON rs.booking_id = b.id
+      LEFT JOIN services svc ON b.service_id = svc.id
+      WHERE rs.route_id = $1
+      ORDER BY
+        CASE WHEN rs.completed THEN 0 ELSE 1 END ASC,
+        rs.completed_at ASC NULLS LAST,
+        rs.position ASC
+    `, [req.params.id]);
+
+    // Attach nearest weather snapshot to each completed stop
+    for (const stop of stops) {
+      if (stop.completed && stop.completed_at) {
+        try {
+          const { rows: wx } = await req.db.query(`
+            SELECT air_temp, wind, weather, sky_cond, precip_1hr, precip_3hr, wind_chill
+            FROM weather_snapshots
+            WHERE ABS(EXTRACT(EPOCH FROM (observed_at - $1::timestamptz))) < 7200
+            ORDER BY ABS(EXTRACT(EPOCH FROM (observed_at - $1::timestamptz))) ASC
+            LIMIT 1
+          `, [stop.completed_at]);
+          stop.wx = wx[0] || null;
+        } catch { stop.wx = null; }
+      } else { stop.wx = null; }
+    }
+
+    const esc = v => `"${String(v || '').replace(/"/g, '""')}"`;
+    const routeDate = route.route_date ? new Date(route.route_date).toLocaleDateString('en-US') : 'No date';
+    const header = ['#', 'Client Name', 'Address', 'City', 'State', 'Zip', 'Service Type', 'Status',
+                    'Completed At', 'Marked Done By', 'Role',
+                    'Temp (°F)', 'Wind', 'Conditions', 'Sky', '1hr Precip (in)', 'Wind Chill',
+                    'Notes', 'Label', 'Frequency'];
+    const lines = [header.map(esc).join(',')];
+    stops.forEach((s, i) => {
+      const completedAt = s.completed_at ? new Date(s.completed_at).toLocaleString('en-US') : '';
+      const status = s.completed ? 'Done' : 'Pending';
+      lines.push([
+        i + 1, `${s.first_name} ${s.last_name}`, s.stop_address, s.stop_city, s.stop_state, s.stop_zip,
+        s.service_type || '', status, completedAt, s.completed_by_name || '', s.completed_by_role || '',
+        s.wx?.air_temp || '', s.wx?.wind || '', s.wx?.weather || '', s.wx?.sky_cond || '',
+        s.wx?.precip_1hr || '', s.wx?.wind_chill || '',
+        s.notes || '', s.stop_label || '', s.frequency || ''
+      ].map(esc).join(','));
+    });
+
+    const filename = `route-${route.name.replace(/[^a-z0-9]/gi, '-')}-${routeDate.replace(/\//g, '-')}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(lines.join('\n'));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /history/:id/export.pdf — download completed route as PDF
+router.get('/history/:id/export.pdf', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+
+    const { rows: routeRows } = await req.db.query('SELECT * FROM routes WHERE id = $1', [req.params.id]);
+    if (!routeRows[0]) return res.status(404).json({ error: 'Route not found' });
+    const route = routeRows[0];
+
+    const { rows: stops } = await req.db.query(`
+      SELECT rs.position, rs.completed, rs.completed_at, rs.completed_by_name, rs.completed_by_role,
+        rs.notes, rs.stop_label, rs.frequency,
+        c.first_name, c.last_name,
+        COALESCE(rs.address, c.address, '') AS stop_address,
+        COALESCE(rs.city,    c.city,    '') AS stop_city,
+        COALESCE(rs.state,   c.state,   '') AS stop_state,
+        COALESCE(rs.zip,     c.zip,     '') AS stop_zip,
+        svc.name AS service_type
+      FROM route_stops rs
+      LEFT JOIN clients c ON rs.client_id = c.id
+      LEFT JOIN bookings b ON rs.booking_id = b.id
+      LEFT JOIN services svc ON b.service_id = svc.id
+      WHERE rs.route_id = $1
+      ORDER BY
+        CASE WHEN rs.completed THEN 0 ELSE 1 END ASC,
+        rs.completed_at ASC NULLS LAST,
+        rs.position ASC
+    `, [req.params.id]);
+
+    // Attach nearest weather snapshot to each completed stop
+    for (const stop of stops) {
+      if (stop.completed && stop.completed_at) {
+        try {
+          const { rows: wx } = await req.db.query(`
+            SELECT air_temp, wind, weather, sky_cond, precip_1hr, wind_chill
+            FROM weather_snapshots
+            WHERE ABS(EXTRACT(EPOCH FROM (observed_at - $1::timestamptz))) < 7200
+            ORDER BY ABS(EXTRACT(EPOCH FROM (observed_at - $1::timestamptz))) ASC
+            LIMIT 1
+          `, [stop.completed_at]);
+          stop.wx = wx[0] || null;
+        } catch { stop.wx = null; }
+      } else { stop.wx = null; }
+    }
+
+    // Use landscape (792 x 612) for wider table with weather columns
+    const pdfDoc = await PDFDocument.create();
+    const fontBold   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontReg    = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const PAGE_W = 792, PAGE_H = 612, MARGIN = 36;
+    // Columns: #, Client, Address, Completed At, Marked By, Temp, Conditions, Precip, Status
+    const colW = [22, 120, 160, 88, 90, 38, 100, 50, 50];
+    const ROW_H = 16, HEADER_H = 24;
+
+    const routeDate = route.route_date ? new Date(route.route_date).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' }) : 'No date';
+    const completedCount = stops.filter(s => s.completed).length;
+    const navy = rgb(0.059, 0.216, 0.361);
+    const white = rgb(1, 1, 1);
+    const lightGray = rgb(0.95, 0.95, 0.95);
+    const green = rgb(0.086, 0.627, 0.522);
+    const gray = rgb(0.5, 0.5, 0.5);
+    const lightBlue = rgb(0.85, 0.92, 1.0);
+
+    let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    let y = PAGE_H - MARGIN;
+
+    const newPage = () => {
+      page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      y = PAGE_H - MARGIN;
+    };
+
+    const drawText = (text, x, yPos, size, font, color, maxLen = 50) => {
+      page.drawText(String(text || '').slice(0, maxLen), { x, y: yPos, size, font, color });
+    };
+
+    // ── Header ──
+    page.drawRectangle({ x: MARGIN, y: y - 48, width: PAGE_W - MARGIN * 2, height: 52, color: navy });
+    drawText("Snow Bro's", MARGIN + 10, y - 14, 16, fontBold, white);
+    drawText('Route Completion Report', MARGIN + 10, y - 30, 10, fontReg, rgb(0.8, 0.9, 1));
+    drawText(`Generated: ${new Date().toLocaleString('en-US')}`, PAGE_W - MARGIN - 200, y - 14, 8, fontReg, rgb(0.8, 0.9, 1));
+    y -= 60;
+
+    // ── Route meta ──
+    drawText(`Route: ${route.name}`, MARGIN, y, 12, fontBold, navy);
+    y -= 14;
+    drawText(`Date: ${routeDate}  |  Type: ${(route.type || 'snow').toUpperCase()}  |  Stops: ${completedCount} of ${stops.length} completed`, MARGIN, y, 8, fontReg, gray);
+    y -= 7;
+    if (route.description) { drawText(`Notes: ${route.description}`, MARGIN, y, 8, fontReg, gray); y -= 7; }
+    y -= 6;
+
+    // ── Weather section header ──
+    page.drawRectangle({ x: MARGIN, y: y - 12, width: PAGE_W - MARGIN * 2, height: 14, color: lightBlue });
+    drawText('Weather data from KFAR (Fargo Hector Intl) — nearest observation within 2 hours of each stop completion', MARGIN + 4, y - 9, 7, fontReg, navy, 120);
+    y -= 18;
+
+    // ── Column headers ──
+    let cx = MARGIN;
+    const colX = colW.map(w => { const x = cx; cx += w; return x; });
+    page.drawRectangle({ x: MARGIN, y: y - HEADER_H + 4, width: PAGE_W - MARGIN * 2, height: HEADER_H, color: navy });
+    const headers = ['#', 'Client', 'Address', 'Completed At', 'Marked By', 'Temp', 'Conditions', 'Precip', 'Status'];
+    headers.forEach((h, i) => drawText(h, colX[i] + 2, y - 9, 7, fontBold, white));
+    y -= HEADER_H + 2;
+
+    // ── Rows ──
+    stops.forEach((s, idx) => {
+      if (y < MARGIN + ROW_H + 20) { newPage(); }
+      const rowColor = idx % 2 === 0 ? lightGray : white;
+      page.drawRectangle({ x: MARGIN, y: y - ROW_H + 4, width: PAGE_W - MARGIN * 2, height: ROW_H, color: rowColor });
+      const completedAt = s.completed_at ? new Date(s.completed_at).toLocaleString('en-US', { month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }) : '—';
+      const addr = [s.stop_address, s.stop_city].filter(Boolean).join(', ');
+      const statusColor = s.completed ? green : gray;
+      const wxTemp = s.wx?.air_temp ? `${s.wx.air_temp}°F` : '—';
+      const wxCond = s.wx?.weather || (s.wx?.sky_cond ? s.wx.sky_cond : '—');
+      const wxPrecip = s.wx?.precip_1hr && s.wx.precip_1hr !== '0.00' ? `${s.wx.precip_1hr}"` : (s.wx ? '0"' : '—');
+      drawText(idx + 1,                          colX[0] + 2, y - 8, 7, fontReg, navy);
+      drawText(`${s.first_name} ${s.last_name}`, colX[1] + 2, y - 8, 7, fontReg, navy);
+      drawText(addr,                             colX[2] + 2, y - 8, 6, fontReg, navy, 38);
+      drawText(completedAt,                      colX[3] + 2, y - 8, 6, fontReg, navy);
+      drawText(s.completed_by_name || '—',       colX[4] + 2, y - 8, 6, fontReg, navy);
+      drawText(wxTemp,                           colX[5] + 2, y - 8, 7, fontReg, navy);
+      drawText(wxCond,                           colX[6] + 2, y - 8, 6, fontReg, navy, 22);
+      drawText(wxPrecip,                         colX[7] + 2, y - 8, 7, fontReg, navy);
+      drawText(s.completed ? '✓ Done' : 'Pending', colX[8] + 2, y - 8, 7, fontBold, statusColor);
+      y -= ROW_H;
+    });
+
+    // ── Footer ──
+    if (y < MARGIN + 30) newPage();
+    y -= 10;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: gray });
+    y -= 10;
+    drawText(`Snow Bro's  ·  218-331-5145  ·  prosnowbros@prosnowbros.com  ·  Route exported ${new Date().toLocaleDateString('en-US')}  ·  Weather: KFAR / NWS`, MARGIN, y, 6, fontReg, gray, 120);
+
+    const pdfBytes = await pdfDoc.save();
+    const routeDate2 = route.route_date ? new Date(route.route_date).toISOString().slice(0, 10) : 'nodate';
+    const filename = `route-${route.name.replace(/[^a-z0-9]/gi, '-')}-${routeDate2}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(Buffer.from(pdfBytes));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

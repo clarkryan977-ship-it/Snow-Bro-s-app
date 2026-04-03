@@ -10,9 +10,19 @@ export default function AdminDashboard() {
   const [pushStatus, setPushStatus] = useState(null); // null | 'subscribed' | 'denied' | 'unsupported'
   const [touchUps, setTouchUps] = useState([]);
   const [dismissedTouchUps, setDismissedTouchUps] = useState(new Set());
+  const [activeRoutes, setActiveRoutes] = useState([]);
 
   const loadTouchUps = () => {
     api.get('/touchup?status=pending').then(r => setTouchUps(r.data || [])).catch(() => {});
+  };
+
+  const loadActiveRoutes = () => {
+    // Fetch today's routes that have at least one stop (active/in-progress)
+    const today = new Date().toISOString().slice(0, 10);
+    api.get(`/routes?date=${today}`).then(r => {
+      const routes = (r.data || []).filter(rt => rt.total_stops > 0);
+      setActiveRoutes(routes);
+    }).catch(() => {});
   };
 
   const handleAckTouchUp = async (id) => {
@@ -25,7 +35,8 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadTouchUps();
-    const interval = setInterval(loadTouchUps, 60000); // refresh every minute
+    loadActiveRoutes();
+    const interval = setInterval(() => { loadTouchUps(); loadActiveRoutes(); }, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -154,6 +165,65 @@ export default function AdminDashboard() {
 
       {/* ── Live Dispatch Map ── */}
       <DispatchMap />
+
+      {/* ── Active Routes Widget ── */}
+      {activeRoutes.length > 0 && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '.75rem' }}>
+            🚦 Today's Routes
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '.75rem' }}>
+            {activeRoutes.map(rt => {
+              const pct = rt.total_stops > 0 ? Math.round((rt.completed_stops / rt.total_stops) * 100) : 0;
+              const allDone = rt.completed_stops === rt.total_stops && rt.total_stops > 0;
+              const inProgress = rt.completed_stops > 0 && !allDone;
+              return (
+                <Link key={rt.id} to={`/admin/routes?routeId=${rt.id}`} style={{ textDecoration: 'none' }}>
+                  <div style={{
+                    background: allDone ? '#f0fdf4' : inProgress ? '#eff6ff' : '#fff',
+                    border: `1.5px solid ${allDone ? '#86efac' : inProgress ? '#93c5fd' : '#e5e7eb'}`,
+                    borderRadius: '12px', padding: '1rem', cursor: 'pointer',
+                    transition: 'box-shadow .15s',
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.1)'}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '.5rem' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '.95rem', color: '#1e3a5f', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {rt.name}
+                        </div>
+                        <div style={{ fontSize: '.75rem', color: '#6b7280', marginTop: '2px' }}>
+                          {new Date(rt.route_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          {' · '}{(rt.type || 'snow').toUpperCase()}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', shrink: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '1.1rem', color: allDone ? '#16a34a' : '#1d4ed8' }}>
+                          {rt.completed_stops}/{rt.total_stops}
+                        </div>
+                        <div style={{ fontSize: '.7rem', color: '#9ca3af' }}>stops</div>
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div style={{ marginTop: '.75rem', height: '6px', background: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', borderRadius: '3px', transition: 'width .3s',
+                        background: allDone ? '#22c55e' : '#3b82f6',
+                        width: `${pct}%`,
+                      }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '.7rem', color: '#9ca3af' }}>
+                      <span>{allDone ? '✅ Complete' : inProgress ? '🟡 In Progress' : '⏳ Not started'}</span>
+                      <span>{pct}%</span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Stats ── */}
       <div className="stats-grid">

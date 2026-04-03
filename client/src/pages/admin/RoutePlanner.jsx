@@ -999,15 +999,20 @@ export default function RoutePlanner() {
   };
 
   // Geocode existing stops for this route (backfill stop_lat/stop_lng)
-  const handleGeocodeStops = async () => {
+  const handleGeocodeStops = async (force = false) => {
     if (!selectedRouteId) return;
-    if (!window.confirm('This will geocode all stops on this route that are missing coordinates. It may take ~1 second per stop. Continue?')) return;
+    const msg = force
+      ? 'Re-geocode ALL stops on this route (including ones already geocoded)? This fixes incorrect coordinates. It runs in the background — wait ~30 seconds then re-sort. Continue?'
+      : 'Geocode all stops on this route that are missing coordinates. Runs in the background — wait ~30 seconds then re-sort. Continue?';
+    if (!window.confirm(msg)) return;
     setGeocodingStops(true);
     setGeocodeStopsResult(null);
     try {
-      const r = await api.post('/routes/' + selectedRouteId + '/geocode-stops');
-      setGeocodeStopsResult(r.data);
-      loadRouteDetail(selectedRouteId);
+      const url = '/routes/' + selectedRouteId + '/geocode-stops' + (force ? '?force=true' : '');
+      const r = await api.post(url);
+      setGeocodeStopsResult({ ...r.data, message: r.data.message + ' — running in background. Wait ~30 sec then re-sort.' });
+      // Reload stops after a 35-second delay to pick up the newly geocoded coordinates
+      setTimeout(() => loadRouteDetail(selectedRouteId), 35000);
     } catch (e) {
       alert('Geocode failed: ' + (e.response?.data?.error || e.message));
     } finally {
@@ -1371,22 +1376,29 @@ export default function RoutePlanner() {
                   )}
                   {/* Geocode Stops row — fixes Fargo/Moorhead mislabeling for existing stops */}
                   {!liveMode && (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ flex: 1, fontSize: 12, color: '#64748b' }}>
-                        Fix address mislabeling (e.g. Fargo showing as Moorhead)? Geocode stop-level addresses for this route.
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: 160, fontSize: 12, color: '#64748b' }}>
+                        Fix wrong sort order? Geocode stop addresses so geo-sort uses the exact job location (not client home).
                       </div>
                       <button
-                        onClick={handleGeocodeStops}
+                        onClick={() => handleGeocodeStops(false)}
                         disabled={geocodingStops || !!optimizing}
-                        title="Geocode stop-level addresses for this route so geo-sort uses the correct city coordinates"
+                        title="Geocode stops missing coordinates using OpenStreetMap"
                         style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: (geocodingStops || !!optimizing) ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: (geocodingStops || !!optimizing) ? 0.6 : 1 }}>
-                        {geocodingStops ? '⏳ Geocoding Stops…' : '📍 Geocode Stop Addresses'}
+                        {geocodingStops ? '⏳ Geocoding…' : '📍 Geocode Stops'}
+                      </button>
+                      <button
+                        onClick={() => handleGeocodeStops(true)}
+                        disabled={geocodingStops || !!optimizing}
+                        title="Re-geocode ALL stops including already-geocoded ones (fixes wrong coordinates)"
+                        style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: (geocodingStops || !!optimizing) ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: (geocodingStops || !!optimizing) ? 0.6 : 1 }}>
+                        🔄 Re-geocode All
                       </button>
                     </div>
                   )}
                   {geocodeStopsResult && (
                     <div style={{ background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 7, padding: '6px 12px', marginTop: 4, fontSize: 12, color: '#065f46' }}>
-                      ✅ Geocoded {geocodeStopsResult.geocoded} stop{geocodeStopsResult.geocoded !== 1 ? 's' : ''}{geocodeStopsResult.skipped > 0 ? ` (${geocodeStopsResult.skipped} skipped — no address)` : ''}. Re-sort to apply.
+                      ✅ {geocodeStopsResult.message || `Geocoding started for ${geocodeStopsResult.total} stops — running in background. Wait ~30 sec then re-sort.`}
                     </div>
                   )}
                 </div>

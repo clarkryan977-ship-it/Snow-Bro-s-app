@@ -23,6 +23,7 @@ const links = [
   { to: '/admin/payroll', label: '💵 Payroll' },
   { to: '/admin/gps', label: '📍 GPS Tracking' },
   { to: '/admin/routes', label: '🗺️ Route Planner' },
+  { to: '/admin/route-history', label: '📋 Route History' },
   { to: '/admin/documents', label: '📁 Employee Docs' },
   { to: '/admin/applications', label: '📋 Job Applications' },
   { section: 'Marketing' },

@@ -605,6 +605,33 @@ async function initDB() {
   await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS stop_lat DOUBLE PRECISION`).catch(() => {});
   await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS stop_lng DOUBLE PRECISION`).catch(() => {});
 
+  // ── Route history: track who marked each stop done ──
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS completed_by_id INTEGER`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS completed_by_name TEXT DEFAULT ''`).catch(() => {});
+  await db.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS completed_by_role TEXT DEFAULT ''`).catch(() => {});
+
+  // ── Weather snapshots: hourly KFAR observations for historical weather context ──
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS weather_snapshots (
+      id SERIAL PRIMARY KEY,
+      observed_at TIMESTAMP NOT NULL,         -- UTC time of the KFAR observation
+      snapshot_at TIMESTAMP DEFAULT NOW(),    -- when we stored it
+      air_temp TEXT DEFAULT '',
+      wind TEXT DEFAULT '',
+      weather TEXT DEFAULT '',
+      sky_cond TEXT DEFAULT '',
+      precip_1hr TEXT DEFAULT '',
+      precip_3hr TEXT DEFAULT '',
+      precip_6hr TEXT DEFAULT '',
+      humidity TEXT DEFAULT '',
+      visibility TEXT DEFAULT '',
+      wind_chill TEXT DEFAULT '',
+      raw_json JSONB
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_weather_snapshots_observed ON weather_snapshots(observed_at DESC)`).catch(() => {});
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_weather_snapshots_unique ON weather_snapshots(observed_at)`).catch(() => {});
+
   // ── Indexes ──
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)',
