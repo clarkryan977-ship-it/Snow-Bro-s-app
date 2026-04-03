@@ -46,10 +46,8 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'First name, last name, and email are required' });
     }
 
-    const { rows: __existing } = await req.db.query('SELECT id FROM clients WHERE email = $1', [email]);
-    const existing = __existing[0];
-    if (existing) return res.status(409).json({ error: 'Email already registered' });
-
+    // Note: duplicate emails are allowed (one record per property).
+    // We do NOT block registration if the email already exists.
     const password_hash = password ? bcrypt.hashSync(password, 10) : null;
 
     const result = await req.db.query('INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', password_hash]);
@@ -61,17 +59,31 @@ router.post('/register', async (req, res) => {
 });
 
 // Client login
+// Supports multiple client records sharing the same email (one per property).
+// We try every record that has a password_hash for this email and pick the one
+// whose hash matches the supplied password.
 router.post('/client-login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    const { rows: __client } = await req.db.query('SELECT * FROM clients WHERE email = $1', [email]);
-    const client = __client[0];
-    if (!client || !client.password_hash) return res.status(401).json({ error: 'Invalid credentials' });
+    // Fetch ALL client records for this email that have a portal account set up
+    const { rows: candidates } = await req.db.query(
+      'SELECT * FROM clients WHERE LOWER(email) = LOWER($1) AND password_hash IS NOT NULL ORDER BY id',
+      [email]
+    );
 
-    const valid = bcrypt.compareSync(password, client.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!candidates.length) return res.status(401).json({ error: 'Invalid credentials' });
+
+    // Find the first record whose password matches
+    let client = null;
+    for (const row of candidates) {
+      if (bcrypt.compareSync(password, row.password_hash)) {
+        client = row;
+        break;
+      }
+    }
+    if (!client) return res.status(401).json({ error: 'Invalid credentials' });
 
     const { remember_me } = req.body;
     const token = jwt.sign(
@@ -102,7 +114,12 @@ router.post('/forgot-password', async (req, res) => {
 
     let user;
     if (type === 'client') {
-      const { rows } = await req.db.query('SELECT id, first_name FROM clients WHERE email = $1', [email]);
+      // With multiple records per email, pick the first one that has a portal account;
+      // fall back to any record with that email if none have a password yet.
+      const { rows } = await req.db.query(
+        'SELECT id, first_name FROM clients WHERE LOWER(email) = LOWER($1) ORDER BY (password_hash IS NOT NULL) DESC, id LIMIT 1',
+        [email]
+      );
       user = rows[0];
     } else {
       const { rows } = await req.db.query('SELECT id, first_name FROM employees WHERE email = $1', [email]);

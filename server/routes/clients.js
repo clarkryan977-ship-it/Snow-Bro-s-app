@@ -80,7 +80,6 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     }
     res.status(201).json({ id: newId, message: 'Client added' });
   } catch (err) {
-    if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -132,7 +131,6 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
 
     res.json(rows[0]);
   } catch (err) {
-    if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -158,7 +156,6 @@ router.patch('/:id/email', authenticateToken, requireAdmin, async (req, res) => 
     await req.db.query('UPDATE clients SET email=$1 WHERE id=$2', [email.trim().toLowerCase(), req.params.id]);
     res.json({ message: 'Email updated' });
   } catch (err) {
-    if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already in use by another client' });
     res.status(500).json({ error: err.message });
   }
 });

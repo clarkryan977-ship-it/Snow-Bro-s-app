@@ -44,7 +44,7 @@ async function initDB() {
       id SERIAL PRIMARY KEY,
       first_name TEXT NOT NULL,
       last_name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
+      email TEXT NOT NULL,
       phone TEXT DEFAULT '',
       address TEXT DEFAULT '',
       city TEXT DEFAULT '',
@@ -62,6 +62,24 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  // ── Migration: drop unique constraint on clients.email (allow multiple properties per email) ──
+  await db.query(`
+    DO $$
+    DECLARE
+      _con TEXT;
+    BEGIN
+      SELECT constraint_name INTO _con
+        FROM information_schema.table_constraints
+       WHERE table_name = 'clients'
+         AND constraint_type = 'UNIQUE'
+         AND constraint_name ILIKE '%email%'
+       LIMIT 1;
+      IF _con IS NOT NULL THEN
+        EXECUTE 'ALTER TABLE clients DROP CONSTRAINT ' || quote_ident(_con);
+      END IF;
+    END$$;
+  `).catch(() => {});
 
   // Bookings
   await db.query(`

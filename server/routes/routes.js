@@ -415,9 +415,9 @@ router.patch('/:routeId/stops/:stopId/complete', authenticateToken, async (req, 
       [req.params.stopId, req.params.routeId, byId, byName, byRole]
     );
 
-    // 2. Fetch details for the notification email
+    // 2. Fetch details for the notification email + SMS
     const { rows: stopDetails } = await req.db.query(`
-      SELECT rs.*, c.email, c.first_name, c.last_name, r.name as route_name
+      SELECT rs.*, c.email, c.phone, c.first_name, c.last_name, r.name as route_name
       FROM route_stops rs
       JOIN clients c ON rs.client_id = c.id
       JOIN routes r ON rs.route_id = r.id
@@ -425,48 +425,62 @@ router.patch('/:routeId/stops/:stopId/complete', authenticateToken, async (req, 
     `, [req.params.stopId]);
 
     const stop = stopDetails[0];
-    if (stop && stop.email) {
-      const { sendMail } = require('../utils/mailer');
+    if (stop) {
       const serviceAddress = [stop.address, stop.city, stop.state, stop.zip].filter(Boolean).join(', ');
       const completionTime = new Date().toLocaleString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
         hour: 'numeric', minute: '2-digit', hour12: true 
       });
+      const portalUrl = 'https://snowbros-production.up.railway.app/client/history';
 
-      const html = `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #2c3e50; text-align: center;">Your Snow Bro's service is complete!</h2>
-          <p>Hi ${stop.first_name || 'there'},</p>
-          <p>Great news! Your service for today has been completed. Our crew has finished the work at your property.</p>
-          
-          <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 5px 0;"><strong>Service Address:</strong> ${serviceAddress || 'Address on file'}</p>
-            <p style="margin: 5px 0;"><strong>Completed At:</strong> ${completionTime}</p>
-            <p style="margin: 5px 0;"><strong>Completed By:</strong> ${byName} (${byRole})</p>
+      // ── Send email if client has an email address ──
+      if (stop.email) {
+        const { sendMail } = require('../utils/mailer');
+        const html = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+            <h2 style="color: #2c3e50; text-align: center;">Your Snow Bro's service is complete!</h2>
+            <p>Hi ${stop.first_name || 'there'},</p>
+            <p>Great news! Your service for today has been completed. Our crew has finished the work at your property.</p>
+            
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p style="margin: 5px 0;"><strong>Service Address:</strong> ${serviceAddress || 'Address on file'}</p>
+              <p style="margin: 5px 0;"><strong>Completed At:</strong> ${completionTime}</p>
+              <p style="margin: 5px 0;"><strong>Completed By:</strong> ${byName} (${byRole})</p>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${portalUrl}" 
+                 style="background: #3498db; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                 View in Portal
+              </a>
+            </div>
+
+            <p style="font-size: 0.9em; color: #7f8c8d; text-align: center;">
+              Thank you for choosing Snow Bro's! If you have any questions, feel free to reply to this email.
+            </p>
           </div>
+        `;
+        try {
+          await sendMail({
+            to: stop.email,
+            subject: "Your Snow Bro's service is complete!",
+            html
+          });
+        } catch (mailErr) {
+          console.error('[MAILER] Failed to send job completion email:', mailErr.message);
+        }
+      }
 
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="https://snowbros-production.up.railway.app/client/history" 
-               style="background: #3498db; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-               View in Portal
-            </a>
-          </div>
-
-          <p style="font-size: 0.9em; color: #7f8c8d; text-align: center;">
-            Thank you for choosing Snow Bro's! If you have any questions, feel free to reply to this email.
-          </p>
-        </div>
-      `;
-
-      try {
-        await sendMail({
-          to: stop.email,
-          subject: "Your Snow Bro's service is complete!",
-          html
-        });
-      } catch (mailErr) {
-        console.error('[MAILER] Failed to send job completion email:', mailErr.message);
-        // Don't fail the whole request if mail fails
+      // ── Send SMS if client has a phone number ──
+      if (stop.phone && stop.phone.replace(/\D/g, '').length >= 10) {
+        const { sendSms } = require('../utils/sms');
+        const shortAddr = serviceAddress || 'your property';
+        const smsBody = `Your Snow Bro's service at ${shortAddr} is complete! View details: ${portalUrl}`;
+        try {
+          await sendSms(stop.phone, smsBody);
+        } catch (smsErr) {
+          console.error('[SMS] Failed to send job completion SMS:', smsErr.message);
+        }
       }
     }
 
