@@ -92,13 +92,11 @@ function RouteCard({ route, isSelected, onSelect, onEdit, onDelete }) {
   );
 }
 
-// ─── StopPhotoModal ─────────────────────────────────────────────
+// ─── StopPhotoModal (view/delete gallery) ──────────────────────────────────────
 function StopPhotoModal({ stop, onClose }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState(null);
-  const fileRef = useRef();
 
   const clientName = stop.first_name
     ? stop.first_name + ' ' + stop.last_name
@@ -113,25 +111,6 @@ function StopPhotoModal({ stop, onClose }) {
   };
 
   useEffect(() => { load(); }, [stop.id]);
-
-  const upload = async (photoType) => {
-    if (!fileRef.current?.files?.length) {
-      alert('Please select a photo first.');
-      return;
-    }
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('photo', fileRef.current.files[0]);
-      fd.append('photo_type', photoType);
-      if (stop.booking_id) fd.append('booking_id', stop.booking_id);
-      await api.post('/beforeafter/stop/' + stop.id, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      if (fileRef.current) fileRef.current.value = '';
-      await load();
-    } catch (e) {
-      alert('Upload failed: ' + (e.response?.data?.error || e.message));
-    } finally { setUploading(false); }
-  };
 
   const deletePhoto = async (photoId) => {
     if (!confirm('Delete this photo?')) return;
@@ -150,7 +129,6 @@ function StopPhotoModal({ stop, onClose }) {
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 20, position: 'relative' }}>
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#1e3a5f' }}>📷 Before & After Photos</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#64748b', lineHeight: 1 }}>×</button>
@@ -161,7 +139,6 @@ function StopPhotoModal({ stop, onClose }) {
           <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Loading photos…</div>
         ) : (
           <>
-            {/* Before photos */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', textTransform: 'uppercase', marginBottom: 8 }}>Before</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -176,8 +153,6 @@ function StopPhotoModal({ stop, onClose }) {
                 ))}
               </div>
             </div>
-
-            {/* After photos */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', textTransform: 'uppercase', marginBottom: 8 }}>After</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -192,39 +167,11 @@ function StopPhotoModal({ stop, onClose }) {
                 ))}
               </div>
             </div>
-
-            {/* Upload section */}
-            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', textTransform: 'uppercase', marginBottom: 10 }}>Upload Photo</div>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: 'block', marginBottom: 12, fontSize: 13, width: '100%' }}
-              />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => upload('before')}
-                  disabled={uploading}
-                  style={{ flex: 1, background: '#f1f5f9', color: '#1e3a5f', border: '2px solid #cbd5e1', borderRadius: 8, padding: '8px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  {uploading ? '…' : '📷 Upload as Before'}
-                </button>
-                <button
-                  onClick={() => upload('after')}
-                  disabled={uploading}
-                  style={{ flex: 1, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  {uploading ? '…' : '📷 Upload as After'}
-                </button>
-              </div>
-            </div>
           </>
         )}
-
         <button onClick={onClose} style={{ marginTop: 16, width: '100%', background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>Close</button>
       </div>
 
-      {/* Lightbox */}
       {lightbox && (
         <div
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.9)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -238,10 +185,107 @@ function StopPhotoModal({ stop, onClose }) {
   );
 }
 
+// ─── QuickPhotoButton ────────────────────────────────────────────────────────
+// Tapping 📷 immediately opens the camera (mobile) or file picker (desktop).
+// After a file is chosen, two inline buttons let the user tag it Before / After.
+// A separate 🖼️ button opens the full gallery modal.
+function QuickPhotoButton({ stop, compact }) {
+  const [pendingFile, setPendingFile] = useState(null);   // File object waiting for type selection
+  const [uploading, setUploading]     = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
+  const cameraRef = useRef();
+
+  const btnBase = {
+    border: 'none', borderRadius: compact ? 6 : 8,
+    padding: compact ? '4px 8px' : '8px 10px',
+    cursor: 'pointer', fontSize: compact ? 13 : 14,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) setPendingFile(file);
+    // Reset so the same file can be re-selected if needed
+    e.target.value = '';
+  };
+
+  const upload = async (photoType) => {
+    if (!pendingFile) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('photo', pendingFile);
+      fd.append('photo_type', photoType);
+      if (stop.booking_id) fd.append('booking_id', stop.booking_id);
+      await api.post('/beforeafter/stop/' + stop.id, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setPendingFile(null);
+    } catch (e) {
+      alert('Upload failed: ' + (e.response?.data?.error || e.message));
+    } finally { setUploading(false); }
+  };
+
+  return (
+    <>
+      {/* Hidden camera/file input */}
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+
+      {/* Inline type-selector appears after a photo is chosen */}
+      {pendingFile ? (
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>Save as:</span>
+          <button
+            onClick={() => upload('before')}
+            disabled={uploading}
+            style={{ ...btnBase, background: '#f1f5f9', color: '#1e3a5f', border: '2px solid #cbd5e1', fontWeight: 700, fontSize: 12, padding: '4px 8px' }}>
+            {uploading ? '…' : 'Before'}
+          </button>
+          <button
+            onClick={() => upload('after')}
+            disabled={uploading}
+            style={{ ...btnBase, background: '#22c55e', color: '#fff', fontWeight: 700, fontSize: 12, padding: '4px 8px' }}>
+            {uploading ? '…' : 'After'}
+          </button>
+          <button
+            onClick={() => setPendingFile(null)}
+            disabled={uploading}
+            style={{ ...btnBase, background: '#fee2e2', color: '#dc2626', fontSize: 11, padding: '4px 6px' }}>
+            ✕
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: compact ? 4 : 6 }}>
+          {/* 📷 — opens camera immediately */}
+          <button
+            onClick={() => cameraRef.current && cameraRef.current.click()}
+            title="Take / upload a photo"
+            style={{ ...btnBase, background: '#fdf4ff' }}>
+            📷
+          </button>
+          {/* 🖼️ — opens gallery to view / delete existing photos */}
+          <button
+            onClick={() => setShowGallery(true)}
+            title="View before & after photos"
+            style={{ ...btnBase, background: '#f0f9ff' }}>
+            🖼️
+          </button>
+        </div>
+      )}
+
+      {showGallery && <StopPhotoModal stop={stop} onClose={() => setShowGallery(false)} />}
+    </>
+  );
+}
+
 // ─── LiveStopCard ─────────────────────────────────────────────
 function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }) {
   const [loading, setLoading] = useState(false);
-  const [showPhotos, setShowPhotos] = useState(false);
   const isDone = stop.completed === true || stop.completed === 't';
   const clientName = stop.first_name
     ? stop.first_name + ' ' + stop.last_name
@@ -313,12 +357,7 @@ function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }
             🗺️
           </a>
         )}
-        <button
-          onClick={() => setShowPhotos(true)}
-          title="View / upload before & after photos"
-          style={{ background: '#fdf4ff', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center' }}>
-          📷
-        </button>
+        <QuickPhotoButton stop={stop} compact={false} />
         <button
           onClick={handleToggle}
           disabled={loading}
@@ -335,7 +374,6 @@ function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }
         </button>
       </div>
     </div>
-    {showPhotos && <StopPhotoModal stop={stop} onClose={() => setShowPhotos(false)} />}
     </>
   );
 }
@@ -343,7 +381,6 @@ function LiveStopCard({ stop, index, routeId, onToggle, autoNavigate, nextStop }
 // ─── StopCard (planning mode — with Done/Undo toggle) ─────────────────────────
 function StopCard({ stop, index, total, routeId, onRemove, onMoveUp, onMoveDown, onToggle }) {
   const [loading, setLoading] = useState(false);
-  const [showPhotos, setShowPhotos] = useState(false);
   const isDone = stop.completed === true || stop.completed === 't';
   const clientName = stop.first_name
     ? stop.first_name + ' ' + stop.last_name
@@ -423,19 +460,13 @@ function StopCard({ stop, index, total, routeId, onRemove, onMoveUp, onMoveDown,
           }}>
           {loading ? '…' : isDone ? 'Undo' : '✓ Done'}
         </button>
-        <button
-          onClick={() => setShowPhotos(true)}
-          title="View / upload before & after photos"
-          style={{ background: '#fdf4ff', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13 }}>
-          📷
-        </button>
+        <QuickPhotoButton stop={stop} compact={true} />
         <button onClick={() => onRemove(stop.id)}
           style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13 }}>
           ✕
         </button>
       </div>
     </div>
-    {showPhotos && <StopPhotoModal stop={stop} onClose={() => setShowPhotos(false)} />}
     </>
   );
 }
