@@ -866,7 +866,10 @@ export default function RoutePlanner() {
     const url = showAllDates ? '/routes' : ('/routes?date=' + filterDate);
     api.get(url)
       .then(r => setRoutes(r.data || []))
-      .catch(() => setRoutes([]))
+      .catch(err => {
+        console.error('Failed to load routes:', err);
+        setRoutes([]);
+      })
       .finally(() => setLoadingRoutes(false));
   }, [filterDate, showAllDates]);
 

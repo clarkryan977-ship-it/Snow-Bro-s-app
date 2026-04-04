@@ -20,7 +20,7 @@ export default function AdminDashboard() {
     // Fetch today's routes that have at least one stop (active/in-progress)
     const today = new Date().toISOString().slice(0, 10);
     api.get(`/routes?date=${today}`).then(r => {
-      const routes = (r.data || []).filter(rt => rt.total_stops > 0);
+      const routes = (r.data || []).filter(rt => rt.stop_count > 0);
       setActiveRoutes(routes);
     }).catch(() => {});
   };
@@ -174,9 +174,9 @@ export default function AdminDashboard() {
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '.75rem' }}>
             {activeRoutes.map(rt => {
-              const pct = rt.total_stops > 0 ? Math.round((rt.completed_stops / rt.total_stops) * 100) : 0;
-              const allDone = rt.completed_stops === rt.total_stops && rt.total_stops > 0;
-              const inProgress = rt.completed_stops > 0 && !allDone;
+              const pct = rt.stop_count > 0 ? Math.round((rt.completed_count / rt.stop_count) * 100) : 0;
+              const allDone = rt.completed_count === rt.stop_count && rt.stop_count > 0;
+              const inProgress = rt.completed_count > 0 && !allDone;
               return (
                 <Link key={rt.id} to={`/admin/routes?routeId=${rt.id}`} style={{ textDecoration: 'none' }}>
                   <div style={{
@@ -200,7 +200,7 @@ export default function AdminDashboard() {
                       </div>
                       <div style={{ textAlign: 'right', shrink: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: '1.1rem', color: allDone ? '#16a34a' : '#1d4ed8' }}>
-                          {rt.completed_stops}/{rt.total_stops}
+                          {rt.completed_count}/{rt.stop_count}
                         </div>
                         <div style={{ fontSize: '.7rem', color: '#9ca3af' }}>stops</div>
                       </div>
