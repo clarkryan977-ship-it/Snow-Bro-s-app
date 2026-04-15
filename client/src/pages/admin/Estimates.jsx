@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '../../utils/api';
 import BusinessHeader from '../../components/BusinessHeader';
@@ -37,6 +37,12 @@ export default function AdminEstimates() {
     items: [{ ...EMPTY_ITEM }]
   });
 
+  // Client search autocomplete state
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientSuggestions, setClientSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const clientSearchRef = useRef(null);
+
   useEffect(() => { load(); }, []);
 
   // Auto-open new estimate form if navigated here with prefill data
@@ -69,7 +75,52 @@ export default function AdminEstimates() {
   function openNew() {
     setEditEst(null);
     setForm({ client_id: '', customer_name: '', customer_email: '', customer_phone: '', customer_address: '', tax_rate: 0, notes: '', valid_until: '', items: [{ ...EMPTY_ITEM }] });
+    setClientSearch('');
+    setClientSuggestions([]);
     setShowForm(true);
+  }
+
+  // Filter clients based on search input
+  function handleClientSearch(e) {
+    const q = e.target.value;
+    setClientSearch(q);
+    if (!q.trim()) {
+      setClientSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const lower = q.toLowerCase();
+    const matches = clients.filter(c => {
+      const fullName = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
+      const email = (c.email || '').toLowerCase();
+      const address = (c.address || '').toLowerCase();
+      return fullName.includes(lower) || email.includes(lower) || address.includes(lower);
+    }).slice(0, 8);
+    setClientSuggestions(matches);
+    setShowSuggestions(true);
+  }
+
+  // Auto-fill form when a client is selected
+  function selectClient(client) {
+    const fullName = [client.first_name, client.last_name].filter(Boolean).join(' ');
+    const fullAddress = [client.address, client.city, client.state, client.zip].filter(Boolean).join(', ');
+    setForm(f => ({
+      ...f,
+      client_id: client.id,
+      customer_name: fullName,
+      customer_email: client.email || '',
+      customer_phone: client.phone || '',
+      customer_address: fullAddress,
+    }));
+    setClientSearch(fullName);
+    setShowSuggestions(false);
+    setClientSuggestions([]);
+  }
+
+  // Clear client link
+  function clearClientLink() {
+    setForm(f => ({ ...f, client_id: '' }));
+    setClientSearch('');
   }
 
   async function openEdit(id) {
@@ -250,7 +301,64 @@ export default function AdminEstimates() {
                   </div>
                 )}
                 <h3 style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--blue-700)', marginBottom: '.75rem' }}>Customer Information</h3>
+
+                {/* Client search / autofill */}
+                <div className="form-group" style={{ marginBottom: 14, position: 'relative' }} ref={clientSearchRef}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    🔍 Import from existing client
+                    <span style={{ fontSize: '.75rem', color: 'var(--gray-400)', fontWeight: 400 }}>— search by name, email, or address</span>
+                  </label>
+                  <input
+                    className="form-control"
+                    placeholder="Start typing a client name, email, or address…"
+                    value={clientSearch}
+                    onChange={handleClientSearch}
+                    onFocus={() => clientSearch && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                    autoComplete="off"
+                  />
+                  {showSuggestions && clientSuggestions.length > 0 && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1000,
+                      background: '#fff', border: '1px solid var(--blue-200)', borderRadius: 8,
+                      boxShadow: '0 4px 16px rgba(0,0,0,.12)', maxHeight: 260, overflowY: 'auto',
+                    }}>
+                      {clientSuggestions.map(c => {
+                        const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
+                        const addr = [c.address, c.city, c.state].filter(Boolean).join(', ');
+                        return (
+                          <div
+                            key={c.id}
+                            onMouseDown={() => selectClient(c)}
+                            style={{
+                              padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--gray-100)',
+                              transition: 'background .1s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                          >
+                            <div style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--blue-800)' }}>{fullName}</div>
+                            {c.email && <div style={{ fontSize: '.78rem', color: 'var(--gray-500)' }}>{c.email}</div>}
+                            {addr && <div style={{ fontSize: '.75rem', color: 'var(--gray-400)' }}>{addr}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {showSuggestions && clientSearch && clientSuggestions.length === 0 && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1000,
+                      background: '#fff', border: '1px solid var(--blue-200)', borderRadius: 8,
+                      boxShadow: '0 4px 16px rgba(0,0,0,.12)', padding: '12px 14px',
+                      fontSize: '.85rem', color: 'var(--gray-400)',
+                    }}>
+                      No clients found matching "{clientSearch}"
+                    </div>
+                  )}
+                </div>
+
                 <div className="form-row">
+  
                   <div className="form-group">
                     <label>Customer Name *</label>
                     <input className="form-control" name="customer_name" value={form.customer_name} onChange={handleField} required />
