@@ -44,7 +44,7 @@ export default function TouchUpRequests() {
   };
 
   const deleteRequest = async (id) => {
-    if (!window.confirm('Delete this touch-up request?')) return;
+    if (!window.confirm('Delete this touch-up request? This cannot be undone.')) return;
     try {
       await api.delete(`/touchup/${id}`);
       setRequests(prev => prev.filter(r => r.id !== id));
@@ -146,7 +146,7 @@ export default function TouchUpRequests() {
                   <span>🕐 {fmt(r.created_at)}</span>
                 </div>
 
-                {/* Note */}
+                {/* Client note */}
                 {r.note && (
                   <div style={{ marginTop: '10px', background: '#f9fafb', borderRadius: '6px', padding: '10px', fontSize: '0.9rem', color: '#374151' }}>
                     <strong>Client Note:</strong> {r.note}
@@ -195,36 +195,65 @@ export default function TouchUpRequests() {
                 ) : (
                   <>
                     {r.admin_notes && (
-                      <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#374151' }}>
+                      <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#374151', background: '#eff6ff', borderRadius: '6px', padding: '8px 10px' }}>
                         <strong>Admin Notes:</strong> {r.admin_notes}
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
-                      <button
-                        onClick={() => setEditing({ id: r.id, admin_notes: r.admin_notes || '' })}
-                        style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}
-                      >
-                        ✏️ Edit / Update Status
-                      </button>
-                      {r.status === 'pending' && (
+
+                    {/* Action buttons — always visible */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid #f3f4f6', paddingTop: '12px' }}>
+                      {/* Acknowledge — shown when not yet acknowledged or completed */}
+                      {r.status !== 'acknowledged' && r.status !== 'completed' && r.status !== 'cancelled' && (
                         <button
+                          disabled={saving}
                           onClick={() => updateStatus(r.id, 'acknowledged', r.admin_notes)}
-                          style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: '#1e40af', color: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}
+                          style={{
+                            padding: '7px 16px', borderRadius: '6px', border: 'none',
+                            background: '#1e40af', color: '#fff',
+                            cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700,
+                          }}
                         >
                           ✔ Acknowledge
                         </button>
                       )}
-                      {(r.status === 'pending' || r.status === 'acknowledged') && (
+
+                      {/* Mark Complete — shown when not yet completed */}
+                      {r.status !== 'completed' && r.status !== 'cancelled' && (
                         <button
+                          disabled={saving}
                           onClick={() => updateStatus(r.id, 'completed', r.admin_notes)}
-                          style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: '#166534', color: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}
+                          style={{
+                            padding: '7px 16px', borderRadius: '6px', border: 'none',
+                            background: '#166534', color: '#fff',
+                            cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700,
+                          }}
                         >
                           ✅ Mark Complete
                         </button>
                       )}
+
+                      {/* Edit / Notes button — always visible */}
+                      <button
+                        onClick={() => setEditing({ id: r.id, admin_notes: r.admin_notes || '' })}
+                        style={{
+                          padding: '7px 14px', borderRadius: '6px',
+                          border: '1px solid #d1d5db', background: '#fff',
+                          cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                        }}
+                      >
+                        ✏️ Notes
+                      </button>
+
+                      {/* Delete — always visible, right-aligned */}
                       <button
                         onClick={() => deleteRequest(r.id)}
-                        style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, marginLeft: 'auto' }}
+                        style={{
+                          padding: '7px 16px', borderRadius: '6px',
+                          border: '2px solid #fca5a5', background: '#fff',
+                          color: '#dc2626', cursor: 'pointer',
+                          fontSize: '0.82rem', fontWeight: 700,
+                          marginLeft: 'auto',
+                        }}
                       >
                         🗑 Delete
                       </button>
