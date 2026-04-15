@@ -68,6 +68,11 @@ app.use('/assets', express.static(path.join(distPath, 'assets'), { maxAge: '365d
 app.use('/icons', express.static(path.join(distPath, 'icons'), { maxAge: '7d', etag: true }));
 app.use(express.static(distPath, { maxAge: '1h', etag: true, lastModified: true }));
 
+// ── API 404 handler: always return JSON for unmatched /api/* routes ──
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+});
+
 // SPA fallback
 app.get('/{*path}', (req, res) => {
   res.set({ 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' });

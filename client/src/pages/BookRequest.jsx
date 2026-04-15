@@ -37,6 +37,11 @@ export default function BookRequest() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
+      // Guard against HTML responses (server cold-start or 404)
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Server is starting up — please wait a moment and try again.');
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Submission failed');
       setSubmitted(true);
