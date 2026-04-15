@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Playables SDK -->
+<script>// Playables SDK v1.0.0
+// Game lifecycle bridge: rAF-based game-ready detection + event communication
+(function() {
+  'use strict';
+
+  // Idempotency: skip if already initialized (e.g., server-side injection
+  // followed by client-side inject-javascript via the Bloks webview component).
+  if (window.playablesSDK) return;
+
+  var HANDLER_NAME = 'playablesGameEventHandler';
+  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+  var RAF_FRAME_THRESHOLD = 3;
+
+  var gameReadySent = false;
+  var firstInteractionSent = false;
+  var errorSent = false;
+  var frameCount = 0;
+  var originalRAF = window.requestAnimationFrame;
+
+  // --- Transport Layer ---
+
+  function hasIOSBridge() {
+    return !!(window.webkit &&
+              window.webkit.messageHandlers &&
+              window.webkit.messageHandlers[HANDLER_NAME]);
+  }
+
+  function hasAndroidBridge() {
+    return !!(window[ANDROID_BRIDGE_NAME] &&
+              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
+  }
+
+  function isInIframe() {
+    return !!(window.parent && window.parent !== window);
+  }
+
+  function sendEvent(eventName, payload) {
+    var message = {
+      type: eventName,
+      payload: payload || {},
+      timestamp: Date.now()
+    };
+
+    if (hasIOSBridge()) {
+      try {
+        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
+      } catch (e) { /* ignore */ }
+      return;
+    }
+
+    if (hasAndroidBridge()) {
+    try {
+      var p = payload || {};
+      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
+      window[ANDROID_BRIDGE_NAME].postEvent(
+        eventName,
+        JSON.stringify(p)
+      );
+    } catch (e) { /* ignore */ }
+    return;
+  }
+
+    if (isInIframe()) {
+      try {
+        window.parent.postMessage(message, '*');
+      } catch (e) { /* ignore */ }
+      return;
+    }
+  }
+
+  // --- rAF Game-Ready Detection ---
+
+  function onFrame() {
+    if (gameReadySent) return;
+
+    frameCount++;
+    if (frameCount >= RAF_FRAME_THRESHOLD) {
+      gameReadySent = true;
+      sendEvent('game_ready', {
+        frame_count: frameCount,
+        detected_at: Date.now()
+      });
+      return;
+    }
+
+    originalRAF.call(window, onFrame);
+  }
+
+  if (originalRAF) {
+    window.requestAnimationFrame = function(callback) {
+      if (!gameReadySent) {
+        return originalRAF.call(window, function(timestamp) {
+          frameCount++;
+          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
+            gameReadySent = true;
+            sendEvent('game_ready', {
+              frame_count: frameCount,
+              detected_at: Date.now()
+            });
+          }
+          callback(timestamp);
+        });
+      }
+      return originalRAF.call(window, callback);
+    };
+  }
+
+  // --- First User Interaction Detection ---
+
+  function setupFirstInteractionDetection() {
+    var events = ['touchstart', 'mousedown', 'keydown'];
+
+    function onFirstInteraction() {
+      if (firstInteractionSent) return;
+      firstInteractionSent = true;
+      sendEvent('user_interaction_start', null);
+
+      for (var i = 0; i < events.length; i++) {
+        document.removeEventListener(events[i], onFirstInteraction, true);
+      }
+    }
+
+    for (var i = 0; i < events.length; i++) {
+      document.addEventListener(events[i], onFirstInteraction, true);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+  } else {
+    setupFirstInteractionDetection();
+  }
+
+  // --- Auto Error Capture ---
+
+  window.addEventListener('error', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    sendEvent('error', {
+      message: event.message || 'Unknown error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      auto_captured: true
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    var reason = event.reason;
+    sendEvent('error', {
+      message: (reason instanceof Error) ? reason.message : String(reason),
+      type: 'unhandled_promise_rejection',
+      auto_captured: true
+    });
+  });
+
+  // --- Public API ---
+
+  window.playablesSDK = {
+    complete: function(score) {
+      sendEvent('game_ended', {
+        score: score,
+        completed: true
+      });
+    },
+
+    error: function(message) {
+      if (errorSent) return;
+      errorSent = true;
+      sendEvent('error', {
+        message: message || 'Unknown error',
+        auto_captured: false
+      });
+    },
+
+    sendEvent: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return;
+      sendEvent(eventName, payload);
+    }
+  };
+
+  // Kick off rAF detection in case no game code calls rAF immediately
+  if (originalRAF) {
+    originalRAF.call(window, onFrame);
+  }
+})();</script>
+<script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Polar Bear Snow Catch</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%; overflow:hidden;
+    background:#061426; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+    touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+  }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  
+  #hud {
+    position:absolute; top:0; left:0; right:0; z-index:10;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 16px; padding-top:calc(14px + env(safe-area-inset-top));
+    pointer-events:none; color:#eaf6ff; font-weight:600;
+    text-shadow:0 2px 6px rgba(0,20,40,0.6);
+  }
+  .hud-item {
+    background:rgba(255,255,255,0.08); backdrop-filter:blur(12px);
+    padding:8px 14px; border-radius:16px; border:1px solid rgba(255,255,255,0.12);
+    display:flex; align-items:center; gap:8px; font-size:15px;
+    box-shadow:0 4px 16px rgba(0,10,30,0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+  .hud-item b { font-size:18px; font-variant-numeric:tabular-nums; }
+  .hud-item.lives { gap:4px; font-size:20px; padding:8px 16px; }
+  .hud-item.btn { pointer-events:auto; cursor:pointer; padding:8px 12px; font-size:18px; }
+  .hud-item.btn:active { transform:scale(0.95); }
+  #hud.hidden { display:none; }
+
+  .overlay {
+    position:absolute; inset:0; z-index:20;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: radial-gradient(1200px 600px at 50% 0%, rgba(80,160,255,0.18), transparent 60%),
+                linear-gradient(180deg, rgba(8,22,48,0.92) 0%, rgba(4,12,28,0.96) 100%);
+    color:#eaf6ff; text-align:center; padding:24px;
+    transition:opacity 0.4s ease, visibility 0.4s;
+  }
+  .overlay.hide { opacity:0; visibility:hidden; pointer-events:none; }
+  h1 {
+    font-size:clamp(42px, 9vw, 84px); line-height:0.9; font-weight:900; letter-spacing:1px;
+    margin-bottom:12px; text-transform:uppercase;
+  }
+  h1 span {
+    background:linear-gradient(180deg, #ffffff 0%, #bde4ff 60%, #7bc8ff 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 6px 24px rgba(100,180,255,0.35));
+  }
+  .tag { font-size:clamp(16px,3.5vw,20px); opacity:0.9; margin-bottom:28px; }
+  button {
+    appearance:none; border:none; cursor:pointer;
+    padding:18px 40px; font-size:20px; font-weight:800; letter-spacing:0.5px;
+    color:#06233d; background:linear-gradient(180deg,#c9ecff,#7bc8ff);
+    border-radius:999px; box-shadow:0 10px 30px rgba(80,170,255,0.35), inset 0 2px 0 #fff;
+    transition:transform 0.08s ease;
+  }
+  button:active { transform:translateY(2px) scale(0.98); }
+  button.pulse { animation:pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+
+  .controls-hint { margin-top:18px; font-size:13px; opacity:0.7; }
+  h2 { font-size:48px; margin-bottom:12px; }
+  .final-score, .best-score { font-size:20px; margin:6px 0; opacity:0.9; }
+  .final-score b, .best-score b { font-size:28px; margin-left:8px; }
+
+  #leftZone, #rightZone {
+    position:absolute; top:0; bottom:0; width:50%; z-index:5;
+    touch-action:none;
+  }
+  #leftZone { left:0; } #rightZone { right:0; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="hud-item"><span>Score</span><b id="score">0</b></div>
+  <div class="hud-item lives"><span id="lives">🐾🐾🐾</span></div>
+  <div style="display:flex; gap:8px;">
+    <div class="hud-item"><span>Best</span><b id="best">0</b></div>
+    <div class="hud-item btn" id="muteBtn" title="Sound">🔊</div>
+    <div class="hud-item btn" id="pauseBtn" title="Pause">⏸</div>
+  </div>
+</div>
+
+<div id="startScreen" class="overlay">
+  <h1>POLAR BEAR<br><span>SNOW CATCH</span></h1>
+  <p class="tag">Catch snowflakes, dodge icicles!</p>
+  <button id="playBtn" class="pulse">Tap to Start</button>
+  <div class="controls-hint">Move: ← → or A D • Mobile: tap left/right • P to pause</div>
+</div>
+
+<div id="gameOverScreen" class="overlay hide">
+  <h2>Game Over</h2>
+  <div class="final-score">Score <b id="finalScore">0</b></div>
+  <div class="best-score">Best <b id="finalBest">0</b></div>
+  <button id="againBtn">Play Again</button>
+</div>
+
+<div id="leftZone"></div>
+<div id="rightZone"></div>
+
+<script>
+(() => {
+  // --- Canvas Setup ---
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let W, H, dpr, lastTime = 0;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(dpr, dpr);
+    if (bear) bear.y = H - 70;
+  }
+  window.addEventListener('resize', resize);
+
+  // --- DOM Elements ---
+  const hud = document.getElementById('hud');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const livesEl = document.getElementById('lives');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const muteBtn = document.getElementById('muteBtn');
+  const startScreen = document.getElementById('startScreen');
+  const gameOverScreen = document.getElementById('gameOverScreen');
+  const playBtn = document.getElementById('playBtn');
+  const againBtn = document.getElementById('againBtn');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalBestEl = document.getElementById('finalBest');
+  const leftZone = document.getElementById('leftZone');
+  const rightZone = document.getElementById('rightZone');
+
+  // --- Game State ---
+  let gameState = 'start'; // start, playing, paused, gameover
+  let score = 0, lives = 3, best = parseInt(localStorage.getItem('pbsc_best') || '0');
+  let combo = 0, misses = 0, gameTime = 0, speedMult = 1;
+  let snowflakes = [], icicles = [], particles = [], floats = [], bgSnow = [];
+  let lastSnow = 0, lastIcicle = 0, shake = 0;
+
+  bestEl.textContent = best;
+
+  // Bear
+  const bear = {
+    x: 0, y: 0, vx: 0, waddle: 0, shiver: 0,
+    bucketW: 72, bucketH: 24,
+    movingLeft: false, movingRight: false,
+    speed: 0.5
+  };
+
+  // --- Audio (Web Audio API) ---
+  let audioCtx, masterGain, windNode, muted = false;
+  function ensureAudio() {
+    if (audioCtx) { if (audioCtx.state === 'suspended') audioCtx.resume(); return; }
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = muted ? 0 : 0.6;
+    masterGain.connect(audioCtx.destination);
+    startWind();
+  }
+  function startWind() {
+    const bufferSize = audioCtx.sampleRate * 2;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const out = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      out[i] = (Math.random() * 2 - 1) * 0.03 * Math.exp(-i / bufferSize * 3);
+    }
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer; src.loop = true;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass'; filter.frequency.value = 500;
+    windNode = audioCtx.createGain(); windNode.gain.value = 0.025;
+    src.connect(filter); filter.connect(windNode); windNode.connect(masterGain);
+    src.start();
+  }
+  function playPlink() {
+    if (muted || !audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(850, audioCtx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(1350, audioCtx.currentTime + 0.07);
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, audioCtx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.11);
+    o.connect(g); g.connect(masterGain); o.start(); o.stop(audioCtx.currentTime + 0.12);
+  }
+  function playThunk() {
+    if (muted || !audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(280, audioCtx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(90, audioCtx.currentTime + 0.16);
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
+    o.connect(g); g.connect(masterGain); o.start(); o.stop(audioCtx.currentTime + 0.19);
+  }
+  function playBonus() {
+    if (muted || !audioCtx) return;
+    [0, 0.09, 0.18].forEach(d => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(1000 + d*800, audioCtx.currentTime + d);
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime + d);
+      g.gain.exponentialRampToValueAtTime(0.16, audioCtx.currentTime + d + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + d + 0.08);
+      o.connect(g); g.connect(masterGain); o.start(audioCtx.currentTime + d); o.stop(audioCtx.currentTime + d + 0.09);
+    });
+  }
+  muteBtn.onclick = () => {
+    muted = !muted;
+    if (masterGain) masterGain.gain.value = muted ? 0 : 0.6;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  };
+
+  // --- Background Snow ---
+  function initBgSnow() {
+    bgSnow = [];
+    for (let i = 0; i < 120; i++) {
+      bgSnow.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        size: Math.random() * 2 + 0.5,
+        speed: Math.random() * 0.4 + 0.2,
+        id: i
+      });
+    }
+  }
+
+  // --- Game Functions ---
+  function resetGame() {
+    score = 0; lives = 3; combo = 0; misses = 0; gameTime = 0; speedMult = 1;
+    snowflakes = []; icicles = []; particles = []; floats = [];
+    lastSnow = 0; lastIcicle = 0; shake = 0;
+    bear.x = W / 2; bear.vx = 0; bear.shiver = 0; bear.waddle = 0;
+    updateHUD();
+  }
+  function startGame() {
+    ensureAudio();
+    resetGame();
+    gameState = 'playing';
+    startScreen.classList.add('hide');
+    gameOverScreen.classList.add('hide');
+    hud.classList.remove('hidden');
+  }
+  function endGame() {
+    gameState = 'gameover';
+    hud.classList.add('hidden');
+    finalScoreEl.textContent = score;
+    if (score > best) { best = score; localStorage.setItem('pbsc_best', best); }
+    finalBestEl.textContent = best;
+    bestEl.textContent = best;
+    gameOverScreen.classList.remove('hide');
+  }
+  function loseLife() {
+    lives--; shake = 12; bear.shiver = 700; playThunk();
+    updateHUD();
+    // impact particles
+    for (let i = 0; i < 14; i++) {
+      particles.push({
+        x: bear.x, y: bear.y - 40,
+        vx: (Math.random()-0.5)*5, vy: Math.random()*-3 -1,
+        life: 500, max:500, color:`hsla(220,30%,70%,1)`, size:3
+      });
+    }
+    if (lives <= 0) setTimeout(endGame, 400);
+  }
+  function updateHUD() {
+    scoreEl.textContent = score;
+    livesEl.textContent = '🐾'.repeat(lives) + '·'.repeat(3 - lives).replace(/·/g, '  ');
+  }
+  function togglePause() {
+    if (gameState === 'playing') { gameState = 'paused'; }
+    else if (gameState === 'paused') { gameState = 'playing'; lastTime = performance.now(); }
+  }
+
+  // --- Spawning ---
+  function spawnSnowflake() {
+    snowflakes.push({
+      x: Math.random() * (W - 60) + 30,
+      y: -20,
+      size: 8 + Math.random() * 9,
+      speed: 1.1 + Math.random() * 1.4,
+      rot: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.015,
+      trail: []
+    });
+  }
+  function spawnIcicle() {
+    icicles.push({
+      x: Math.random() * (W - 80) + 40,
+      y: -50,
+      w: 14 + Math.random() * 10,
+      h: 45 + Math.random() * 30,
+      speed: 2.3 + Math.random() * 1.2,
+      sway: Math.random() * Math.PI * 2
+    });
+  }
+
+  // --- Input ---
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === 'p' || e.key === 'P') togglePause();
+    if (e.key === ' ' && gameState === 'start') startGame();
+  });
+  window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+  leftZone.addEventListener('touchstart', e => { e.preventDefault(); bear.movingLeft = true; }, {passive:false});
+  leftZone.addEventListener('touchend', e => { e.preventDefault(); bear.movingLeft = false; });
+  leftZone.addEventListener('touchcancel', () => bear.movingLeft = false);
+  rightZone.addEventListener('touchstart', e => { e.preventDefault(); bear.movingRight = true; }, {passive:false});
+  rightZone.addEventListener('touchend', e => { e.preventDefault(); bear.movingRight = false; });
+  rightZone.addEventListener('touchcancel', () => bear.movingRight = false);
+
+  pauseBtn.onclick = togglePause;
+  playBtn.onclick = startGame;
+  againBtn.onclick = startGame;
+
+  // --- Update Loop ---
+  function update(dt) {
+    if (gameState !== 'playing') return;
+    gameTime += dt;
+    speedMult = 1 + Math.floor(gameTime / 20000) * 0.22;
+
+    // Bear movement
+    let move = 0;
+    if (bear.movingLeft || keys['arrowleft'] || keys['a']) move = -1;
+    if (bear.movingRight || keys['arrowright'] || keys['d']) move = 1;
+    bear.vx = move * 0.42 * dt;
+    bear.x += bear.vx;
+    bear.x = Math.max(60, Math.min(W - 60, bear.x));
+    bear.waddle += dt * 0.008 + Math.abs(move) * 0.008;
+    if (bear.shiver > 0) bear.shiver -= dt;
+
+    // Spawn
+    if (gameTime - lastSnow > 650 / speedMult) { spawnSnowflake(); lastSnow = gameTime; }
+    if (gameTime - lastIcicle > (3000 + Math.random() * 2000) / speedMult) { spawnIcicle(); lastIcicle = gameTime; }
+
+    // Update snowflakes
+    for (let i = snowflakes.length - 1; i >= 0; i--) {
+      const s = snowflakes[i];
+      s.y += s.speed * speedMult * dt * 0.065;
+      s.x += Math.sin(s.y * 0.012 + s.rot) * 0.4;
+      s.rot += s.rotSpeed * dt;
+      s.trail.unshift({x:s.x, y:s.y}); if (s.trail.length > 4) s.trail.pop();
+
+      const bucketY = bear.y - 65;
+      const caught = s.y > bucketY - 12 && s.y < bucketY + 18 && Math.abs(s.x - bear.x) < bear.bucketW / 2 - 4;
+      if (caught) {
+        // catch
+        score++; combo++; misses = 0; playPlink(); updateHUD();
+        for (let p = 0; p < 10; p++) {
+          particles.push({x:s.x, y:s.y, vx:(Math.random()-0.5)*3, vy:Math.random()*-2.5, life:450, max:450, color:'hsla(195,100%,88%,1)', size:2});
+        }
+        if (combo > 0 && combo % 5 === 0) {
+          score += 5; playBonus();
+          floats.push({x:bear.x, y:bucketY - 20, text:'+5 COMBO!', life:1200, color:'#a0e5ff'});
+          updateHUD();
+        }
+        snowflakes.splice(i, 1);
+        continue;
+      }
+      if (s.y > H + 30) {
+        // miss
+        snowflakes.splice(i, 1);
+        combo = 0; misses++;
+        floats.push({x:s.x, y:H-30, text:'miss', life:700, color:'rgba(180,210,230,0.7)'});
+        if (misses >= 3) { misses = 0; loseLife(); }
+      }
+    }
+
+    // Update icicles
+    for (let i = icicles.length - 1; i >= 0; i--) {
+      const ic = icicles[i];
+      ic.y += ic.speed * speedMult * dt * 0.07;
+      ic.sway += dt * 0.002;
+      ic.x += Math.sin(ic.sway) * 0.3;
+      // collision with bear body
+      const dx = ic.x - bear.x, dy = ic.y - (bear.y - 20);
+      if (Math.abs(dx) < 36 && dy > -30 && dy < 30) {
+        icicles.splice(i, 1);
+        loseLife();
+        continue;
+      }
+      if (ic.y > H + 60) icicles.splice(i, 1);
+    }
+
+    // Particles
+    particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.07; p.life -= dt; });
+    particles = particles.filter(p => p.life > 0);
+
+    floats.forEach(f => { f.y -= dt * 0.04; f.life -= dt; });
+    floats = floats.filter(f => f.life > 0);
+
+    // bg snow
+    bgSnow.forEach(s => {
+      s.y += s.speed * dt * 0.05 * speedMult;
+      s.x += Math.sin(s.y * 0.01 + s.id) * 0.15;
+      if (s.y > H) { s.y = -10; s.x = Math.random() * W; }
+    });
+
+    if (shake > 0) shake = Math.max(0, shake - dt * 0.04);
+  }
+
+  // --- Drawing ---
+  function drawBackground() {
+    // deep twilight
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#071a33'); g.addColorStop(0.5, '#0d2a52'); g.addColorStop(1, '#0a1f3f');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    // aurora
+    ctx.save(); ctx.globalCompositeOperation = 'screen';
+    for (let i = 0; i < 3; i++) {
+      const yBase = H * 0.18 + i * 50;
+      const amp = 35 + Math.sin(gameTime * 0.0004 + i) * 12;
+      const grad = ctx.createLinearGradient(0, yBase - 60, 0, yBase + 60);
+      const hue = 195 + i * 25;
+      grad.addColorStop(0, `hsla(${hue},80%,70%,0)`);
+      grad.addColorStop(0.5, `hsla(${hue+10},90%,68%,0.28)`);
+      grad.addColorStop(1, `hsla(${hue+20},80%,70%,0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.moveTo(0, yBase);
+      for (let x = 0; x <= W; x += 18) {
+        const y = yBase + Math.sin(x * 0.008 + gameTime * 0.0003 + i) * amp + Math.cos(x * 0.004 - gameTime * 0.0002) * 18;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H * 0.45); ctx.lineTo(0, H * 0.45); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    // ground snow
+    const groundGrad = ctx.createLinearGradient(0, H - 120, 0, H);
+    groundGrad.addColorStop(0, 'rgba(200,230,255,0)');
+    groundGrad.addColorStop(1, 'rgba(200,230,255,0.25)');
+    ctx.fillStyle = groundGrad; ctx.fillRect(0, H - 120, W, 120);
+  }
+
+  function drawSnowflake(s) {
+    // trail
+    s.trail.forEach((t, i) => {
+      ctx.globalAlpha = (1 - i / s.trail.length) * 0.15;
+      ctx.beginPath(); ctx.arc(t.x, t.y, s.size * 0.4, 0, Math.PI * 2); ctx.fillStyle = '#cfeaff'; ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot);
+    ctx.shadowBlur = 14; ctx.shadowColor = '#9ed8ff';
+    ctx.strokeStyle = 'rgba(225,245,255,0.95)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      ctx.rotate(Math.PI / 3);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -s.size); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -s.size * 0.6); ctx.lineTo(-3, -s.size * 0.8); ctx.moveTo(0, -s.size * 0.6); ctx.lineTo(3, -s.size * 0.8); ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawIcicle(ic) {
+    ctx.save(); ctx.translate(ic.x, ic.y);
+    ctx.rotate(Math.sin(ic.sway * 0.5) * 0.1);
+    const grad = ctx.createLinearGradient(0, -ic.h, 0, 10);
+    grad.addColorStop(0, '#162e5c'); grad.addColorStop(1, '#0b1a33');
+    ctx.fillStyle = grad; ctx.strokeStyle = '#071427'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-ic.w * 0.5, -ic.h + 8);
+    ctx.lineTo(-ic.w * 0.2, -ic.h * 0.6);
+    ctx.lineTo(-ic.w * 0.4, -ic.h * 0.3);
+    ctx.lineTo(0, 6);
+    ctx.lineTo(ic.w * 0.4, -ic.h * 0.35);
+    ctx.lineTo(ic.w * 0.25, -ic.h * 0.65);
+    ctx.lineTo(ic.w * 0.5, -ic.h + 10);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // highlight
+    ctx.strokeStyle = 'rgba(180,220,255,0.25)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-2, -ic.h + 12); ctx.lineTo(0, 0); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBear(x, y, waving = false) {
+    ctx.save(); ctx.translate(x, y);
+    if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    if (bear.shiver > 0) ctx.translate((Math.random() - 0.5) * 4, 0);
+    const waddle = Math.sin(bear.waddle * (waving ? 0.5 : 1)) * (waving ? 0.04 : 0.07);
+    ctx.rotate(waddle);
+
+    // shadow
+    ctx.fillStyle = 'rgba(0,15,40,0.25)'; ctx.beginPath(); ctx.ellipse(0, 38, 42, 11, 0, 0, Math.PI * 2); ctx.fill();
+
+    // body
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#d8e9f8'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 2, 38, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    // head
+    ctx.beginPath(); ctx.arc(0, -44, 26, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    // ears
+    ctx.beginPath(); ctx.arc(-16, -66, 8.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(16, -66, 8.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#f0f7ff'; ctx.beginPath(); ctx.arc(-16, -66, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(16, -66, 5, 0, Math.PI * 2); ctx.fill();
+
+    // eyes
+    ctx.fillStyle = '#14233e';
+    ctx.beginPath(); ctx.arc(-8, -48, 3.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8, -48, 3.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(-7, -49.5, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(9, -49.5, 1.2, 0, Math.PI * 2); ctx.fill();
+
+    // nose
+    ctx.fillStyle = '#0f1b2d'; ctx.beginPath(); ctx.ellipse(0, -40, 4.8, 3.6, 0, 0, Math.PI * 2); ctx.fill();
+    // smile
+    ctx.strokeStyle = '#b8cfe6'; ctx.lineWidth = 1.6; ctx.beginPath();
+    ctx.arc(0, -36, 7, 0.25, Math.PI - 0.25); ctx.stroke();
+
+    // arms
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 11; ctx.lineCap = 'round';
+    if (waving) {
+      const wave = Math.sin(gameTime * 0.008) * 0.6;
+      ctx.save(); ctx.translate(-22, -12); ctx.rotate(-0.6 + wave * 0.3);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-2, -26); ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.beginPath(); ctx.moveTo(-22, -8); ctx.lineTo(-17, -34); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(22, -8); ctx.lineTo(17, -34); ctx.stroke();
+
+    // bucket
+    ctx.translate(0, -64);
+    ctx.fillStyle = '#8a5a2e'; ctx.strokeStyle = '#5a3a1c'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-36, -4); ctx.lineTo(-30, 20); ctx.lineTo(30, 20); ctx.lineTo(36, -4); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#a96f39'; ctx.fillRect(-37, -8, 74, 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(-30, 2, 60, 4);
+    // inner snow
+    ctx.fillStyle = 'rgba(210,235,255,0.85)'; ctx.beginPath(); ctx.ellipse(0, 0, 28, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+
+    // bg snow
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    bgSnow.forEach(s => {
+      ctx.globalAlpha = 0.25 + s.size * 0.12;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // game objects
+    snowflakes.forEach(drawSnowflake);
+    icicles.forEach(drawIcicle);
+
+    // particles
+    particles.forEach(p => {
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      ctx.fillStyle = p.color; ctx.shadowBlur = 8; ctx.shadowColor = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size || 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+    ctx.globalAlpha = 1;
+
+    // floats
+    ctx.font = '700 18px system-ui'; ctx.textAlign = 'center';
+    floats.forEach(f => {
+      ctx.globalAlpha = Math.min(1, f.life / 600);
+      ctx.fillStyle = f.color || '#fff'; ctx.shadowColor = 'rgba(0,40,80,0.8)'; ctx.shadowBlur = 6;
+      ctx.fillText(f.text, f.x, f.y);
+    });
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+
+    // bear
+    if (gameState === 'start') {
+      drawBear(W / 2, H - 70, true);
+      // waving hand sparkle
+      ctx.fillStyle = 'rgba(180,230,255,0.8)';
+      const wx = W/2 - 38, wy = H - 120 + Math.sin(gameTime*0.008)*4;
+      ctx.beginPath(); ctx.arc(wx, wy, 3, 0, Math.PI*2); ctx.fill();
+    } else {
+      drawBear(bear.x, bear.y, false);
+    }
+
+    // paused overlay
+    if (gameState === 'paused') {
+      ctx.fillStyle = 'rgba(3,12,28,0.6)'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#eaf6ff'; ctx.font = '800 36px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText('PAUSED', W / 2, H / 2);
+      ctx.font = '400 16px system-ui'; ctx.globalAlpha = 0.8;
+      ctx.fillText('Tap ▶ or press P to resume', W / 2, H / 2 + 40); ctx.globalAlpha = 1;
+    }
+  }
+
+  // --- Main Loop ---
+  function loop(t) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(33, t - lastTime || 16);
+    lastTime = t;
+    update(dt);
+    draw();
+  }
+
+  // --- Init ---
+  resize(); initBgSnow(); bear.x = W / 2; bear.y = H - 70;
+  loop(0);
+
+  // Start screen tap anywhere
+  startScreen.addEventListener('click', e => { if (e.target.id === 'startScreen') startGame(); });
+
+})();
+</script>
+</body>
+</html>

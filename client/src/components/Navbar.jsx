@@ -36,6 +36,7 @@ export default function Navbar({ onMenuToggle }) {
             <Link to="/gallery" className="nav-link">Gallery</Link>
             <Link to="/reviews" className="nav-link">Reviews</Link>
             <Link to="/pay" className="nav-link">Pay</Link>
+            <Link to="/play" className="nav-link" style={{ color: '#7bc8ff', fontWeight: 700 }}>❄️ Play</Link>
             <Link to="/register" className="nav-link">Sign Up</Link>
             <Link to="/login" className="nav-link">Login</Link>
           </>
@@ -50,6 +51,7 @@ export default function Navbar({ onMenuToggle }) {
             <Link to="/client/referrals" className="nav-link">Referrals</Link>
             <Link to="/client/book" className="nav-link">Book</Link>
             <Link to="/pay" className="nav-link">Pay</Link>
+            <Link to="/play" className="nav-link" style={{ color: '#7bc8ff', fontWeight: 700 }}>❄️ Play</Link>
           </>
         )}
         {user && (

@@ -20,6 +20,7 @@ const SignContract = lazy(() => import('./pages/SignContract'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PortalSetup = lazy(() => import('./pages/PortalSetup'));
 const Apply = lazy(() => import('./pages/Apply'));
+const PolarBearGame = lazy(() => import('./pages/PolarBearGame'));
 
 // Admin pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
@@ -191,6 +192,7 @@ export default function App() {
             <Route path="/portal-setup/:token" element={<PortalSetup />} />
             <Route path="/book-request" element={<BookRequest />} />
             <Route path="/apply" element={<Apply />} />
+            <Route path="/play" element={<PolarBearGame />} />
           </Route>
 
           {/* Admin + Manager routes */}
