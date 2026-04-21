@@ -133,7 +133,10 @@ export default function BookService() {
             <select name="service_id" value={form.service_id} onChange={handle} required className="form-control">
               <option value="">Select a service…</option>
               {services.map(s => (
-                <option key={s.id} value={s.id}>{s.name}{s.price > 0 ? ` — $${s.price}` : ''}</option>
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.starting_price ? ` (Starting at ${s.starting_price})` : (s.price > 0 ? ` — $${s.price}` : '')}
+                </option>
               ))}
             </select>
           </div>

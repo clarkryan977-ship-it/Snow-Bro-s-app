@@ -33,10 +33,15 @@ async function initDB() {
       name TEXT NOT NULL UNIQUE,
       description TEXT DEFAULT '',
       price REAL DEFAULT 0,
+      starting_price TEXT DEFAULT '',
       active INTEGER DEFAULT 1,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  // Migration: add starting_price column if it doesn't exist
+  await db.query(`
+    ALTER TABLE services ADD COLUMN IF NOT EXISTS starting_price TEXT DEFAULT '';
+  `).catch(() => {});
 
   // Clients
   await db.query(`

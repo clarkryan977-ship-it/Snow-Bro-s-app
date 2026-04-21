@@ -4,7 +4,24 @@ import SocialLinks from '../components/SocialLinks';
 
 const GOOGLE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJTl55Hg2qT4cR3iZyb4-KV1Q';
 
-const SERVICES = [
+const SERVICE_ICONS = {
+  'Snow Removal': '❄️',
+  'Lawn Mowing': '🌿',
+  'Aeration & Dethatching': '🌱',
+  'Spring & Fall Cleanup': '🍂',
+  'Tree & Shrub Trimming': '✂️',
+  'Ice Management': '🧂',
+  'Parking Lot Plowing': '🅿️',
+  'Junk Removal': '🚛',
+  'Gutter Cleaning': '🍃',
+  'Dethatching': '🌱',
+  'Aeration': '🌱',
+  'Landscaping/Cleanup': '🍂',
+  'Leaf Removal': '🍂',
+  'General Cleanup': '🍂',
+};
+
+const DEFAULT_SERVICES = [
   { icon: '❄️', name: 'Snow Removal' },
   { icon: '🌿', name: 'Lawn Mowing' },
   { icon: '🌱', name: 'Aeration & Dethatching' },
@@ -146,6 +163,26 @@ function WeatherWidget() {
 }
 
 export default function Home() {
+  const [services, setServices] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/services')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (data && data.length > 0) {
+          const mapped = data.map(s => ({
+            ...s,
+            icon: SERVICE_ICONS[s.name] || '🛠️',
+            note: s.starting_price ? `Starting at ${s.starting_price}` : null
+          }));
+          setServices(mapped);
+        } else {
+          setServices(DEFAULT_SERVICES);
+        }
+      })
+      .catch(() => setServices(DEFAULT_SERVICES));
+  }, []);
+
   return (
     <div>
       {/* ── Hero ─────────────────────────────────────────────────── */}
@@ -206,8 +243,8 @@ export default function Home() {
           Residential &amp; commercial services, every season
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
-          {SERVICES.map(s => (
-            <div key={s.name} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem 1rem', textAlign: 'center' }}>
+          {services.map(s => (
+            <div key={s.id || s.name} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem 1rem', textAlign: 'center' }}>
               <div style={{ fontSize: '1.75rem', marginBottom: '.4rem' }}>{s.icon}</div>
               <div style={{ fontWeight: 600, fontSize: '.9rem', color: '#1e3a5f' }}>{s.name}</div>
               {s.note && <div style={{ fontSize: '.75rem', color: '#16a34a', fontWeight: 600, marginTop: '.2rem' }}>{s.note}</div>}

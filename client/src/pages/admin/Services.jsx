@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 
-const EMPTY = { name:'', description:'', price:0, active:1 };
+const EMPTY = { name:'', description:'', price:0, starting_price:'', active:1 };
 
 export default function AdminServices() {
   const [services, setServices] = useState([]);
@@ -45,13 +45,14 @@ export default function AdminServices() {
       <div className="card">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Service</th><th>Description</th><th>Price</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Service</th><th>Description</th><th>Price</th><th>Starting Price</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {services.map(s => (
                 <tr key={s.id}>
                   <td><strong>{s.name}</strong></td>
                   <td style={{ color:'var(--gray-500)', fontSize:'.88rem' }}>{s.description}</td>
                   <td>${Number(s.price).toFixed(2)}</td>
+                  <td style={{ fontWeight: 600, color: '#16a34a' }}>{s.starting_price ? `Starting at ${s.starting_price}` : '—'}</td>
                   <td><span className={`badge ${s.active ? 'badge-green' : 'badge-gray'}`}>{s.active ? 'Active' : 'Inactive'}</span></td>
                   <td>
                     <div style={{ display:'flex', gap:'.4rem' }}>
@@ -79,7 +80,10 @@ export default function AdminServices() {
               <form onSubmit={save}>
                 <div className="form-group"><label>Service Name *</label><input name="name" value={form.name} onChange={handle} required className="form-control" /></div>
                 <div className="form-group"><label>Description</label><textarea name="description" value={form.description} onChange={handle} className="form-control" /></div>
-                <div className="form-group"><label>Starting Price ($)</label><input type="number" name="price" value={form.price} onChange={handle} min="0" step="0.01" className="form-control" /></div>
+                <div className="form-row">
+                  <div className="form-group"><label>Internal Price ($)</label><input type="number" name="price" value={form.price} onChange={handle} min="0" step="0.01" className="form-control" /></div>
+                  <div className="form-group"><label>Public Starting Price (e.g. $65)</label><input name="starting_price" value={form.starting_price} onChange={handle} placeholder="$65" className="form-control" /></div>
+                </div>
                 <div style={{ display:'flex', gap:'.75rem', justifyContent:'flex-end' }}>
                   <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? <span className="spinner" /> : 'Save'}</button>
