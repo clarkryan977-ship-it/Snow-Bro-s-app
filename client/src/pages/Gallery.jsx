@@ -2,33 +2,28 @@ import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import SiteFooter from '../components/SiteFooter';
 
-// Facebook Reel embed — loads the FB SDK once
-function FacebookReel({ url }) {
-  useEffect(() => {
-    // Load Facebook SDK if not already loaded
-    if (!window.FB) {
-      const script = document.createElement('script');
-      script.src = 'https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v18.0';
-      script.async = true;
-      script.defer = true;
-      script.crossOrigin = 'anonymous';
-      document.body.appendChild(script);
-    } else {
-      window.FB.XFBML.parse();
-    }
-  }, []);
-
+// Self-hosted HTML5 video player
+function SnowBrosReel() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', margin: '0 auto 2rem' }}>
-      <div
-        className="fb-video"
-        data-href={url}
-        data-width="500"
-        data-show-text="false"
-        data-autoplay="false"
-        data-allowfullscreen="true"
-        style={{ maxWidth: '100%' }}
-      />
+      <video
+        src="/snowbros-reel.mp4"
+        controls
+        autoPlay
+        muted
+        playsInline
+        loop
+        style={{
+          width: '100%',
+          maxWidth: 500,
+          borderRadius: 12,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+          background: '#000',
+          display: 'block',
+        }}
+      >
+        Your browser does not support the video tag.
+      </video>
     </div>
   );
 }
@@ -65,8 +60,7 @@ export default function Gallery() {
         <h2 style={{ textAlign: 'center', fontSize: '1.2rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--navy)' }}>
           🎬 Snow Bro's in Action
         </h2>
-        <div id="fb-root" />
-        <FacebookReel url="https://www.facebook.com/share/r/1GaVkM8Lj1/" />
+        <SnowBrosReel />
       </div>
 
       <div className="container" style={{ padding: '2.5rem 1rem' }}>
