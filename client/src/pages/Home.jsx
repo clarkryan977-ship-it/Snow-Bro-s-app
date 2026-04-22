@@ -5,20 +5,53 @@ import SocialLinks from '../components/SocialLinks';
 const GOOGLE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJTl55Hg2qT4cR3iZyb4-KV1Q';
 
 const SERVICE_ICONS = {
+  // Snow / Winter
   'Snow Removal': '❄️',
-  'Lawn Mowing': '🌿',
-  'Aeration & Dethatching': '🌱',
-  'Spring & Fall Cleanup': '🍂',
-  'Tree & Shrub Trimming': '✂️',
+  'Parking Lot Snow Removal': '🚜',
+  'Ice Management & De-Icing': '🧂',
   'Ice Management': '🧂',
-  'Parking Lot Plowing': '🅿️',
-  'Junk Removal': '🚛',
-  'Gutter Cleaning': '🍃',
-  'Dethatching': '🌱',
+  'Seasonal Service Contract': '📋',
+  // Lawn / Grass
+  'Grass Mowing': '🌿',
+  'Lawn Mowing': '🌿',
+  'Grass border trimming': '✂️',
+  'Grass border trimming ': '✂️',
+  'Dethatching': '🌾',
   'Aeration': '🌱',
+  'Aeration & Dethatching': '🌱',
+  'Sod instalation': '🟩',
+  'Sod instalation ': '🟩',
+  // Trees / Plants
+  'Tree Trimming': '🌳',
+  'Tree & Shrub Trimming': '🌳',
+  'Tree planting': '🌲',
+  'Tree planting ': '🌲',
+  // Cleanup
+  'Spring Cleanup': '🌸',
+  'Fall Cleanup': '🍂',
+  'Spring & Fall Cleanup': '🍂',
   'Landscaping/Cleanup': '🍂',
-  'Leaf Removal': '🍂',
-  'General Cleanup': '🍂',
+  'Leaf Removal': '🍁',
+  'General Cleanup': '🧹',
+  // Gutters / Exterior
+  'Gutter Cleaning': '🏠',
+  'Pressure Washing': '💧',
+  'Pressure Washing ': '💧',
+  // Commercial / HOA
+  'Commercial Lawn Care': '🏢',
+  'Commercial Property Maintenance': '🏗️',
+  'HOA Lawn & Snow Services': '🏘️',
+  // Hauling / Junk
+  'Junk Removal': '🚛',
+  'Junk Removal / Construction Clean-Up': '🚛',
+  'Hauling Conpost': '♻️',
+  'Hauling Compost': '♻️',
+  // Misc
+  'Box building': '📦',
+  'Box building ': '📦',
+  'Estimates': '📝',
+  'Estimates ': '📝',
+  'Misc': '🔧',
 };
 
 const DEFAULT_SERVICES = [
@@ -172,7 +205,7 @@ export default function Home() {
         if (data && data.length > 0) {
           const mapped = data.map(s => ({
             ...s,
-            icon: SERVICE_ICONS[s.name] || '🛠️',
+            icon: SERVICE_ICONS[s.name] || SERVICE_ICONS[s.name?.trim()] || '🛠️',
             note: s.starting_price ? `Starting at ${s.starting_price}` : null
           }));
           setServices(mapped);
