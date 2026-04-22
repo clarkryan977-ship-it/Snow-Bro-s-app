@@ -12,8 +12,8 @@ const SERVICE_ICONS = {
   'Ice Management': '🧂',
   'Seasonal Service Contract': '📋',
   // Lawn / Grass
-  'Grass Mowing': '🌿',
-  'Lawn Mowing': '🌿',
+  'Grass Mowing': '🏡',
+  'Lawn Mowing': '🏡',
   'Grass border trimming': '✂️',
   'Grass border trimming ': '✂️',
   'Dethatching': '🌾',
@@ -34,12 +34,12 @@ const SERVICE_ICONS = {
   'Leaf Removal': '🍁',
   'General Cleanup': '🧹',
   // Gutters / Exterior
-  'Gutter Cleaning': '🏠',
+  'Gutter Cleaning': '🍃',
   'Pressure Washing': '💧',
   'Pressure Washing ': '💧',
   // Commercial / HOA
   'Commercial Lawn Care': '🏢',
-  'Commercial Property Maintenance': '🏗️',
+  'Commercial Property Maintenance': '🔧',
   'HOA Lawn & Snow Services': '🏘️',
   // Hauling / Junk
   'Junk Removal': '🚛',
@@ -49,8 +49,9 @@ const SERVICE_ICONS = {
   // Misc
   'Box building': '📦',
   'Box building ': '📦',
-  'Estimates': '📝',
-  'Estimates ': '📝',
+  // Estimates intentionally excluded from public homepage
+  'Estimates': null,
+  'Estimates ': null,
   'Misc': '🔧',
 };
 
@@ -203,11 +204,15 @@ export default function Home() {
       .then(r => r.ok ? r.json() : [])
       .then(data => {
         if (data && data.length > 0) {
-          const mapped = data.map(s => ({
-            ...s,
-            icon: SERVICE_ICONS[s.name] || SERVICE_ICONS[s.name?.trim()] || '🛠️',
-            note: s.starting_price ? `Starting at ${s.starting_price}` : null
-          }));
+          // Filter out internal/admin-only services and inactive ones
+          const HIDDEN_SERVICES = ['Estimates', 'Estimates ', 'Misc', 'Box building', 'Box building '];
+          const mapped = data
+            .filter(s => s.active !== 0 && !HIDDEN_SERVICES.includes(s.name))
+            .map(s => ({
+              ...s,
+              icon: SERVICE_ICONS[s.name] || SERVICE_ICONS[s.name?.trim()] || '🛠️',
+              note: s.starting_price && s.starting_price.trim() ? `Starting at ${s.starting_price.trim()}` : null
+            }));
           setServices(mapped);
         } else {
           setServices(DEFAULT_SERVICES);
