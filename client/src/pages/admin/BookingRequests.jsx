@@ -48,6 +48,37 @@ export default function AdminBookingRequests() {
     } catch { alert('Failed to delete'); }
   };
 
+  const [savingClient, setSavingClient] = useState({});
+
+  const saveAsClient = async (req) => {
+    setSavingClient(s => ({ ...s, [req.id]: 'saving' }));
+    try {
+      // Parse name into first/last
+      const nameParts = (req.name || '').trim().split(' ');
+      const first_name = nameParts[0] || req.name || 'Unknown';
+      const last_name = nameParts.slice(1).join(' ') || '.';
+      // Parse address
+      const addrParts = (req.address || '').split(',').map(p => p.trim());
+      await api.post('/clients', {
+        first_name,
+        last_name,
+        email: req.email || '',
+        phone: req.phone || '',
+        address: addrParts[0] || req.address || '',
+        city: req.city || addrParts[1] || '',
+        state: req.state || addrParts[2] || '',
+        zip: req.zip || addrParts[3] || '',
+        notes: `Added from booking request #${req.id}${req.service_type ? ` — ${req.service_type}` : ''}`,
+        active: 0,
+      });
+      setSavingClient(s => ({ ...s, [req.id]: 'saved' }));
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to save client';
+      alert(msg);
+      setSavingClient(s => ({ ...s, [req.id]: null }));
+    }
+  };
+
   const newCount = requests.filter(r => r.status === 'new').length;
 
   const filterBtnStyle = (active) => ({
@@ -178,7 +209,18 @@ export default function AdminBookingRequests() {
                           {STATUS_COLORS[s].label}
                         </button>
                       ))}
-                      <div style={{ marginLeft: 'auto' }}>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                        {savingClient[req.id] === 'saved' ? (
+                          <span style={{ background: '#d1fae5', color: '#065f46', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 700 }}>✅ Saved to Clients</span>
+                        ) : (
+                          <button
+                            onClick={() => saveAsClient(req)}
+                            disabled={savingClient[req.id] === 'saving'}
+                            style={{ background: '#dbeafe', color: '#1e40af', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+                          >
+                            {savingClient[req.id] === 'saving' ? '⏳ Saving…' : '👤 Save as New Client'}
+                          </button>
+                        )}
                         <button
                           onClick={() => deleteRequest(req.id)}
                           style={{ background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}

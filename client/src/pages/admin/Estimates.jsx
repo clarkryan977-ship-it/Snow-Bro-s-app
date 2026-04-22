@@ -27,9 +27,37 @@ export default function AdminEstimates() {
   const [err, setErr] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [saveClientStatus, setSaveClientStatus] = useState(null); // null | 'saving' | 'saved'
 
   const location = useLocation();
   const prefill = location.state?.prefill || null;
+
+  const saveEstimateAsClient = async (est) => {
+    setSaveClientStatus('saving');
+    try {
+      const nameParts = (est.customer_name || '').trim().split(' ');
+      const first_name = nameParts[0] || 'Unknown';
+      const last_name = nameParts.slice(1).join(' ') || '.';
+      const addrParts = (est.customer_address || '').split(',').map(p => p.trim());
+      await api.post('/clients', {
+        first_name,
+        last_name,
+        email: est.customer_email || '',
+        phone: est.customer_phone || '',
+        address: addrParts[0] || '',
+        city: addrParts[1] || '',
+        state: addrParts[2] || '',
+        zip: addrParts[3] || '',
+        notes: `Added from estimate ${est.estimate_number}`,
+        active: 0,
+      });
+      setSaveClientStatus('saved');
+      await load();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to save client');
+      setSaveClientStatus(null);
+    }
+  };
 
   const [form, setForm] = useState({
     client_id: '', customer_name: '', customer_email: '', customer_phone: '',
@@ -111,6 +139,7 @@ export default function AdminEstimates() {
 
   async function openView(id) {
     try {
+      setSaveClientStatus(null);
       const { data } = await api.get(`/estimates/${id}`);
       setViewEst(data);
       setPreviewUrl('');
@@ -475,6 +504,20 @@ export default function AdminEstimates() {
               <button className="btn btn-primary" onClick={() => emailEst(viewEst.id)} disabled={emailLoading || !viewEst.customer_email}>
                 {emailLoading ? <span className="spinner" /> : '📧 Email to Customer'}
               </button>
+              {!viewEst.client_id && (
+                saveClientStatus === 'saved' ? (
+                  <span style={{ background: '#d1fae5', color: '#065f46', borderRadius: 8, padding: '6px 12px', fontSize: '.88rem', fontWeight: 700 }}>✅ Saved to Clients</span>
+                ) : (
+                  <button
+                    className="btn btn-outline"
+                    style={{ background: '#dbeafe', color: '#1e40af', border: 'none' }}
+                    onClick={() => saveEstimateAsClient(viewEst)}
+                    disabled={saveClientStatus === 'saving'}
+                  >
+                    {saveClientStatus === 'saving' ? '⏳ Saving…' : '👤 Save as New Client'}
+                  </button>
+                )
+              )}
               {viewEst.status !== 'accepted' && (
                 <button className="btn btn-outline" onClick={() => { setViewEst(null); setConvertModal(viewEst); setConvertClientId(viewEst.client_id ? String(viewEst.client_id) : ''); }}>
                   → Convert to Invoice
