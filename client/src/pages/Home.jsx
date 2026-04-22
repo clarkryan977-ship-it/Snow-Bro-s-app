@@ -10,7 +10,7 @@ const SERVICE_ICONS = {
   'Parking Lot Snow Removal': '🚜',
   'Ice Management & De-Icing': '🧂',
   'Ice Management': '🧂',
-  'Seasonal Service Contract': '📋',
+  'Seasonal Service Contract': '🗓️',
   // Lawn / Grass
   'Grass Mowing': '🏡',
   'Lawn Mowing': '🏡',
@@ -19,8 +19,8 @@ const SERVICE_ICONS = {
   'Dethatching': '🌾',
   'Aeration': '🌱',
   'Aeration & Dethatching': '🌱',
-  'Sod instalation': '🟩',
-  'Sod instalation ': '🟩',
+  'Sod instalation': '🌱',
+  'Sod instalation ': '🌱',
   // Trees / Plants
   'Tree Trimming': '🌳',
   'Tree & Shrub Trimming': '🌳',
@@ -35,8 +35,8 @@ const SERVICE_ICONS = {
   'General Cleanup': '🧹',
   // Gutters / Exterior
   'Gutter Cleaning': '🍃',
-  'Pressure Washing': '💧',
-  'Pressure Washing ': '💧',
+  'Pressure Washing': '🚿',
+  'Pressure Washing ': '🚿',
   // Commercial / HOA
   'Commercial Lawn Care': '🏢',
   'Commercial Property Maintenance': '🔧',
