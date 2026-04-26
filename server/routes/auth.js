@@ -63,16 +63,20 @@ router.post('/register', async (req, res) => {
     let linked = false;
 
     if (existing.length > 0) {
-      // Email already in system — check if any record already has a portal account
-      const alreadyHasAccount = existing.find(c => c.password_hash);
-      if (alreadyHasAccount) {
+      // Pick the primary record: prefer the one that already has a password set,
+      // otherwise use the first (lowest id) record.
+      const withPassword = existing.find(c => c.password_hash);
+      const primary = withPassword || existing[0];
+
+      if (withPassword) {
+        // A portal account already exists — block and tell them to sign in / reset
         return res.status(409).json({
           error: 'account_exists',
-          message: 'An account already exists for this email. Please sign in instead, or use Forgot Password to reset your password.'
+          message: 'An account already exists for this email. Please sign in instead, or use Forgot Password if you forgot your password.'
         });
       }
-      // Link portal account to the primary (first) existing record
-      const primary = existing[0];
+
+      // No password set yet — this is a first-time portal activation for an existing client
       await req.db.query(
         'UPDATE clients SET password_hash=$1, active=1 WHERE id=$2',
         [password_hash, primary.id]
