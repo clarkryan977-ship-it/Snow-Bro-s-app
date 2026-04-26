@@ -177,9 +177,21 @@ export default function Login() {
         </form>
 
         {tab === 'client' && (
-          <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '.88rem', color: 'var(--gray-500)' }}>
-            No account? <Link to="/register">Create one free</Link>
-          </p>
+          <div style={{ textAlign: 'center', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--gray-200)' }}>
+            <p style={{ fontSize: '.88rem', color: 'var(--gray-500)', margin: '0 0 .6rem' }}>
+              New here, or already a Snow Bro's customer?
+            </p>
+            <Link
+              to="/register"
+              className="btn btn-secondary btn-block"
+              style={{ display: 'block', textAlign: 'center' }}
+            >
+              ✨ Create a Portal Account
+            </Link>
+            <p style={{ fontSize: '.78rem', color: 'var(--gray-400)', margin: '.5rem 0 0' }}>
+              Existing customers: use your email on file to link your account.
+            </p>
+          </div>
         )}
       </div>
     </div>

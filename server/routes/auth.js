@@ -38,21 +38,71 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Client registration
+// Client self-registration
+// Smart linking: if the email already exists as a client record (added by admin),
+// we set the password on that record instead of creating a duplicate.
+// If the email already has a portal account (password_hash set), return 409.
 router.post('/register', async (req, res) => {
   try {
     const { first_name, last_name, email, phone, address, city, state, zip, password } = req.body;
-    if (!first_name || !last_name || !email) {
-      return res.status(400).json({ error: 'First name, last name, and email are required' });
+    if (!first_name || !last_name || !email || !password) {
+      return res.status(400).json({ error: 'First name, last name, email, and password are required' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const password_hash = bcrypt.hashSync(password, 12);
+
+    // Check for existing client records with this email
+    const { rows: existing } = await req.db.query(
+      'SELECT * FROM clients WHERE LOWER(email) = LOWER($1) ORDER BY id',
+      [email]
+    );
+
+    let client;
+    let linked = false;
+
+    if (existing.length > 0) {
+      // Email already in system — check if any record already has a portal account
+      const alreadyHasAccount = existing.find(c => c.password_hash);
+      if (alreadyHasAccount) {
+        return res.status(409).json({
+          error: 'account_exists',
+          message: 'An account already exists for this email. Please sign in instead, or use Forgot Password to reset your password.'
+        });
+      }
+      // Link portal account to the primary (first) existing record
+      const primary = existing[0];
+      await req.db.query(
+        'UPDATE clients SET password_hash=$1, active=1 WHERE id=$2',
+        [password_hash, primary.id]
+      );
+      client = { ...primary, password_hash };
+      linked = true;
+    } else {
+      // Brand-new client — create a record
+      const result = await req.db.query(
+        'INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, password_hash, active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1) RETURNING *',
+        [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', password_hash]
+      );
+      client = result.rows[0];
     }
 
-    // Note: duplicate emails are allowed (one record per property).
-    // We do NOT block registration if the email already exists.
-    const password_hash = password ? bcrypt.hashSync(password, 10) : null;
-
-    const result = await req.db.query('INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', [first_name, last_name, email, phone || '', address || '', city || '', state || '', zip || '', password_hash]);
-
-    res.status(201).json({ id: result.rows[0].id, message: 'Registration successful' });
+    // Issue JWT so the client is immediately logged in after registration
+    const token = jwt.sign(
+      { id: client.id, email: client.email, role: 'client', name: `${client.first_name} ${client.last_name}` },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    res.status(201).json({
+      id: client.id,
+      token,
+      user: { id: client.id, email: client.email, role: 'client', name: `${client.first_name} ${client.last_name}` },
+      linked,
+      message: linked
+        ? `Welcome back, ${client.first_name}! Your portal account is now active.`
+        : `Account created! Welcome to the Snow Bro's portal.`
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
