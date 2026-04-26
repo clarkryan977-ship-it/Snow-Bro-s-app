@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOGO_URL = 'https://prosnowbros.com/logo.jpg';
+const LOGO_URL = 'https://snowbros-production.up.railway.app/logo.jpg';
 
 // Load logo as inline base64 for watermark (works regardless of external URL availability)
 let LOGO_B64 = '';
