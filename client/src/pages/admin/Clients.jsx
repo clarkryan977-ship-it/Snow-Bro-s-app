@@ -33,6 +33,7 @@ export default function AdminClients() {
   });
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [dupWarning, setDupWarning] = useState(null); // { existing: [...], pendingForm: {...} }
 
   // Inline email editing state
   const [emailEdit, setEmailEdit] = useState(null);
@@ -67,10 +68,35 @@ export default function AdminClients() {
   const handle   = e  => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
   const save = async e => {
-    e.preventDefault(); setLoading(true); setMsg(null);
+    e.preventDefault(); setLoading(true); setMsg(null); setDupWarning(null);
     try {
-      if (modal === 'add') await api.post('/clients', form);
-      else await api.put(`/clients/${modal.id}`, form);
+      if (modal === 'add') {
+        try {
+          await api.post('/clients', form);
+        } catch (err) {
+          if (err.response?.status === 409 && err.response?.data?.error === 'duplicate_email') {
+            // Show duplicate warning — let admin decide
+            setDupWarning({ existing: err.response.data.existing, pendingForm: { ...form } });
+            setLoading(false);
+            return;
+          }
+          throw err;
+        }
+      } else {
+        await api.put(`/clients/${modal.id}`, form);
+      }
+      await load(); close();
+    } catch (err) {
+      setMsg(err.response?.data?.error || 'Error saving client');
+    } finally { setLoading(false); }
+  };
+
+  const saveForce = async () => {
+    if (!dupWarning) return;
+    setLoading(true); setMsg(null);
+    try {
+      await api.post('/clients', { ...dupWarning.pendingForm, force: true });
+      setDupWarning(null);
       await load(); close();
     } catch (err) {
       setMsg(err.response?.data?.error || 'Error saving client');
@@ -681,6 +707,32 @@ export default function AdminClients() {
             </div>
             <div className="modal-body">
               {msg && <div className={`alert alert-${msg.includes('Error') || msg.includes('error') ? 'error' : 'success'}`}>{msg}</div>}
+
+              {/* Duplicate email warning */}
+              {dupWarning && (
+                <div style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: 8, padding: '14px 16px', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 18 }}>⚠️</span>
+                    <strong style={{ color: '#92400e' }}>Duplicate Email Detected</strong>
+                  </div>
+                  <p style={{ margin: '0 0 10px', fontSize: '.9rem', color: '#78350f' }}>
+                    This email is already used by {dupWarning.existing.length} existing client record{dupWarning.existing.length > 1 ? 's' : ''}:
+                  </p>
+                  <ul style={{ margin: '0 0 12px', paddingLeft: 20, fontSize: '.88rem', color: '#451a03' }}>
+                    {dupWarning.existing.map(c => (
+                      <li key={c.id}><strong>{c.first_name} {c.last_name}</strong> — {c.address}{c.city ? `, ${c.city}` : ''}{c.state ? ` ${c.state}` : ''}</li>
+                    ))}
+                  </ul>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setDupWarning(null)}>← Go Back &amp; Edit</button>
+                    <button type="button" className="btn btn-primary" onClick={saveForce} disabled={loading}
+                      style={{ background: '#d97706', borderColor: '#d97706' }}>
+                      {loading ? 'Saving...' : '✓ Add Anyway (Different Property)'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <form onSubmit={save}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">

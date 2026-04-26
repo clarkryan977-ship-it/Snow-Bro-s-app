@@ -64,6 +64,21 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     if (!first_name || !last_name || !email) {
       return res.status(400).json({ error: 'First name, last name, and email required' });
     }
+    // Duplicate email detection — warn if email already exists unless force=true
+    const force = req.body.force === true;
+    if (!force) {
+      const dupCheck = await req.db.query(
+        'SELECT id, first_name, last_name, email, address, city, state, zip FROM clients WHERE LOWER(email) = LOWER($1)',
+        [email]
+      );
+      if (dupCheck.rows.length > 0) {
+        return res.status(409).json({
+          error: 'duplicate_email',
+          message: `This email is already used by ${dupCheck.rows.length} existing client record(s).`,
+          existing: dupCheck.rows
+        });
+      }
+    }
     const password_hash = password ? bcrypt.hashSync(password, 10) : null;
     const result = await req.db.query(
       'INSERT INTO clients (first_name, last_name, email, phone, address, city, state, zip, notes, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
