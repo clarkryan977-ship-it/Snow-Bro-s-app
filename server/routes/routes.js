@@ -391,11 +391,18 @@ router.delete('/:routeId/stops/:stopId', authenticateToken, requireAdmin, async 
 
 router.put('/:routeId/stops/:stopId', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { frequency, notes, stop_label } = req.body;
-    await req.db.query(
-      'UPDATE route_stops SET frequency=$1, notes=$2, stop_label=$3 WHERE id=$4 AND route_id=$5',
-      [frequency || 'weekly', notes || '', stop_label || '', req.params.stopId, req.params.routeId]
-    );
+    const { frequency, notes, stop_label, client_id } = req.body;
+    if (client_id) {
+      await req.db.query(
+        'UPDATE route_stops SET frequency=$1, notes=$2, stop_label=$3, client_id=$4 WHERE id=$5 AND route_id=$6',
+        [frequency || 'weekly', notes || '', stop_label || '', client_id, req.params.stopId, req.params.routeId]
+      );
+    } else {
+      await req.db.query(
+        'UPDATE route_stops SET frequency=$1, notes=$2, stop_label=$3 WHERE id=$4 AND route_id=$5',
+        [frequency || 'weekly', notes || '', stop_label || '', req.params.stopId, req.params.routeId]
+      );
+    }
     res.json({ message: 'Stop updated' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

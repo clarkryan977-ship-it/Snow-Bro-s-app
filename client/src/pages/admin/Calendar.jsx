@@ -13,6 +13,7 @@ const STATUS_COLORS = {
   cancelled: { bg: '#fee2e2', border: '#dc2626', text: '#991b1b' },
 };
 
+const _CALENDAR_VERSION = '2.0.0'; // pending default + confirm email
 const EMPTY_FORM = {
   service_id: '', preferred_date: '', preferred_time: '',
   client_id: '', client_name: '', client_email: '', client_phone: '',

@@ -7,6 +7,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Bump this version string to force all cached PWA clients to update immediately
+      // Last bumped: 2026-04-25 (calendar pending default + confirmation email)
+      selfDestroying: false,
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icons/*.png', 'logo.jpg'],
       manifest: {
         name: "Snow Bro's Lawn Care",
