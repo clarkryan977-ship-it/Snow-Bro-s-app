@@ -16,7 +16,7 @@ const STATUS_COLORS = {
 const EMPTY_FORM = {
   service_id: '', preferred_date: '', preferred_time: '',
   client_id: '', client_name: '', client_email: '', client_phone: '',
-  assigned_employee_id: '', status: 'confirmed', notes: '',
+  assigned_employee_id: '', status: 'pending', notes: '',
 };
 
 export default function AdminCalendar() {
@@ -26,6 +26,7 @@ export default function AdminCalendar() {
   const [employees, setEmployees]   = useState([]);
   const [modal, setModal]           = useState(null); // null | { mode:'add'|'edit', booking?, form }
   const [saving, setSaving]         = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [msg, setMsg]               = useState(null);
   const calRef                      = useRef(null);
 
@@ -92,7 +93,7 @@ export default function AdminCalendar() {
         client_email:        b.client_email || '',
         client_phone:        b.client_phone || '',
         assigned_employee_id: String(b.assigned_employee_id || ''),
-        status:              b.status || 'confirmed',
+        status:              b.status || 'pending',
         notes:               b.notes || '',
       },
     });
@@ -345,6 +346,33 @@ export default function AdminCalendar() {
                           placeholder="Any notes…" value={modal.form.notes}
                           onChange={e => setField('notes', e.target.value)} />
               </div>
+
+              {/* Send Confirmation Email — only in edit mode when status is confirmed and email exists */}
+              {modal.mode === 'edit' && modal.form.status === 'confirmed' && modal.form.client_email && (
+                <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:6, padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem' }}>
+                  <div style={{ fontSize:'.82rem', color:'#1e40af' }}>
+                    📧 Notify <strong>{modal.form.client_name || modal.form.client_email}</strong> that this job is confirmed?
+                  </div>
+                  <button
+                    className="btn btn-sm"
+                    style={{ background:'#1d4ed8', color:'#fff', whiteSpace:'nowrap', flexShrink:0 }}
+                    disabled={sendingEmail || saving}
+                    onClick={async () => {
+                      setSendingEmail(true);
+                      try {
+                        await api.post(`/calendar/${modal.booking.id}/confirm-email`);
+                        flash('success', `Confirmation email sent to ${modal.form.client_email}`);
+                      } catch (e) {
+                        flash('error', e.response?.data?.error || 'Failed to send email');
+                      } finally {
+                        setSendingEmail(false);
+                      }
+                    }}
+                  >
+                    {sendingEmail ? 'Sending…' : '✉️ Send Confirmation'}
+                  </button>
+                </div>
+              )}
 
               {/* Actions */}
               <div style={{ display:'flex', gap:'.5rem', justifyContent:'flex-end', paddingTop:'.5rem', borderTop:'1px solid var(--blue-100)' }}>
