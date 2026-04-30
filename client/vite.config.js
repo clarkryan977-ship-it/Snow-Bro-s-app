@@ -8,13 +8,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       // Bump this version string to force all cached PWA clients to update immediately
-      // Last bumped: 2026-04-25 (calendar pending default + confirmation email)
+      // Last bumped: 2026-04-30 (eye toggle + remember-me fix + client registration)
       selfDestroying: false,
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icons/*.png', 'logo.jpg'],
       manifest: {
         name: "Snow Bro's Lawn Care",
         short_name: "Snow Bro's",
-        description: "Professional residential lawn care services — mowing, trimming, aeration, snow removal, and more.",
+        description: "Professional residential lawn care services — mowing, trimming, aeration, snow removal, and more. v2",
         theme_color: '#1e3a5f',
         background_color: '#ffffff',
         display: 'standalone',
