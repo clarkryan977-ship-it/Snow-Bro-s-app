@@ -223,7 +223,7 @@ export default function EmployeeDocuments() {
                       <div style={{ fontSize: '.75rem', color: '#94a3b8' }}>
                         {DOC_TYPES[doc.doc_type] || doc.doc_type}
                         {doc.label && doc.label !== doc.file_name && <span> · {doc.file_name}</span>}
-                        {' · '}{new Date(doc.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {' · '}{new Date(doc.uploaded_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}
                         {doc.uploaded_by_name && <span> · by {doc.uploaded_by_name}</span>}
                       </div>
                     </div>

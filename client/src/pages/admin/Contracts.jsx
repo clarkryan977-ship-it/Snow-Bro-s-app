@@ -738,7 +738,7 @@ export default function AdminContracts() {
                     {c.status === 'signed' ? (
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600 }}>{c.signer_name}</div>
-                        <div style={{ fontSize: 12, color: '#9ca3af' }}>{c.signed_at ? new Date(c.signed_at).toLocaleDateString() : ''}</div>
+                        <div style={{ fontSize: 12, color: '#9ca3af' }}>{c.signed_at ? new Date(c.signed_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' }) : ''}</div>
                       </div>
                     ) : <span style={{ color: '#d1d5db' }}>—</span>}
                   </td>

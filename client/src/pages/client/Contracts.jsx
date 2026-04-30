@@ -91,7 +91,7 @@ export default function ClientContracts() {
                 {c.status === 'signed' && (
                   <div style={{ fontSize:'.78rem', color:'var(--gray-400)', textAlign:'right' }}>
                     Signed by {c.signer_name}<br />
-                    {c.signed_at ? new Date(c.signed_at).toLocaleString() : ''}
+                    {c.signed_at ? new Date(c.signed_at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : ''}
                   </div>
                 )}
               </div>

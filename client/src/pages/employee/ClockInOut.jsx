@@ -172,7 +172,7 @@ export default function ClockInOut() {
         )}
         {isClockedIn && status?.record?.clock_in && (
           <div style={{ color:'var(--gray-400)', fontSize:'.85rem', marginTop:'.25rem' }}>
-            Since {new Date(status.record.clock_in + 'Z').toLocaleTimeString()}
+            Since {new Date(status.record.clock_in + 'Z').toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' })} CT
           </div>
         )}
         <div style={{ marginTop:'1.5rem' }}>

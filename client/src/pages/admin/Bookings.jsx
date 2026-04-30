@@ -228,7 +228,7 @@ export default function AdminBookings() {
                     ['Status', detailModal.status],
                     ['Address', [detailModal.job_address, detailModal.job_city, detailModal.job_state, detailModal.job_zip].filter(Boolean).join(', ') || '—'],
                     ['Notes', detailModal.notes || '—'],
-                    ['Submitted', detailModal.created_at ? new Date(detailModal.created_at).toLocaleString() : '—'],
+                    ['Submitted', detailModal.created_at ? new Date(detailModal.created_at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : '—'],
                   ].map(([label, value]) => (
                     <tr key={label} style={{ borderBottom: '1px solid var(--gray-100)' }}>
                       <td style={{ padding: '.5rem .75rem', fontWeight: 600, color: 'var(--gray-500)', width: 100 }}>{label}</td>

@@ -146,7 +146,7 @@ export default function AdminGallery() {
                   {photo.caption && <div style={{ fontWeight: 600, fontSize: '.82rem', marginBottom: '.15rem' }}>{photo.caption}</div>}
                   {photo.description && <div style={{ fontSize: '.75rem', color: 'var(--gray-500)', marginBottom: '.4rem' }}>{photo.description}</div>}
                   <div style={{ fontSize: '.72rem', color: 'var(--gray-400)', marginBottom: '.5rem' }}>
-                    {new Date(photo.created_at).toLocaleDateString()}
+                    {new Date(photo.created_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
                   <div style={{ display: 'flex', gap: '.4rem' }}>
                     <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => { setEditPhoto(photo); setEditForm({ caption: photo.caption, description: photo.description }); }}>Edit</button>

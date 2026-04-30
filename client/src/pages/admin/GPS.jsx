@@ -63,7 +63,7 @@ export default function AdminGPS() {
                   {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
                 </div>
                 <div style={{ fontSize:'.75rem', color:'var(--gray-400)' }}>
-                  Last seen: {new Date(loc.recorded_at).toLocaleTimeString()}
+                  Last seen: {new Date(loc.recorded_at).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' })} CT
                 </div>
               </div>
             ))}
@@ -80,7 +80,7 @@ export default function AdminGPS() {
                   <Popup>
                     <strong>{loc.employee_name}</strong><br />
                     {loc.employee_phone}<br />
-                    <small>{new Date(loc.recorded_at).toLocaleString()}</small>
+                    <small>{new Date(loc.recorded_at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} CT</small>
                   </Popup>
                 </Marker>
               ))}

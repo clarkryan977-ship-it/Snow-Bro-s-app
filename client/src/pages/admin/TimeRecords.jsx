@@ -58,8 +58,8 @@ export default function AdminTimeRecords() {
               {records.map(r => (
                 <tr key={r.id}>
                   <td><strong>{r.employee_name}</strong></td>
-                  <td style={{ fontSize:'.85rem' }}>{r.clock_in ? new Date(r.clock_in).toLocaleString() : '—'}</td>
-                  <td style={{ fontSize:'.85rem' }}>{r.clock_out ? new Date(r.clock_out).toLocaleString() : '—'}</td>
+                  <td style={{ fontSize:'.85rem' }}>{r.clock_in ? new Date(r.clock_in).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : '—'}</td>
+                  <td style={{ fontSize:'.85rem' }}>{r.clock_out ? new Date(r.clock_out).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : '—'}</td>
                   <td><strong>{fmtDuration(r.duration_minutes)}</strong></td>
                   <td style={{ fontSize:'.82rem', color:'var(--gray-600)', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {r.job_address || <span style={{ color:'var(--gray-300)' }}>—</span>}
@@ -91,11 +91,11 @@ export default function AdminTimeRecords() {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem', marginBottom:'1rem' }}>
                 <div>
                   <div style={{ fontSize:'.75rem', color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', marginBottom:'.2rem' }}>Clock In</div>
-                  <div style={{ fontWeight:600 }}>{selected.clock_in ? new Date(selected.clock_in).toLocaleString() : '—'}</div>
+                  <div style={{ fontWeight:600 }}>{selected.clock_in ? new Date(selected.clock_in).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : '—'}</div>
                 </div>
                 <div>
                   <div style={{ fontSize:'.75rem', color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', marginBottom:'.2rem' }}>Clock Out</div>
-                  <div style={{ fontWeight:600 }}>{selected.clock_out ? new Date(selected.clock_out).toLocaleString() : 'Still clocked in'}</div>
+                  <div style={{ fontWeight:600 }}>{selected.clock_out ? new Date(selected.clock_out).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : 'Still clocked in'}</div>
                 </div>
                 <div>
                   <div style={{ fontSize:'.75rem', color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', marginBottom:'.2rem' }}>Duration</div>

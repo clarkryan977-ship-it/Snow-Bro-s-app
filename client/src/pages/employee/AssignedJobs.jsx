@@ -271,7 +271,7 @@ export default function EmployeeAssignedJobs() {
           {isDone && job.completed_at && (
             <div>
               <div style={{ fontSize:'.72rem', color:'#16a34a', fontWeight:600, textTransform:'uppercase' }}>✅ Completed At</div>
-              <div style={{ fontSize:'.82rem', color:'#16a34a' }}>{new Date(job.completed_at).toLocaleString()}</div>
+              <div style={{ fontSize:'.82rem', color:'#16a34a' }}>{new Date(job.completed_at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })} CT</div>
             </div>
           )}
         </div>

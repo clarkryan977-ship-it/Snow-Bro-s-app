@@ -60,10 +60,10 @@ export default function EmployeeTimeRecords() {
                     {r.clock_in ? new Date(r.clock_in + 'Z').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—'}
                   </td>
                   <td style={{ fontSize:'.85rem' }}>
-                    {r.clock_in ? new Date(r.clock_in + 'Z').toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '—'}
+                    {r.clock_in ? new Date(r.clock_in + 'Z').toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }) + ' CT' : '—'}
                   </td>
                   <td style={{ fontSize:'.85rem' }}>
-                    {r.clock_out ? new Date(r.clock_out + 'Z').toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '—'}
+                    {r.clock_out ? new Date(r.clock_out + 'Z').toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }) + ' CT' : '—'}
                   </td>
                   <td><strong style={{ color:'var(--blue-700)' }}>{fmtDuration(r.duration_minutes)}</strong></td>
                   <td style={{ fontSize:'.82rem', color:'var(--gray-600)', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>

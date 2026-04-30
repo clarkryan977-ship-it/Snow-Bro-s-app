@@ -99,7 +99,7 @@ export default function AdminDashboard() {
                 </div>
                 {t.note && <div style={{ fontSize: '.85rem', opacity: .9, marginTop: 4 }}>Note: {t.note}</div>}
                 <div style={{ fontSize: '.75rem', opacity: .75, marginTop: 4 }}>
-                  {new Date(t.created_at).toLocaleString()}
+                  {new Date(t.created_at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })} CT
                 </div>
               </div>
               <button

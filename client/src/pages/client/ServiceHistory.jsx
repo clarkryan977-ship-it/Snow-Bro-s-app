@@ -154,7 +154,7 @@ export default function ClientServiceHistory() {
                 {invoices.map(inv => (
                   <tr key={inv.id}>
                     <td><strong>{inv.invoice_number}</strong></td>
-                    <td>{new Date(inv.created_at).toLocaleDateString()}</td>
+                    <td>{new Date(inv.created_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     <td style={{ fontWeight:600, color:'var(--blue-700)' }}>${inv.total?.toFixed(2)}</td>
                     <td><span className={`badge badge-${inv.status === 'paid' ? 'green' : 'yellow'}`} style={{ textTransform:'capitalize' }}>{inv.status}</span></td>
                   </tr>

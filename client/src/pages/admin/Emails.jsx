@@ -103,7 +103,7 @@ export default function AdminEmails() {
             {history.map(h => (
               <div key={h.id} style={{ borderBottom:'1px solid var(--gray-100)', paddingBottom:'.75rem', marginBottom:'.75rem' }}>
                 <div style={{ fontWeight:600, fontSize:'.9rem' }}>{h.subject}</div>
-                <div style={{ fontSize:'.78rem', color:'var(--gray-400)' }}>{h.recipients_count} recipients · {h.sent_at?.slice(0,16).replace('T',' ')}</div>
+                <div style={{ fontSize:'.78rem', color:'var(--gray-400)' }}>{h.recipients_count} recipients · {h.sent_at ? new Date(h.sent_at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : ''}</div>
               </div>
             ))}
           </div>

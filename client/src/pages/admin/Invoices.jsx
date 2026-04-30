@@ -293,7 +293,7 @@ export default function AdminInvoices() {
                     <td><span className={`badge ${STATUS_COLORS[inv.status] || 'badge-gray'}`}>{inv.status}</span></td>
                     <td style={{ fontSize:'.8rem' }}>
                       {inv.sent_at ? (
-                        <span style={{ color:'var(--green-600)' }}>{new Date(inv.sent_at).toLocaleDateString()}</span>
+                        <span style={{ color:'var(--green-600)' }}>{new Date(inv.sent_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}</span>
                       ) : (
                         <span style={{ color:'var(--gray-400)' }}>Not sent</span>
                       )}
@@ -434,7 +434,7 @@ export default function AdminInvoices() {
                     )}
                     {viewInv.sent_at && (
                       <div style={{ color:'var(--green-600)', fontSize:'.75rem', marginTop:'.15rem' }}>
-                        Last sent: {new Date(viewInv.sent_at).toLocaleDateString()}
+                        Last sent: {new Date(viewInv.sent_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
                     )}
                   </div>

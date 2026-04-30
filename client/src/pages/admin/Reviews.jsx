@@ -62,7 +62,7 @@ export default function AdminReviews() {
                 <strong>{r.client_name || 'Anonymous'}</strong>
                 <span style={{ marginLeft:'.75rem' }}><Stars rating={r.rating} /></span>
               </div>
-              <span style={{ fontSize:'.78rem', color:'var(--gray-400)' }}>{new Date(r.created_at).toLocaleDateString()}</span>
+              <span style={{ fontSize:'.78rem', color:'var(--gray-400)' }}>{new Date(r.created_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}</span>
             </div>
             {r.service_name && <div style={{ fontSize:'.82rem', color:'var(--blue-600)', marginTop:'.25rem' }}>Service: {r.service_name}</div>}
             {r.comment && <p style={{ marginTop:'.5rem', color:'var(--gray-700)', fontSize:'.92rem' }}>{r.comment}</p>}

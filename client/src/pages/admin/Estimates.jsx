@@ -264,7 +264,7 @@ export default function AdminEstimates() {
                   </td>
                   <td><strong>${Number(est.total).toFixed(2)}</strong></td>
                   <td><span className={`badge ${STATUS_COLORS[est.status] || 'badge-gray'}`}>{est.status}</span></td>
-                  <td style={{ fontSize: '.82rem', color: 'var(--gray-500)' }}>{new Date(est.created_at).toLocaleDateString()}</td>
+                  <td style={{ fontSize: '.82rem', color: 'var(--gray-500)' }}>{new Date(est.created_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}</td>
                   <td>
                     <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => openView(est.id)}>View</button>
@@ -452,8 +452,8 @@ export default function AdminEstimates() {
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--blue-700)', letterSpacing: '.05em' }}>Status</div>
                   <div style={{ marginTop: '.25rem' }}><span className={`badge ${STATUS_COLORS[viewEst.status] || 'badge-gray'}`}>{viewEst.status}</span></div>
-                  <div style={{ fontSize: '.82rem', color: 'var(--gray-400)', marginTop: '.5rem' }}>Created: {new Date(viewEst.created_at).toLocaleDateString()}</div>
-                  {viewEst.emailed_at && <div style={{ fontSize: '.82rem', color: 'var(--gray-400)' }}>Emailed: {new Date(viewEst.emailed_at).toLocaleDateString()}</div>}
+                  <div style={{ fontSize: '.82rem', color: 'var(--gray-400)', marginTop: '.5rem' }}>Created: {new Date(viewEst.created_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                  {viewEst.emailed_at && <div style={{ fontSize: '.82rem', color: 'var(--gray-400)' }}>Emailed: {new Date(viewEst.emailed_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })}</div>}
                   {viewEst.valid_until && <div style={{ fontSize: '.82rem', color: 'var(--gray-400)' }}>Valid until: {new Date(viewEst.valid_until).toLocaleDateString()}</div>}
                 </div>
               </div>

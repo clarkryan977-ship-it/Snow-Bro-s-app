@@ -123,7 +123,7 @@ export default function EmployeeJobs() {
                   {r.clock_in ? new Date(r.clock_in + 'Z').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' }) : '—'}
                 </div>
                 <div style={{ fontSize:'.82rem', color:'var(--gray-400)', marginTop:'.15rem' }}>
-                  {r.clock_in ? new Date(r.clock_in + 'Z').toLocaleTimeString() : ''} — {r.clock_out ? new Date(r.clock_out + 'Z').toLocaleTimeString() : 'In Progress'}
+                  {r.clock_in ? new Date(r.clock_in + 'Z').toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }) + ' CT' : ''} — {r.clock_out ? new Date(r.clock_out + 'Z').toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }) + ' CT' : 'In Progress'}
                   {r.duration_minutes > 0 && <span style={{ marginLeft:'.5rem', fontWeight:600, color:'var(--blue-700)' }}>({fmtDuration(r.duration_minutes)})</span>}
                 </div>
               </div>
@@ -187,7 +187,7 @@ export default function EmployeeJobs() {
             <div className="modal-body">
               {msg && <div className={`alert alert-${msg.type === 'success' ? 'success' : 'error'}`}>{msg.text}</div>}
               <div style={{ fontSize:'.82rem', color:'var(--gray-400)', marginBottom:'1rem' }}>
-                Session: {editing.clock_in ? new Date(editing.clock_in + 'Z').toLocaleString() : '—'}
+                Session: {editing.clock_in ? new Date(editing.clock_in + 'Z').toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : '—'}
               </div>
               <form onSubmit={save}>
                 <div className="form-group">
@@ -226,7 +226,7 @@ export default function EmployeeJobs() {
             </div>
             <div className="modal-body">
               <div style={{ fontSize:'.82rem', color:'var(--gray-400)', marginBottom:'1rem' }}>
-                Session: {photoModal.clock_in ? new Date(photoModal.clock_in + 'Z').toLocaleString() : '—'}
+                Session: {photoModal.clock_in ? new Date(photoModal.clock_in + 'Z').toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT' : '—'}
                 {photoModal.job_address && <span style={{ marginLeft:'.5rem' }}>· {photoModal.job_address}</span>}
               </div>
 
