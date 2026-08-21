@@ -1,7 +1,7 @@
 function openVenmo(e) {
   e.preventDefault();
-  const deepLink = 'venmo://paycharge?txn=pay&recipients=snowbros&note=Invoice%20Payment';
-  const webFallback = 'https://www.paypal.com/qrcodes/venmocs/90262e17-2bae-475f-b440-57449f5eaf05?created=1774482943';
+  const deepLink = 'venmo://paycharge?txn=pay&recipients=snowbros22&note=Invoice%20Payment';
+  const webFallback = 'https://venmo.com/u/snowbros22';
 
   let appOpened = false;
   const timer = setTimeout(() => {
@@ -103,7 +103,7 @@ export default function PaymentSection({ invoiceTotal, invoiceNumber }) {
             Tap the button below — opens the Venmo app directly, or the Venmo website if the app isn't installed.
           </p>
           <a
-            href="https://www.paypal.com/qrcodes/venmocs/90262e17-2bae-475f-b440-57449f5eaf05?created=1774482943"
+            href="https://venmo.com/u/snowbros22"
             onClick={openVenmo}
             target="_blank"
             rel="noopener noreferrer"
@@ -113,7 +113,7 @@ export default function PaymentSection({ invoiceTotal, invoiceNumber }) {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
               <path d="M19.5 2C20.88 2 22 3.12 22 4.5v15c0 1.38-1.12 2.5-2.5 2.5h-15C3.12 22 2 20.88 2 19.5v-15C2 3.12 3.12 2 4.5 2h15zm-3.06 4.5c-.28.46-.4.94-.4 1.54 0 1.22.78 2.88 1.44 3.84l-3.3 8.12h-3.44l-1.34-7.02c-.38.28-.78.52-1.2.72l-.42-1.96c1.3-.7 2.6-1.88 3.46-3.26h-3.6V6.5h8.8z"/>
             </svg>
-            Pay with Venmo
+            Pay with Venmo — @snowbros22
           </a>
         </div>
 
