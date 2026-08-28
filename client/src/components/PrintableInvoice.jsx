@@ -413,6 +413,7 @@ function escHtml(str) {
 export default function PrintInvoiceButton({ invoice, className = '', label = '🖨️ Print Invoice' }) {
   return (
     <button
+      type="button"
       className={className || 'btn btn-secondary btn-sm'}
       onClick={() => printInvoice(invoice)}
       title="Open print-ready invoice in new window"

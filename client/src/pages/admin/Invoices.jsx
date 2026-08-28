@@ -141,6 +141,36 @@ export default function AdminInvoices() {
     return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
   });
 
+  // Printing is intentionally independent of invoice creation validation. This lets
+  // staff preview/print a partially completed invoice before saving it.
+  const selectedClient = clients.find(c => String(c.id) === String(form.client_id));
+  const draftInvoice = {
+    invoice_number: 'DRAFT',
+    status: 'draft',
+    created_at: new Date().toISOString(),
+    client_name: selectedClient ? `${selectedClient.first_name || ''} ${selectedClient.last_name || ''}`.trim() : '',
+    client_email: selectedClient?.email || '',
+    client_phone: selectedClient?.phone || '',
+    client_address: selectedClient?.address || '',
+    client_city: selectedClient?.city || '',
+    client_state: selectedClient?.state || '',
+    client_zip: selectedClient?.zip || '',
+    service_date: form.service_date,
+    due_date: form.due_date,
+    items: form.items.map((it, i) => ({
+      id: i,
+      description: it.description || '',
+      quantity: parseFloat(it.quantity) || 0,
+      unit_price: parseFloat(it.unit_price) || 0,
+      total: (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price) || 0),
+    })),
+    subtotal,
+    tax_rate: parseFloat(form.tax_rate) || 0,
+    tax_amount: taxAmt,
+    total,
+    notes: form.notes || '',
+  };
+
   return (
     <div>
       <div className="flex-between page-header">
@@ -359,6 +389,7 @@ export default function AdminInvoices() {
                 </div>
                 <div className="form-group"><label>Notes</label><textarea name="notes" value={form.notes} onChange={handleForm} className="form-control" /></div>
                 <div style={{ display:'flex', gap:'.75rem', justifyContent:'flex-end' }}>
+                  <PrintInvoiceButton invoice={draftInvoice} label="🖨️ Print Preview" />
                   <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? <span className="spinner" /> : 'Create Invoice'}</button>
                 </div>
