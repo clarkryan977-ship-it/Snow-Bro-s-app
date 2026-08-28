@@ -192,7 +192,7 @@ router.post('/:id/send', authenticateToken, requireAdmin, async (req, res) => {
       </div>
       <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:16px 20px;border-radius:0 8px 8px 0;margin:20px 0;">
         <p style="margin:0;font-weight:700;color:#15803d;">Payment Options</p>
-        <p style="margin:6px 0 0;color:#374151;font-size:13px;">Cash App: <strong>$SnowBros</strong> &nbsp;|&nbsp; Venmo: <strong>@SnowBros</strong> &nbsp;|&nbsp; Zelle: <strong>${BUSINESS.phone}</strong></p>
+        <p style="margin:6px 0 0;color:#374151;font-size:13px;">Cash App: <strong>$SnowBros</strong> &nbsp;|&nbsp; Venmo: <a href="${BUSINESS.venmoUrl}" style="color:#1e40af;text-decoration:none;"><strong>Snow Bro's business profile</strong></a> &nbsp;|&nbsp; Zelle: <strong>${BUSINESS.phone}</strong></p>
         <p style="margin:4px 0 0;color:#374151;font-size:13px;">Please include invoice number <strong>${inv.invoice_number}</strong> in your payment memo.</p>
       </div>
       <p>Questions? Call us at <strong>${BUSINESS.phone}</strong> or email <a href="mailto:${BUSINESS.email}">${BUSINESS.email}</a>.</p>
@@ -217,7 +217,7 @@ router.post('/:id/send-sms', authenticateToken, requireAdmin, async (req, res) =
     const inv = invRows[0];
     if (!inv) return res.status(404).json({ error: 'Invoice not found' });
 
-    const smsText = `Hi ${inv.first_name}! You have a new invoice from Snow Bro's:\n\nInvoice: ${inv.invoice_number}\nAmount: $${parseFloat(inv.total).toFixed(2)}\n${inv.due_date ? `Due: ${new Date(inv.due_date).toLocaleDateString()}\n` : ''}\nPay via:\n- Cash App: $SnowBros\n- Venmo: @SnowBros\n- Zelle: ${BUSINESS.phone}\n\nView details: ${BASE_URL}/login\nRef: ${inv.invoice_number}`;
+    const smsText = `Hi ${inv.first_name}! You have a new invoice from Snow Bro's:\n\nInvoice: ${inv.invoice_number}\nAmount: $${parseFloat(inv.total).toFixed(2)}\n${inv.due_date ? `Due: ${new Date(inv.due_date).toLocaleDateString()}\n` : ''}\nPay via:\n- Cash App: $SnowBros\n- Venmo: ${BUSINESS.venmoUrl}\n- Zelle: ${BUSINESS.phone}\n\nView details: ${BASE_URL}/login\nRef: ${inv.invoice_number}`;
 
     res.json({
       message: 'SMS text generated',

@@ -111,7 +111,7 @@ async function runBillingCycle(db) {
               </div>
               <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:16px 20px;border-radius:0 8px 8px 0;margin:20px 0;">
                 <p style="margin:0;font-weight:700;color:#15803d;">Payment Options</p>
-                <p style="margin:6px 0 0;color:#374151;font-size:13px;">Cash App: <strong>$SnowBros</strong> | Venmo: <strong>@SnowBros</strong> | Zelle: <strong>${BUSINESS.phone}</strong></p>
+                <p style="margin:6px 0 0;color:#374151;font-size:13px;">Cash App: <strong>$SnowBros</strong> | Venmo: <a href="${BUSINESS.venmoUrl}" style="color:#1e40af;text-decoration:none;"><strong>Snow Bro's business profile</strong></a> | Zelle: <strong>${BUSINESS.phone}</strong></p>
                 <p style="margin:4px 0 0;color:#374151;font-size:13px;">Please include invoice number <strong>${invoice_number}</strong> in your payment memo.</p>
               </div>
             `, `Invoice ${invoice_number}`);
