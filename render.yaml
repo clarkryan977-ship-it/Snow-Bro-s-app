@@ -11,7 +11,7 @@ services:
       - key: PORT
         value: 3001
       - key: JWT_SECRET
-        value: snowbros-jwt-secret-2026-production
+        sync: false
     disk:
       name: snowbros-data
       mountPath: /opt/render/project/src/server/db

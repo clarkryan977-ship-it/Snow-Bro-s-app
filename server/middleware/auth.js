@@ -1,5 +1,13 @@
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'snowbros-lawncare-secret-2024';
+
+// JWT_SECRET must be provided via environment variable (set in the hosting
+// provider's dashboard). No hardcoded fallback: a missing secret is a
+// deployment configuration error and should fail loudly at startup.
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Set it in your hosting provider (e.g. Railway/Render) before starting the server.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
