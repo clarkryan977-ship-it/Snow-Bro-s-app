@@ -51,6 +51,20 @@ router.get('/auto-generated', authenticateToken, requireAdmin, async (req, res) 
 });
 
 // Get single invoice with items
+
+// Get my invoices (client — authenticated, scoped to their own account)
+router.get('/my', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'client') return res.status(403).json({ error: 'Clients only' });
+    const { rows } = await req.db.query(`
+      SELECT i.id, i.invoice_number, i.subtotal, i.tax_rate, i.tax_amount, i.total,
+             i.status, i.notes, i.service_date, i.due_date, i.sent_at, i.created_at
+      FROM invoices i
+      WHERE i.client_id = $1
+      ORDER BY i.created_at DESC`, [req.user.id]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { rows: invoiceRows } = await req.db.query(`SELECT i.*, c.first_name || ' ' || c.last_name as client_name,
@@ -116,20 +130,6 @@ router.put('/:id/status', authenticateToken, requireAdmin, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// Get my invoices (client — authenticated, scoped to their own account)
-router.get('/my', authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'client') return res.status(403).json({ error: 'Clients only' });
-    const { rows } = await req.db.query(`
-      SELECT i.id, i.invoice_number, i.subtotal, i.tax_rate, i.tax_amount, i.total,
-             i.status, i.notes, i.service_date, i.due_date, i.sent_at, i.created_at
-      FROM invoices i
-      WHERE i.client_id = $1
-      ORDER BY i.created_at DESC`, [req.user.id]);
-    res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Send invoice email to client

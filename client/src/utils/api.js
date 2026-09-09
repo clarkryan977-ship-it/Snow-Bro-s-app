@@ -13,8 +13,13 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      // Only auto-logout if the request carried a token (i.e. session was active)
+    const status = error.response?.status;
+    // Only auto-logout when the token itself is rejected (401 Invalid token).
+    // A 403 means the user is authenticated but lacks permission for that one
+    // resource (e.g. an admin-only widget) — that must NOT end the session,
+    // otherwise any widget that hits a restricted endpoint would kick the user
+    // back to the login page.
+    if (status === 401) {
       const hadToken = localStorage.getItem('token') || sessionStorage.getItem('token');
       if (hadToken) {
         localStorage.removeItem('token');
