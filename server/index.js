@@ -4,6 +4,7 @@ const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const { initDB, getPool } = require('./db/init');
+const { redirectLegacyContractSigningLink } = require('./routes/legacyContractSigning');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -61,6 +62,12 @@ app.use('/api/weather',          require('./routes/weather'));
 
 // ── Serve uploaded files ──
 app.use('/uploads', express.static(UPLOADS_ROOT, { maxAge: '1h', etag: true, lastModified: true }));
+
+// ── Legacy public contract links ───────────────────────────────────────────
+// Older emails and installed PWAs used /contracts/:id/sign. Preserve those
+// links by translating them into the current tokenized signing flow before the
+// SPA fallback can serve an obsolete client bundle.
+app.get('/contracts/:id/sign', redirectLegacyContractSigningLink);
 
 // ── Serve React build ──
 const distPath = path.join(__dirname, '../client/dist');
