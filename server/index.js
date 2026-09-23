@@ -7,6 +7,7 @@ const { initDB, getPool } = require('./db/init');
 const { redirectLegacyContractSigningLink } = require('./routes/legacyContractSigning');
 const app = express();
 const PORT = process.env.PORT || 3001;
+const SITE_ORIGIN = 'https://snowbros-production.up.railway.app';
 
 // Support persistent disk for uploads
 const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, 'uploads');
@@ -20,6 +21,40 @@ process.env.UPLOADS_ROOT = UPLOADS_ROOT;
 app.use(compression({ level: 6, threshold: 1024 }));
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
+
+// Keep crawler discovery files ahead of the SPA fallback.
+app.get('/robots.txt', (_req, res) => {
+  res
+    .type('text/plain')
+    .set('Cache-Control', 'public, max-age=86400')
+    .send(`User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /client/
+Disallow: /employee/
+Disallow: /login
+Disallow: /register
+Disallow: /reset-password
+Disallow: /portal-setup
+Disallow: /pay
+Disallow: /apply
+
+Sitemap: ${SITE_ORIGIN}/sitemap.xml
+`);
+});
+
+app.get('/sitemap.xml', (_req, res) => {
+  res
+    .type('application/xml')
+    .set('Cache-Control', 'public, max-age=86400')
+    .send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${SITE_ORIGIN}/</loc>
+  </url>
+</urlset>`);
+});
 
 // Make db pool available to routes
 app.use((req, res, next) => {
