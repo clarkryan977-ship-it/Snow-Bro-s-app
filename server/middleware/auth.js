@@ -16,7 +16,11 @@ function authenticateToken(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Access denied' });
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Invalid token' });
+    // An invalid or expired credential means the request is unauthenticated.
+    // Use 401 (not 403) so the client clears its stale session and asks the
+    // user to sign in again. 403 is reserved for authenticated users who lack
+    // permission, such as a client calling an admin-only endpoint.
+    if (err) return res.status(401).json({ error: 'Invalid token' });
     req.user = user;
     next();
   });
