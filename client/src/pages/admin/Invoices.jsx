@@ -220,7 +220,7 @@ export default function AdminInvoices() {
 
       {tab === 'all' && (
         <div className="card">
-          <div style={{ display:'flex', gap:'.5rem', padding:'1rem', flexWrap:'wrap' }}><input className="form-control" style={{maxWidth:280}} placeholder="Search invoice or client..." value={search} onChange={e=>setSearch(e.target.value)} /><select className="form-control" style={{maxWidth:160}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="partial">Partial</option><option value="paid">Paid</option><option value="overdue">Overdue</option><option value="void">Void</option></select><button className="btn btn-secondary" onClick={exportInvoices}>Export CSV</button><button className="btn btn-secondary" onClick={archiveThroughYesterday}>Archive through yesterday</button><select className="form-control" style={{maxWidth:150}} value={archiveView} onChange={e=>setArchiveView(e.target.value)}><option value="active">Active invoices</option><option value="archived">Archived invoices</option><option value="all">All invoices</option></select></div>
+          <div style={{ display:'flex', gap:'.5rem', padding:'1rem', flexWrap:'wrap' }}><input className="form-control" style={{maxWidth:280}} placeholder="Search invoice or client..." value={search} onChange={e=>setSearch(e.target.value)} /><select className="form-control" style={{maxWidth:160}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="partial">Partial</option><option value="paid">Paid in full</option><option value="overdue">Overdue</option><option value="void">Void</option></select><button className="btn btn-secondary" onClick={exportInvoices}>Export CSV</button><button className="btn btn-secondary" onClick={archiveThroughYesterday}>Archive through yesterday</button><select className="form-control" style={{maxWidth:150}} value={archiveView} onChange={e=>setArchiveView(e.target.value)}><option value="active">Active invoices</option><option value="archived">Archived invoices</option><option value="all">All invoices</option></select></div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -254,7 +254,7 @@ export default function AdminInvoices() {
                         value={inv.display_status || inv.status}
                         onChange={e => setStatus(inv.id, e.target.value)}
                       >
-                        {['draft','sent','partial','paid','overdue','void'].map(s => <option key={s} value={s}>{s}</option>)}
+                        {['draft','sent','partial','paid','overdue','void'].map(s => <option key={s} value={s}>{s === 'paid' ? 'Paid in full' : s}</option>)}
                       </select>
                     </td>
                     <td style={{ color:'var(--gray-400)', fontSize:'.8rem' }}>{inv.created_at?.slice(0,10)}</td>
@@ -262,7 +262,7 @@ export default function AdminInvoices() {
                       <div style={{ display:'flex', gap:'.4rem', alignItems:'center', flexWrap:'wrap' }}>
                         <button className="btn btn-secondary btn-sm" onClick={() => viewFull(inv)}>View</button>
                         <button className="btn btn-secondary btn-sm" onClick={() => scanReceipt(inv)}>Scan Receipt</button>
-                        {(inv.display_status || inv.status) !== 'paid' && (inv.display_status || inv.status) !== 'void' && <button className="btn btn-sm" style={{background:'#16a34a',color:'#fff'}} onClick={() => openPayment(inv)}>Mark Paid</button>}
+                        {(inv.display_status || inv.status) !== 'paid' && (inv.display_status || inv.status) !== 'void' && <button className="btn btn-sm" style={{background:'#16a34a',color:'#fff'}} onClick={() => openPayment(inv)}>Mark paid in full</button>}
                         {(inv.display_status || inv.status) !== 'paid' && <button className="btn btn-secondary btn-sm" onClick={() => remind(inv)}>Remind</button>}
                         <button
                           className="btn btn-primary btn-sm"
