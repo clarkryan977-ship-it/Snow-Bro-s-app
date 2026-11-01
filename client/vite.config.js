@@ -51,6 +51,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg,woff2}'],
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         // Exclude large video files from precache — serve them via network streaming
         globIgnores: ['**/*.mp4', '**/*.webm'],
         // Prevent the service worker NavigationRoute from intercepting /api/*
