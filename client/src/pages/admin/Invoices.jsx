@@ -30,10 +30,8 @@ export default function AdminInvoices() {
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount:'', payment_method:'check', reference:'', notes:'' });
   const [paymentMsg, setPaymentMsg] = useState(null);
-  const [invoiceLoading, setInvoiceLoading] = useState(true);
-  const [invoiceLoadError, setInvoiceLoadError] = useState(null);
 
-  const load = () => { setInvoiceLoading(true); setInvoiceLoadError(null); return api.get('/invoices').then(r => setInvoices(r.data)).catch(() => setInvoiceLoadError('Could not load invoices. Please wait a moment and try again.')).finally(() => setInvoiceLoading(false)); };
+  const load = () => api.get('/invoices').then(r => setInvoices(r.data)).catch(() => {});
   const loadSummary = () => api.get('/invoices/summary').then(r => setSummary(r.data)).catch(() => {});
   const loadAuto = () => {
     setAutoLoading(true);
@@ -236,16 +234,10 @@ export default function AdminInvoices() {
                 </tr>
               </thead>
               <tbody>
-                {invoiceLoading && (
-                  <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--gray-500)', padding:'2rem' }}>Loading invoices…</td></tr>
-                )}
-                {!invoiceLoading && invoiceLoadError && (
-                  <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--red-600)', padding:'2rem' }}>{invoiceLoadError}</td></tr>
-                )}
-                {!invoiceLoading && !invoiceLoadError && visibleInvoices.length === 0 && (
+                {visibleInvoices.length === 0 && (
                   <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--gray-400)', padding:'2rem' }}>No invoices yet</td></tr>
                 )}
-                {!invoiceLoading && !invoiceLoadError && visibleInvoices.map(inv => (
+                {visibleInvoices.map(inv => (
                   <tr key={inv.id}>
                     <td>
                       <strong>{inv.invoice_number}</strong>
