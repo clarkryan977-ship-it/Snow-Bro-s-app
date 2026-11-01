@@ -14,6 +14,15 @@ router.use(async (req, res, next) => {
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`).catch(() => {});
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN DEFAULT FALSE`).catch(() => {});
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS contract_id INTEGER`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS amount_paid REAL DEFAULT 0`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_method TEXT`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_reference TEXT DEFAULT ''`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_notes TEXT DEFAULT ''`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMP`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS reminder_count INTEGER DEFAULT 0`).catch(() => {});
+    await req.db.query(`CREATE TABLE IF NOT EXISTS invoice_payments (id SERIAL PRIMARY KEY, invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE, amount REAL NOT NULL CHECK (amount > 0), payment_method TEXT NOT NULL DEFAULT 'other', reference TEXT DEFAULT '', notes TEXT DEFAULT '', paid_at TIMESTAMP DEFAULT NOW(), created_by INTEGER, created_at TIMESTAMP DEFAULT NOW())`).catch(() => {});
+    await req.db.query(`CREATE TABLE IF NOT EXISTS invoice_audit_log (id SERIAL PRIMARY KEY, invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE, action TEXT NOT NULL, details TEXT DEFAULT '', created_by INTEGER, created_at TIMESTAMP DEFAULT NOW())`).catch(() => {});
   } catch (_) {}
   next();
 });
@@ -50,6 +59,30 @@ router.get('/auto-generated', authenticateToken, requireAdmin, async (req, res) 
   }
 });
 
+// Dashboard summary for receivables and collections
+router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`SELECT COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE status NOT IN ('paid','void') AND due_date IS NOT NULL AND due_date < CURRENT_DATE)::int AS overdue,
+      COALESCE(SUM(total),0) AS invoiced, COALESCE(SUM(COALESCE(amount_paid,0)),0) AS collected,
+      COALESCE(SUM(GREATEST(total-COALESCE(amount_paid,0),0)) FILTER (WHERE status NOT IN ('paid','void')),0) AS outstanding,
+      COALESCE(SUM(COALESCE(amount_paid,0)) FILTER (WHERE paid_at >= date_trunc('month', CURRENT_DATE)),0) AS collected_this_month FROM invoices`);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// CSV export for bookkeeping
+router.get('/export.csv', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`SELECT i.invoice_number, c.first_name || ' ' || c.last_name AS client, c.email,
+      i.total, COALESCE(i.amount_paid,0) AS amount_paid, GREATEST(i.total-COALESCE(i.amount_paid,0),0) AS balance_due,
+      i.status, i.payment_method, i.paid_at, i.due_date, i.created_at FROM invoices i JOIN clients c ON c.id=i.client_id ORDER BY i.created_at DESC`);
+    const headers = ['invoice_number','client','email','total','amount_paid','balance_due','status','payment_method','paid_at','due_date','created_at'];
+    const csv = [headers.join(','), ...rows.map(row => headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    res.type('text/csv').set('Content-Disposition','attachment; filename="snowbros-invoices.csv"').send(csv);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Get single invoice with items
 
 // Get my invoices (client — authenticated, scoped to their own account)
@@ -79,7 +112,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
     const { rows: items } = await req.db.query('SELECT * FROM invoice_items WHERE invoice_id = $1', [req.params.id]);
-    res.json({ ...invoice, items });
+    const { rows: payments } = await req.db.query('SELECT * FROM invoice_payments WHERE invoice_id=$1 ORDER BY paid_at DESC, id DESC', [req.params.id]);
+    const { rows: audit } = await req.db.query('SELECT * FROM invoice_audit_log WHERE invoice_id=$1 ORDER BY created_at DESC LIMIT 100', [req.params.id]);
+    res.json({ ...invoice, balance_due: Math.max(Number(invoice.total) - Number(invoice.amount_paid || 0), 0), items, payments, audit });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -125,11 +160,62 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 router.put('/:id/status', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { status } = req.body;
-    await req.db.query('UPDATE invoices SET status = $1 WHERE id = $2', [status, req.params.id]);
-    res.json({ message: 'Invoice status updated' });
+    const allowed = ['draft','sent','partial','paid','overdue','void'];
+    if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid invoice status' });
+    const { rows } = await req.db.query('SELECT status FROM invoices WHERE id=$1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Invoice not found' });
+    await req.db.query("UPDATE invoices SET status=$1, paid_at=CASE WHEN $1='paid' THEN COALESCE(paid_at,NOW()) ELSE NULL END WHERE id=$2", [status, req.params.id]);
+    await req.db.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [req.params.id, 'status_changed', `${rows[0].status} → ${status}`, req.user.id]);
+    res.json({ message: 'Invoice status updated', status });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Record a full or partial payment
+router.post('/:id/payments', authenticateToken, requireAdmin, async (req, res) => {
+  const db = req.db;
+  try {
+    const amount = Number(req.body.amount);
+    const method = String(req.body.payment_method || 'other').trim().toLowerCase();
+    const allowedMethods = ['cash','check','venmo','cash_app','zelle','card','bank_transfer','other'];
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Payment amount must be greater than zero' });
+    if (!allowedMethods.includes(method)) return res.status(400).json({ error: 'Invalid payment method' });
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query('SELECT * FROM invoices WHERE id=$1 FOR UPDATE', [req.params.id]);
+      const inv = rows[0];
+      if (!inv) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Invoice not found' }); }
+      const balance = Math.max(Number(inv.total) - Number(inv.amount_paid || 0), 0);
+      if (amount > balance + 0.01) { await client.query('ROLLBACK'); return res.status(400).json({ error: `Payment exceeds remaining balance of $${balance.toFixed(2)}` }); }
+      const payment = await client.query(`INSERT INTO invoice_payments (invoice_id,amount,payment_method,reference,notes,created_by)
+        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [req.params.id, amount, method, req.body.reference || '', req.body.notes || '', req.user.id]);
+      const newPaid = Number(inv.amount_paid || 0) + amount;
+      const newStatus = newPaid >= Number(inv.total) - 0.01 ? 'paid' : 'partial';
+      await client.query(`UPDATE invoices SET amount_paid=$1,status=$2,paid_at=CASE WHEN $2='paid' THEN NOW() ELSE paid_at END,
+        payment_method=$3,payment_reference=$4,payment_notes=$5 WHERE id=$6`, [newPaid, newStatus, method, req.body.reference || '', req.body.notes || '', req.params.id]);
+      await client.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [req.params.id, 'payment_recorded', `$${amount.toFixed(2)} via ${method}; total paid $${newPaid.toFixed(2)}`, req.user.id]);
+      await client.query('COMMIT');
+      res.status(201).json({ payment: payment.rows[0], status: newStatus, amount_paid: newPaid, balance_due: Math.max(Number(inv.total)-newPaid,0) });
+    } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Send a payment reminder and record it
+router.post('/:id/remind', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`SELECT i.*, c.first_name,c.email FROM invoices i JOIN clients c ON c.id=i.client_id WHERE i.id=$1`, [req.params.id]);
+    const inv = rows[0];
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+    const balance = Math.max(Number(inv.total)-Number(inv.amount_paid||0),0);
+    if (!inv.email || inv.email.includes('@snowbros.placeholder')) return res.status(400).json({ error: 'Client has no valid email address' });
+    const html = wrapEmail(`<h2 style="color:#b45309;margin-top:0;">Payment reminder — Invoice ${inv.invoice_number}</h2><p>Hi ${inv.first_name},</p><p>This is a friendly reminder that invoice <strong>${inv.invoice_number}</strong> has an outstanding balance of <strong>$${balance.toFixed(2)}</strong>.</p><p>Please log in to your client portal or contact us if you have already paid.</p>`, `Payment Reminder · ${inv.invoice_number}`);
+    await sendMail({ to: inv.email, subject: `Payment reminder for invoice ${inv.invoice_number}`, html });
+    await req.db.query('UPDATE invoices SET last_reminder_at=NOW(), reminder_count=COALESCE(reminder_count,0)+1 WHERE id=$1', [req.params.id]);
+    await req.db.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [req.params.id, 'reminder_sent', `Balance $${balance.toFixed(2)}`, req.user.id]);
+    res.json({ message: 'Payment reminder sent' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Send invoice email to client

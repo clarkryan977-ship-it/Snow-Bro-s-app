@@ -23,8 +23,15 @@ export default function AdminInvoices() {
   const [smsModal, setSmsModal]   = useState(null); // { invoiceId, smsText, phone }
   const [billingMsg, setBillingMsg] = useState(null);
   const [billingRunning, setBillingRunning] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [paymentModal, setPaymentModal] = useState(null);
+  const [paymentForm, setPaymentForm] = useState({ amount:'', payment_method:'check', reference:'', notes:'' });
+  const [paymentMsg, setPaymentMsg] = useState(null);
 
   const load = () => api.get('/invoices').then(r => setInvoices(r.data)).catch(() => {});
+  const loadSummary = () => api.get('/invoices/summary').then(r => setSummary(r.data)).catch(() => {});
   const loadAuto = () => {
     setAutoLoading(true);
     api.get('/invoices/auto-generated').then(r => setAutoInvoices(r.data)).catch(() => {}).finally(() => setAutoLoading(false));
@@ -32,6 +39,7 @@ export default function AdminInvoices() {
 
   useEffect(() => {
     load();
+    loadSummary();
     // Fetch ALL clients (not just active) for the client selector
     api.get('/clients').then(r => setClients(r.data)).catch(() => {});
   }, []);
@@ -70,10 +78,13 @@ export default function AdminInvoices() {
   };
 
   const setStatus = async (id, status) => {
-    await api.put(`/invoices/${id}/status`, { status }).catch(() => {});
-    load();
-    if (viewInv && viewInv.id === id) setViewInv(v => ({ ...v, status }));
+    try { await api.put(`/invoices/${id}/status`, { status }); await Promise.all([load(), loadSummary()]); if (viewInv && viewInv.id === id) setViewInv(v => ({ ...v, status })); }
+    catch (err) { alert(err.response?.data?.error || 'Could not update invoice status'); }
   };
+  const openPayment = inv => { setPaymentMsg(null); setPaymentForm({ amount: Math.max(Number(inv.total)-Number(inv.amount_paid||0),0).toFixed(2), payment_method:'check', reference:'', notes:'' }); setPaymentModal(inv); };
+  const recordPayment = async e => { e.preventDefault(); setPaymentMsg(null); try { await api.post(`/invoices/${paymentModal.id}/payments`, paymentForm); setPaymentModal(null); await Promise.all([load(), loadSummary()]); if (viewInv?.id === paymentModal.id) viewFull(paymentModal); } catch (err) { setPaymentMsg(err.response?.data?.error || 'Could not record payment'); } };
+  const remind = async inv => { try { await api.post(`/invoices/${inv.id}/remind`); alert('Payment reminder sent'); load(); } catch (err) { alert(err.response?.data?.error || 'Could not send reminder'); } };
+  const exportInvoices = async () => { const token=localStorage.getItem('token')||sessionStorage.getItem('token'); const r=await fetch('/api/invoices/export.csv',{headers:{Authorization:`Bearer ${token}`}}); if(!r.ok)return alert('Could not export invoices'); const b=await r.blob(); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='snowbros-invoices.csv'; a.click(); URL.revokeObjectURL(u); };
 
   const viewFull = async inv => {
     const { data } = await api.get(`/invoices/${inv.id}`);
@@ -140,6 +151,7 @@ export default function AdminInvoices() {
     if (a.active !== b.active) return b.active - a.active;
     return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
   });
+  const visibleInvoices = invoices.filter(inv => { const q=search.toLowerCase().trim(); const match=!q || `${inv.invoice_number} ${inv.client_name} ${inv.client_email}`.toLowerCase().includes(q); const status=inv.display_status||inv.status; return match && (statusFilter==='all' || status===statusFilter); });
 
   // Printing is intentionally independent of invoice creation validation. This lets
   // staff preview/print a partially completed invoice before saving it.
@@ -201,8 +213,11 @@ export default function AdminInvoices() {
         >Auto-Generated Log</button>
       </div>
 
+      {summary && <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:'.75rem', marginBottom:'1rem' }}>{[['Outstanding',`$${Number(summary.outstanding||0).toFixed(2)}`,'var(--blue-700)'],['Overdue',summary.overdue,'var(--red-600)'],['Collected this month',`$${Number(summary.collected_this_month||0).toFixed(2)}`,'var(--green-600)'],['Total collected',`$${Number(summary.collected||0).toFixed(2)}`,'var(--gray-700)']].map(([label,value,color])=><div className="card" key={label} style={{padding:'1rem'}}><div style={{color:'var(--gray-500)',fontSize:'.75rem'}}>{label}</div><div style={{fontSize:'1.35rem',fontWeight:800,color}}>{value}</div></div>)}</div>}
+
       {tab === 'all' && (
         <div className="card">
+          <div style={{ display:'flex', gap:'.5rem', padding:'1rem', flexWrap:'wrap' }}><input className="form-control" style={{maxWidth:280}} placeholder="Search invoice or client..." value={search} onChange={e=>setSearch(e.target.value)} /><select className="form-control" style={{maxWidth:160}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="partial">Partial</option><option value="paid">Paid</option><option value="overdue">Overdue</option><option value="void">Void</option></select><button className="btn btn-secondary" onClick={exportInvoices}>Export CSV</button></div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -216,10 +231,10 @@ export default function AdminInvoices() {
                 </tr>
               </thead>
               <tbody>
-                {invoices.length === 0 && (
+                {visibleInvoices.length === 0 && (
                   <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--gray-400)', padding:'2rem' }}>No invoices yet</td></tr>
                 )}
-                {invoices.map(inv => (
+                {visibleInvoices.map(inv => (
                   <tr key={inv.id}>
                     <td>
                       <strong>{inv.invoice_number}</strong>
@@ -233,16 +248,18 @@ export default function AdminInvoices() {
                       <select
                         className="form-control"
                         style={{ fontSize:'.8rem', padding:'.25rem .5rem', width:'auto' }}
-                        value={inv.status}
+                        value={inv.display_status || inv.status}
                         onChange={e => setStatus(inv.id, e.target.value)}
                       >
-                        {['draft','sent','paid','overdue'].map(s => <option key={s} value={s}>{s}</option>)}
+                        {['draft','sent','partial','paid','overdue','void'].map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
                     <td style={{ color:'var(--gray-400)', fontSize:'.8rem' }}>{inv.created_at?.slice(0,10)}</td>
                     <td>
                       <div style={{ display:'flex', gap:'.4rem', alignItems:'center', flexWrap:'wrap' }}>
                         <button className="btn btn-secondary btn-sm" onClick={() => viewFull(inv)}>View</button>
+                        {(inv.display_status || inv.status) !== 'paid' && (inv.display_status || inv.status) !== 'void' && <button className="btn btn-sm" style={{background:'#16a34a',color:'#fff'}} onClick={() => openPayment(inv)}>Mark Paid</button>}
+                        {(inv.display_status || inv.status) !== 'paid' && <button className="btn btn-secondary btn-sm" onClick={() => remind(inv)}>Remind</button>}
                         <button
                           className="btn btn-primary btn-sm"
                           style={{ background: sendMsg[inv.id] === 'success' ? 'var(--green-600)' : undefined }}
@@ -506,6 +523,9 @@ export default function AdminInvoices() {
           </div>
         </div>
       )}
+
+      {/* Payment Modal */}
+      {paymentModal && <div className="modal-overlay" onClick={() => setPaymentModal(null)}><div className="modal" style={{maxWidth:480}} onClick={e=>e.stopPropagation()}><div className="modal-header"><h2>Record Payment</h2><button className="modal-close" onClick={()=>setPaymentModal(null)}>x</button></div><div className="modal-body"><p>Invoice <strong>{paymentModal.invoice_number}</strong> · Balance due <strong>${Math.max(Number(paymentModal.total)-Number(paymentModal.amount_paid||0),0).toFixed(2)}</strong></p>{paymentMsg&&<div className="alert alert-error">{paymentMsg}</div>}<form onSubmit={recordPayment}><div className="form-group"><label>Amount paid *</label><input className="form-control" type="number" min="0.01" step="0.01" value={paymentForm.amount} onChange={e=>setPaymentForm(f=>({...f,amount:e.target.value}))} required /></div><div className="form-group"><label>Payment method *</label><select className="form-control" value={paymentForm.payment_method} onChange={e=>setPaymentForm(f=>({...f,payment_method:e.target.value}))}><option value="check">Check</option><option value="cash">Cash</option><option value="venmo">Venmo</option><option value="cash_app">Cash App</option><option value="zelle">Zelle</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></div><div className="form-group"><label>Check number / reference</label><input className="form-control" value={paymentForm.reference} onChange={e=>setPaymentForm(f=>({...f,reference:e.target.value}))} placeholder="e.g. Check #1042" /></div><div className="form-group"><label>Notes</label><textarea className="form-control" value={paymentForm.notes} onChange={e=>setPaymentForm(f=>({...f,notes:e.target.value}))} placeholder="Mailed check, received date, deposit notes..." /></div><div style={{display:'flex',justifyContent:'flex-end',gap:'.5rem'}}><button type="button" className="btn btn-secondary" onClick={()=>setPaymentModal(null)}>Cancel</button><button className="btn btn-primary" type="submit">Save Payment</button></div></form></div></div></div>}
 
       {/* SMS Modal */}
       {smsModal && (
