@@ -4,7 +4,9 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { sendMail } = require('../utils/mailer');
 const { wrapEmail, BUSINESS } = require('../utils/emailHeader');
 const { runBillingCycle } = require('../utils/billingScheduler');
+const { makeUploader, getFileInfo } = require('../utils/cloudinaryUpload');
 const BASE_URL = process.env.BASE_URL || 'https://snowbros-production.up.railway.app';
+const receiptUpload = makeUploader('snowbros/receipts', 'receipts', 15);
 
 // ── Ensure new columns exist ─────────────────────────────────────────────────
 router.use(async (req, res, next) => {
@@ -21,8 +23,16 @@ router.use(async (req, res, next) => {
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_notes TEXT DEFAULT ''`).catch(() => {});
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMP`).catch(() => {});
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS reminder_count INTEGER DEFAULT 0`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS voided_at TIMESTAMP`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS void_reason TEXT DEFAULT ''`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP`).catch(() => {});
     await req.db.query(`CREATE TABLE IF NOT EXISTS invoice_payments (id SERIAL PRIMARY KEY, invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE, amount REAL NOT NULL CHECK (amount > 0), payment_method TEXT NOT NULL DEFAULT 'other', reference TEXT DEFAULT '', notes TEXT DEFAULT '', paid_at TIMESTAMP DEFAULT NOW(), created_by INTEGER, created_at TIMESTAMP DEFAULT NOW())`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS deposited_at TIMESTAMP`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS deposit_reference TEXT DEFAULT ''`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS receipt_sent_at TIMESTAMP`).catch(() => {});
+    await req.db.query(`CREATE TABLE IF NOT EXISTS invoice_attachments (id SERIAL PRIMARY KEY, invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE, payment_id INTEGER REFERENCES invoice_payments(id) ON DELETE CASCADE, name TEXT NOT NULL, url TEXT NOT NULL, created_by INTEGER, created_at TIMESTAMP DEFAULT NOW())`).catch(() => {});
     await req.db.query(`CREATE TABLE IF NOT EXISTS invoice_audit_log (id SERIAL PRIMARY KEY, invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE, action TEXT NOT NULL, details TEXT DEFAULT '', created_by INTEGER, created_at TIMESTAMP DEFAULT NOW())`).catch(() => {});
+    await req.db.query(`CREATE UNIQUE INDEX IF NOT EXISTS invoice_contract_month_unique ON invoices (contract_id, (date_trunc('month', created_at))) WHERE auto_generated=TRUE`).catch(() => {});
   } catch (_) {}
   next();
 });
@@ -67,7 +77,12 @@ router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
       COALESCE(SUM(total),0) AS invoiced, COALESCE(SUM(COALESCE(amount_paid,0)),0) AS collected,
       COALESCE(SUM(GREATEST(total-COALESCE(amount_paid,0),0)) FILTER (WHERE status NOT IN ('paid','void')),0) AS outstanding,
       COALESCE(SUM(COALESCE(amount_paid,0)) FILTER (WHERE paid_at >= date_trunc('month', CURRENT_DATE)),0) AS collected_this_month FROM invoices`);
-    res.json(rows[0]);
+    const aging = await req.db.query(`SELECT
+      COALESCE(SUM(GREATEST(total-COALESCE(amount_paid,0),0)) FILTER (WHERE status NOT IN ('paid','void') AND (due_date IS NULL OR due_date >= CURRENT_DATE)),0) AS current,
+      COALESCE(SUM(GREATEST(total-COALESCE(amount_paid,0),0)) FILTER (WHERE status NOT IN ('paid','void') AND due_date < CURRENT_DATE AND due_date >= CURRENT_DATE-30),0) AS days_1_30,
+      COALESCE(SUM(GREATEST(total-COALESCE(amount_paid,0),0)) FILTER (WHERE status NOT IN ('paid','void') AND due_date < CURRENT_DATE-30 AND due_date >= CURRENT_DATE-60),0) AS days_31_60,
+      COALESCE(SUM(GREATEST(total-COALESCE(amount_paid,0),0)) FILTER (WHERE status NOT IN ('paid','void') AND due_date < CURRENT_DATE-60),0) AS days_60_plus FROM invoices`);
+    res.json({ ...rows[0], aging: aging.rows[0] });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -80,6 +95,19 @@ router.get('/export.csv', authenticateToken, requireAdmin, async (req, res) => {
     const headers = ['invoice_number','client','email','total','amount_paid','balance_due','status','payment_method','paid_at','due_date','created_at'];
     const csv = [headers.join(','), ...rows.map(row => headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     res.type('text/csv').set('Content-Disposition','attachment; filename="snowbros-invoices.csv"').send(csv);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/export/accounting.csv', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`SELECT i.invoice_number AS transaction_id, i.created_at::date AS transaction_date,
+      c.first_name || ' ' || c.last_name AS customer, c.email, 'Invoice' AS transaction_type,
+      i.subtotal AS income, i.tax_amount AS sales_tax, i.total AS gross_total,
+      COALESCE(i.amount_paid,0) AS paid, GREATEST(i.total-COALESCE(i.amount_paid,0),0) AS open_balance,
+      i.payment_method, i.status, i.due_date, i.paid_at FROM invoices i JOIN clients c ON c.id=i.client_id ORDER BY i.created_at`);
+    const headers = ['transaction_id','transaction_date','customer','email','transaction_type','income','sales_tax','gross_total','paid','open_balance','payment_method','status','due_date','paid_at'];
+    const csv = [headers.join(','), ...rows.map(row => headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    res.type('text/csv').set('Content-Disposition','attachment; filename="snowbros-accounting-export.csv"').send(csv);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -215,6 +243,62 @@ router.post('/:id/remind', authenticateToken, requireAdmin, async (req, res) => 
     await req.db.query('UPDATE invoices SET last_reminder_at=NOW(), reminder_count=COALESCE(reminder_count,0)+1 WHERE id=$1', [req.params.id]);
     await req.db.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [req.params.id, 'reminder_sent', `Balance $${balance.toFixed(2)}`, req.user.id]);
     res.json({ message: 'Payment reminder sent' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reconcile a payment against a bank deposit
+router.put('/payments/:paymentId/deposit', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`UPDATE invoice_payments SET deposited_at=COALESCE($1::timestamp,NOW()), deposit_reference=$2 WHERE id=$3 RETURNING *`, [req.body.deposited_at || null, req.body.deposit_reference || '', req.params.paymentId]);
+    if (!rows[0]) return res.status(404).json({ error: 'Payment not found' });
+    await req.db.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [rows[0].invoice_id, 'payment_deposited', `Deposit ${req.body.deposit_reference || '(no reference)'}`, req.user.id]);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Void an issued invoice without destroying its history
+router.put('/:id/void', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`UPDATE invoices SET status='void', voided_at=NOW(), void_reason=$1 WHERE id=$2 AND status <> 'paid' RETURNING *`, [req.body.reason || '', req.params.id]);
+    if (!rows[0]) return res.status(400).json({ error: 'Invoice not found or already paid' });
+    await req.db.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [req.params.id, 'invoice_voided', req.body.reason || '', req.user.id]);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Send a receipt for a specific payment
+router.post('/payments/:paymentId/receipt', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`SELECT p.*, i.invoice_number, c.first_name, c.email FROM invoice_payments p JOIN invoices i ON i.id=p.invoice_id JOIN clients c ON c.id=i.client_id WHERE p.id=$1`, [req.params.paymentId]);
+    const payment = rows[0];
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    if (!payment.email || payment.email.includes('@snowbros.placeholder')) return res.status(400).json({ error: 'Client has no valid email address' });
+    const html = wrapEmail(`<h2 style="color:#15803d;margin-top:0;">Payment receipt · ${payment.invoice_number}</h2><p>Hi ${payment.first_name},</p><p>We received your payment of <strong>$${Number(payment.amount).toFixed(2)}</strong> via <strong>${payment.payment_method}</strong>.</p><p>Reference: ${payment.reference || '—'}</p>`, `Payment Receipt · ${payment.invoice_number}`);
+    await sendMail({ to: payment.email, subject: `Payment receipt for ${payment.invoice_number}`, html });
+    await req.db.query('UPDATE invoice_payments SET receipt_sent_at=NOW() WHERE id=$1', [req.params.paymentId]);
+    res.json({ message: 'Receipt sent' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Store a bookkeeping attachment URL
+router.post('/:id/attachments', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!req.body.name || !req.body.url) return res.status(400).json({ error: 'Attachment name and URL are required' });
+    const { rows } = await req.db.query('INSERT INTO invoice_attachments (invoice_id,payment_id,name,url,created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *', [req.params.id, req.body.payment_id || null, req.body.name, req.body.url, req.user.id]);
+    await req.db.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [req.params.id, 'attachment_added', req.body.name, req.user.id]);
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Scan/upload a receipt from a phone camera and attach it to the invoice/payment
+router.post('/:id/receipt-scan', authenticateToken, requireAdmin, receiptUpload.single('receipt'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No receipt image uploaded' });
+    const { url, filename } = getFileInfo(req.file, 'receipts');
+    const { rows } = await req.db.query(`INSERT INTO invoice_attachments (invoice_id,payment_id,name,url,created_by)
+      VALUES ($1,$2,$3,$4,$5) RETURNING *`, [req.params.id, req.body.payment_id || null, req.body.name || `Receipt scan ${new Date().toLocaleDateString()}`, url, req.user.id]);
+    await req.db.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [req.params.id, 'receipt_scanned', filename, req.user.id]);
+    res.status(201).json({ ...rows[0], url, ocr: { status: 'manual_review_required', message: 'Receipt image saved. Enter amount, date, and check/reference if needed.' } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

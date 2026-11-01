@@ -85,6 +85,7 @@ export default function AdminInvoices() {
   const recordPayment = async e => { e.preventDefault(); setPaymentMsg(null); try { await api.post(`/invoices/${paymentModal.id}/payments`, paymentForm); setPaymentModal(null); await Promise.all([load(), loadSummary()]); if (viewInv?.id === paymentModal.id) viewFull(paymentModal); } catch (err) { setPaymentMsg(err.response?.data?.error || 'Could not record payment'); } };
   const remind = async inv => { try { await api.post(`/invoices/${inv.id}/remind`); alert('Payment reminder sent'); load(); } catch (err) { alert(err.response?.data?.error || 'Could not send reminder'); } };
   const exportInvoices = async () => { const token=localStorage.getItem('token')||sessionStorage.getItem('token'); const r=await fetch('/api/invoices/export.csv',{headers:{Authorization:`Bearer ${token}`}}); if(!r.ok)return alert('Could not export invoices'); const b=await r.blob(); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='snowbros-invoices.csv'; a.click(); URL.revokeObjectURL(u); };
+  const scanReceipt = inv => { const input=document.createElement('input'); input.type='file'; input.accept='image/*'; input.capture='environment'; input.onchange=async()=>{ if(!input.files?.[0]) return; const fd=new FormData(); fd.append('receipt',input.files[0]); fd.append('name',`Receipt scan for ${inv.invoice_number}`); const token=localStorage.getItem('token')||sessionStorage.getItem('token'); try { const r=await fetch(`/api/invoices/${inv.id}/receipt-scan`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd}); if(!r.ok) throw new Error('Upload failed'); alert('Receipt scan saved to the invoice'); } catch(e) { alert(e.message); } }; input.click(); };
 
   const viewFull = async inv => {
     const { data } = await api.get(`/invoices/${inv.id}`);
@@ -258,6 +259,7 @@ export default function AdminInvoices() {
                     <td>
                       <div style={{ display:'flex', gap:'.4rem', alignItems:'center', flexWrap:'wrap' }}>
                         <button className="btn btn-secondary btn-sm" onClick={() => viewFull(inv)}>View</button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => scanReceipt(inv)}>Scan Receipt</button>
                         {(inv.display_status || inv.status) !== 'paid' && (inv.display_status || inv.status) !== 'void' && <button className="btn btn-sm" style={{background:'#16a34a',color:'#fff'}} onClick={() => openPayment(inv)}>Mark Paid</button>}
                         {(inv.display_status || inv.status) !== 'paid' && <button className="btn btn-secondary btn-sm" onClick={() => remind(inv)}>Remind</button>}
                         <button

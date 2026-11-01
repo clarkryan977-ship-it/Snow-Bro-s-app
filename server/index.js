@@ -11,7 +11,7 @@ const SITE_ORIGIN = 'https://snowbros-production.up.railway.app';
 
 // Support persistent disk for uploads
 const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, 'uploads');
-['contracts','signed','gallery','jobphotos','beforeafter'].forEach(sub => {
+['contracts','signed','gallery','jobphotos','beforeafter','receipts'].forEach(sub => {
   const dir = path.join(UPLOADS_ROOT, sub);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
