@@ -4,9 +4,6 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import AdminSidebar from './components/AdminSidebar';
 import EmployeeSidebar from './components/EmployeeSidebar';
-import AdminInvoices from './pages/admin/Invoices';
-import AdminStatements from './pages/admin/Statements';
-import AdminExpenses from './pages/admin/Expenses';
 
 // ── Lazy-loaded page components (code splitting) ──
 // Public pages
@@ -29,6 +26,7 @@ const PolarBearGame = lazy(() => import('./pages/PolarBearGame'));
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const AdminClients = lazy(() => import('./pages/admin/Clients'));
 const AdminBookings = lazy(() => import('./pages/admin/Bookings'));
+const AdminInvoices = lazy(() => import('./pages/admin/Invoices'));
 const AdminContracts = lazy(() => import('./pages/admin/Contracts'));
 const AdminEmployees = lazy(() => import('./pages/admin/Employees'));
 const AdminUsers = lazy(() => import('./pages/admin/Users'));
@@ -51,6 +49,8 @@ const AdminEmployeeDocuments = lazy(() => import('./pages/admin/EmployeeDocument
 const AdminBookingRequests = lazy(() => import('./pages/admin/BookingRequests'));
 const AdminApplications = lazy(() => import('./pages/admin/Applications'));
 const AdminTouchUpRequests = lazy(() => import('./pages/admin/TouchUpRequests'));
+const AdminStatements = lazy(() => import('./pages/admin/Statements'));
+const AdminExpenses = lazy(() => import('./pages/admin/Expenses'));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import('./pages/employee/Dashboard'));
