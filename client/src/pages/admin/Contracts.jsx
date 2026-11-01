@@ -631,6 +631,7 @@ export default function AdminContracts() {
   const [contracts, setContracts] = useState([]);
   const [clients, setClients] = useState([]);
   const [modal, setModal] = useState(null); // null | 'generate' | 'upload'
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const load = useCallback(() => {
     api.get('/contracts').then(r => setContracts(r.data)).catch(() => {});
@@ -659,11 +660,19 @@ export default function AdminContracts() {
   const downloadSigned = id => window.open(`${window.location.origin}/api/contracts/${id}/signed-file`, '_blank', 'noopener');
 
   const typeBadge = type => {
+    if (type === 'uploaded') return { bg: '#f3f4f6', color: '#374151', label: '📎 Manual / Existing' };
     if (type === 'snow_removal') return { bg: '#eff6ff', color: '#1d4ed8', label: '❄️ Snow' };
     if (type === 'landscape')    return { bg: '#fef9c3', color: '#92400e', label: '🌱 Landscape' };
     if (type === 'junk_removal') return { bg: '#fdf4ff', color: '#7c3aed', label: '🚛 Junk' };
     return { bg: '#f0fdf4', color: '#16a34a', label: '🌿 Lawn' };
   };
+  const visibleContracts = contracts.filter(c => {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'manual') return c.contract_type === 'uploaded';
+    if (statusFilter === 'signed') return c.status === 'signed';
+    if (statusFilter === 'pending') return c.status !== 'signed' && c.contract_type !== 'uploaded';
+    return c.status === statusFilter;
+  });
 
   return (
     <div style={{ padding: '0 0 40px' }}>
@@ -679,6 +688,16 @@ export default function AdminContracts() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <label style={{ ...lbl, margin: 0 }}>Show:</label>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...inp, width: 210 }}>
+          <option value="all">All contracts ({contracts.length})</option>
+          <option value="signed">E-signed</option>
+          <option value="pending">Awaiting e-signature</option>
+          <option value="manual">Manual / existing contracts</option>
+        </select>
+      </div>
+
       {/* Contracts table */}
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,.08)', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -690,10 +709,10 @@ export default function AdminContracts() {
             </tr>
           </thead>
           <tbody>
-            {contracts.length === 0 && (
+            {visibleContracts.length === 0 && (
               <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>No contracts yet</td></tr>
             )}
-            {contracts.map(c => {
+            {visibleContracts.map(c => {
               const badge = typeBadge(c.contract_type);
               return (
                 <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -727,11 +746,11 @@ export default function AdminContracts() {
                   </td>
                   <td style={{ padding: '12px 14px' }}>
                     <span style={{
-                      background: c.status === 'signed' ? '#f0fdf4' : '#fefce8',
-                      color: c.status === 'signed' ? '#16a34a' : '#ca8a04',
+                      background: c.status === 'signed' ? '#f0fdf4' : c.contract_type === 'uploaded' ? '#f3f4f6' : '#fefce8',
+                      color: c.status === 'signed' ? '#16a34a' : c.contract_type === 'uploaded' ? '#374151' : '#ca8a04',
                       fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
                     }}>
-                      {c.status === 'signed' ? '✅ Signed' : '⏳ Pending'}
+                      {c.status === 'signed' ? '✅ E-signed' : c.contract_type === 'uploaded' ? '📎 Manual / Not e-signed' : '⏳ Awaiting signature'}
                     </span>
                   </td>
                   <td style={{ padding: '12px 14px' }}>
