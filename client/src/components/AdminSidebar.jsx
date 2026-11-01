@@ -17,7 +17,7 @@ const links = [
   { to: '/admin/estimates', label: '📝 Estimates' },
   { to: '/admin/invoices', label: '🧾 Invoices' },
   { to: '/admin/expenses', label: '💳 Expenses' },
-  { to: '/admin/statements', label: '🏦 Statements', hardReload: true },
+  { to: '/admin/statements', label: '🏦 Statements' },
   { to: '/admin/contracts', label: '📄 Contracts' },
   { section: 'Operations' },
   { to: '/admin/employees', label: '👷 Employees' },
@@ -43,10 +43,6 @@ export default function AdminSidebar({ open }) {
       {links.map((l, i) =>
         l.section ? (
           <div key={i} className="sidebar-section">{l.section}</div>
-        ) : l.hardReload ? (
-          <a key={l.to} href={l.to} className={`sidebar-link${window.location.pathname === l.to ? ' active' : ''}`}>
-            {l.label}
-          </a>
         ) : (
           <NavLink
             key={l.to}
