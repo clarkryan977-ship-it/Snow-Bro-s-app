@@ -256,6 +256,11 @@ export default function AdminInvoices() {
                       >
                         {['draft','sent','partial','paid','overdue','void'].map(s => <option key={s} value={s}>{s === 'paid' ? 'Paid in full' : s}</option>)}
                       </select>
+                      {(inv.display_status || inv.status) !== 'paid' && (inv.display_status || inv.status) !== 'void' && (
+                        <button className="btn btn-sm" style={{ background:'#16a34a', color:'#fff', marginTop:'.35rem', whiteSpace:'nowrap' }} onClick={() => openPayment(inv)}>
+                          Mark paid in full
+                        </button>
+                      )}
                     </td>
                     <td style={{ color:'var(--gray-400)', fontSize:'.8rem' }}>{inv.created_at?.slice(0,10)}</td>
                     <td>
