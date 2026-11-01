@@ -25,7 +25,8 @@ const BUSINESS = {
   phone:   "218-331-5145",
   email:   "clarkryan977@gmail.com",
   website: "https://snowbros-production.up.railway.app",
-  venmoUrl: "https://www.paypal.com/qrcodes/venmocs/90262e17-2bae-475f-b440-57449f5eaf05?created=1787953664",
+  venmoHandle: "@snowbros22",
+  venmoUrl: "https://venmo.com/u/snowbros22",
 };
 
 /**
