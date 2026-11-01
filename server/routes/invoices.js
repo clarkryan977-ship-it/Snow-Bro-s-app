@@ -26,6 +26,8 @@ router.use(async (req, res, next) => {
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS voided_at TIMESTAMP`).catch(() => {});
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS void_reason TEXT DEFAULT ''`).catch(() => {});
     await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP`).catch(() => {});
+    await req.db.query(`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS archived_by INTEGER`).catch(() => {});
     await req.db.query(`CREATE TABLE IF NOT EXISTS invoice_payments (id SERIAL PRIMARY KEY, invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE, amount REAL NOT NULL CHECK (amount > 0), payment_method TEXT NOT NULL DEFAULT 'other', reference TEXT DEFAULT '', notes TEXT DEFAULT '', paid_at TIMESTAMP DEFAULT NOW(), created_by INTEGER, created_at TIMESTAMP DEFAULT NOW())`).catch(() => {});
     await req.db.query(`ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS deposited_at TIMESTAMP`).catch(() => {});
     await req.db.query(`ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS deposit_reference TEXT DEFAULT ''`).catch(() => {});
@@ -48,6 +50,24 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Archive historical invoices without deleting their financial records
+router.post('/archive-before', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const cutoff = req.body.cutoff_date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(cutoff || ''))) return res.status(400).json({ error: 'cutoff_date must be YYYY-MM-DD' });
+    const { rows } = await req.db.query(`UPDATE invoices SET archived_at=NOW(), archived_by=$1 WHERE created_at::date <= $2::date AND archived_at IS NULL RETURNING id`, [req.user.id, cutoff]);
+    res.json({ message: 'Invoices archived safely', archived: rows.length, cutoff_date: cutoff });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/:id/restore', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query('UPDATE invoices SET archived_at=NULL, archived_by=NULL WHERE id=$1 RETURNING id', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Invoice not found' });
+    res.json({ message: 'Invoice restored' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Get auto-generated invoices log (admin)

@@ -26,6 +26,7 @@ export default function AdminInvoices() {
   const [summary, setSummary] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [archiveView, setArchiveView] = useState('active');
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentForm, setPaymentForm] = useState({ amount:'', payment_method:'check', reference:'', notes:'' });
   const [paymentMsg, setPaymentMsg] = useState(null);
@@ -84,6 +85,7 @@ export default function AdminInvoices() {
   const openPayment = inv => { setPaymentMsg(null); setPaymentForm({ amount: Math.max(Number(inv.total)-Number(inv.amount_paid||0),0).toFixed(2), payment_method:'check', reference:'', notes:'' }); setPaymentModal(inv); };
   const recordPayment = async e => { e.preventDefault(); setPaymentMsg(null); try { await api.post(`/invoices/${paymentModal.id}/payments`, paymentForm); setPaymentModal(null); await Promise.all([load(), loadSummary()]); if (viewInv?.id === paymentModal.id) viewFull(paymentModal); } catch (err) { setPaymentMsg(err.response?.data?.error || 'Could not record payment'); } };
   const remind = async inv => { try { await api.post(`/invoices/${inv.id}/remind`); alert('Payment reminder sent'); load(); } catch (err) { alert(err.response?.data?.error || 'Could not send reminder'); } };
+  const archiveThroughYesterday = async () => { const cutoff=new Date(Date.now()-86400000).toISOString().slice(0,10); if(!window.confirm(`Archive all invoices dated on or before ${cutoff}? Nothing will be deleted.`)) return; try { const {data}=await api.post('/invoices/archive-before',{cutoff_date:cutoff}); alert(`${data.archived} invoices archived safely`); load(); } catch(err) { alert(err.response?.data?.error||'Could not archive invoices'); } };
   const exportInvoices = async () => { const token=localStorage.getItem('token')||sessionStorage.getItem('token'); const r=await fetch('/api/invoices/export.csv',{headers:{Authorization:`Bearer ${token}`}}); if(!r.ok)return alert('Could not export invoices'); const b=await r.blob(); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='snowbros-invoices.csv'; a.click(); URL.revokeObjectURL(u); };
   const scanReceipt = inv => { const input=document.createElement('input'); input.type='file'; input.accept='image/*'; input.capture='environment'; input.onchange=async()=>{ if(!input.files?.[0]) return; const fd=new FormData(); fd.append('receipt',input.files[0]); fd.append('name',`Receipt scan for ${inv.invoice_number}`); const token=localStorage.getItem('token')||sessionStorage.getItem('token'); try { const r=await fetch(`/api/invoices/${inv.id}/receipt-scan`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd}); if(!r.ok) throw new Error('Upload failed'); alert('Receipt scan saved to the invoice'); } catch(e) { alert(e.message); } }; input.click(); };
 
@@ -152,7 +154,7 @@ export default function AdminInvoices() {
     if (a.active !== b.active) return b.active - a.active;
     return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
   });
-  const visibleInvoices = invoices.filter(inv => { const q=search.toLowerCase().trim(); const match=!q || `${inv.invoice_number} ${inv.client_name} ${inv.client_email}`.toLowerCase().includes(q); const status=inv.display_status||inv.status; return match && (statusFilter==='all' || status===statusFilter); });
+  const visibleInvoices = invoices.filter(inv => { if (archiveView==='active' && inv.archived_at) return false; if (archiveView==='archived' && !inv.archived_at) return false; const q=search.toLowerCase().trim(); const match=!q || `${inv.invoice_number} ${inv.client_name} ${inv.client_email}`.toLowerCase().includes(q); const status=inv.display_status||inv.status; return match && (statusFilter==='all' || status===statusFilter); });
 
   // Printing is intentionally independent of invoice creation validation. This lets
   // staff preview/print a partially completed invoice before saving it.
@@ -218,7 +220,7 @@ export default function AdminInvoices() {
 
       {tab === 'all' && (
         <div className="card">
-          <div style={{ display:'flex', gap:'.5rem', padding:'1rem', flexWrap:'wrap' }}><input className="form-control" style={{maxWidth:280}} placeholder="Search invoice or client..." value={search} onChange={e=>setSearch(e.target.value)} /><select className="form-control" style={{maxWidth:160}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="partial">Partial</option><option value="paid">Paid</option><option value="overdue">Overdue</option><option value="void">Void</option></select><button className="btn btn-secondary" onClick={exportInvoices}>Export CSV</button></div>
+          <div style={{ display:'flex', gap:'.5rem', padding:'1rem', flexWrap:'wrap' }}><input className="form-control" style={{maxWidth:280}} placeholder="Search invoice or client..." value={search} onChange={e=>setSearch(e.target.value)} /><select className="form-control" style={{maxWidth:160}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="partial">Partial</option><option value="paid">Paid</option><option value="overdue">Overdue</option><option value="void">Void</option></select><button className="btn btn-secondary" onClick={exportInvoices}>Export CSV</button><button className="btn btn-secondary" onClick={archiveThroughYesterday}>Archive through yesterday</button><select className="form-control" style={{maxWidth:150}} value={archiveView} onChange={e=>setArchiveView(e.target.value)}><option value="active">Active invoices</option><option value="archived">Archived invoices</option><option value="all">All invoices</option></select></div>
           <div className="table-wrap">
             <table>
               <thead>
