@@ -16,6 +16,8 @@ const links = [
   { section: 'Billing' },
   { to: '/admin/estimates', label: '📝 Estimates' },
   { to: '/admin/invoices', label: '🧾 Invoices' },
+  { to: '/admin/expenses', label: '💳 Expenses' },
+  { to: '/admin/statements', label: '🏦 Statements' },
   { to: '/admin/contracts', label: '📄 Contracts' },
   { section: 'Operations' },
   { to: '/admin/employees', label: '👷 Employees' },

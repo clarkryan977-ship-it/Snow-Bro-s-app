@@ -71,6 +71,8 @@ app.use('/api/employees',     require('./routes/employees'));
 app.use('/api/time',          require('./routes/time'));
 app.use('/api/gps',           require('./routes/gps'));
 app.use('/api/invoices',      require('./routes/invoices'));
+app.use('/api/statements',    require('./routes/statements'));
+app.use('/api/expenses',      require('./routes/expenses'));
 app.use('/api/emails',        require('./routes/emails'));
 app.use('/api/contracts',     require('./routes/contracts'));
 app.use('/api/estimates',     require('./routes/estimates'));
