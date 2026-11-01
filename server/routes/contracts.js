@@ -569,6 +569,28 @@ router.post('/preview', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// ── Admin: add existing/manual contracts that were paid outside e-sign ───────
+router.post('/manual-bulk', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { client_id, properties } = req.body;
+    if (!client_id || !Array.isArray(properties) || !properties.length) return res.status(400).json({ error: 'Client and properties are required' });
+    const { rows: clientRows } = await req.db.query('SELECT first_name,last_name FROM clients WHERE id=$1', [client_id]);
+    if (!clientRows[0]) return res.status(404).json({ error: 'Client not found' });
+    await req.db.query("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'unpaid'").catch(() => {});
+    const created = [];
+    for (const property of properties) {
+      const address = String(property.address || '').trim();
+      if (!address) continue;
+      const title = `${address} — Existing Paid Contract`;
+      const html = `<html><body style="font-family:Arial,sans-serif;padding:36px;color:#1f2937"><h1>Snow Bro's Service Contract</h1><h2>${title}</h2><p><strong>Client:</strong> ${clientRows[0].first_name} ${clientRows[0].last_name}</p><p><strong>Property:</strong> ${address}, South Moorhead, MN 56560</p><p><strong>Contract record:</strong> Existing/manual contract entered into the system. This record was not e-signed through the portal.</p><p style="color:#15803d;font-weight:700">Payment status: Paid in full</p><p>Entered on ${new Date().toLocaleDateString('en-US')}.</p></body></html>`;
+      const { rows } = await req.db.query(`INSERT INTO contracts (title,description,client_id,filename,original_name,file_path,status,uploaded_by,contract_type,contract_html,service_details,payment_status)
+        VALUES ($1,$2,$3,'manual','Manual / Existing','', 'manual',$4,'uploaded',$5,$6,'paid') RETURNING id,title,status`, [title, `Existing paid property contract for ${address}`, client_id, req.user.id, html, `Property: ${address}, South Moorhead, MN 56560`]);
+      created.push(rows[0]);
+    }
+    res.status(201).json({ message: `${created.length} manual contracts added`, contracts: created });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Admin: generate + create contract and send email ─────────────────────────
 router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
   try {
