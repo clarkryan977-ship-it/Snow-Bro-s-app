@@ -131,7 +131,7 @@ function clientBlock(name, address, city, state, zip, phone, email) {
 // ─── Template 1: Snow Removal Agreement ─────────────────────────────────────
 function buildSnowRemovalHtml({
   clientName, clientAddress, clientCity, clientState, clientZip, clientPhone, clientEmail,
-  startDate, endDate, ratePerVisit, monthlyRate, paymentTerms, serviceDetails, year
+  startDate, endDate, ratePerVisit, monthlyRate, paymentTerms, serviceDetails, serviceResponseTime, year
 }) {
   const yr = year || new Date().getFullYear();
   const startFmt = fmtDate(startDate);
@@ -152,11 +152,11 @@ function buildSnowRemovalHtml({
 
     <h3 class="section-title">2. Services</h3>
     <p class="body-p">Contractor agrees to provide snow removal services at the Client's property during the service season specified above. Services include:</p>
-    <div class="highlight-box">${serviceDetails || 'Snow plowing of driveway and walkways. Salting/sanding of walkways and entry points. Services triggered by snowfall of 2 inches or more.'}</div>
+    <div class="highlight-box">${serviceDetails || 'Snow plowing of driveway and walkways. Services triggered by snowfall of 2 inches or more.'}</div>
 
     <h3 class="section-title">3. Service Season &amp; Schedule</h3>
     <p class="body-p"><strong>Season:</strong> ${season}</p>
-    <p class="body-p">Services will be performed as needed based on snowfall conditions, typically within 24 hours of a qualifying snowfall event. The Contractor will make reasonable efforts to service the property before 7:00 AM on business days.</p>
+    <p class="body-p">Services will be performed as needed based on snowfall conditions, typically ${serviceResponseTime || 'within 24 hours of a qualifying snowfall event'}. The Contractor will make reasonable efforts to service the property before 7:00 AM on business days.</p>
 
     <h3 class="section-title">4. Compensation &amp; Payment Terms</h3>
     <table class="data">
@@ -494,7 +494,8 @@ router.get('/template', authenticateToken, requireAdmin, (req, res) => {
       snow_removal: {
         start_date: `${yr}-11-01`, end_date: `${yr+1}-04-01`,
         rate_per_visit: '75', monthly_rate: '',
-        service_details: 'Snow plowing of driveway and walkways. Salting/sanding of entry points. Services triggered by 2+ inch snowfall.',
+        service_details: 'Snow plowing of driveway and walkways. Services triggered by 2+ inch snowfall.',
+        service_response_time: 'Within 24 hours of a qualifying snowfall event.',
         payment_terms: 'Due within 7 days of invoice.',
       },
       landscape: {
@@ -552,6 +553,7 @@ router.post('/preview', authenticateToken, requireAdmin, async (req, res) => {
       paymentTerms: body.payment_terms,
       // Snow Removal fields
       ratePerVisit: body.rate_per_visit,
+      serviceResponseTime: body.service_response_time,
       // Landscape fields
       projectDescription: body.project_description,
       lineItems: body.line_items,
@@ -628,6 +630,7 @@ router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
       paymentTerms: body.payment_terms,
       // Snow Removal
       ratePerVisit: body.rate_per_visit,
+      serviceResponseTime: body.service_response_time,
       // Landscape
       projectDescription: body.project_description,
       lineItems: body.line_items,

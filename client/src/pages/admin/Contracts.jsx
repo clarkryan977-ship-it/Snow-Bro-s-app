@@ -132,6 +132,10 @@ function SnowFields({ form, handle }) {
           <input name="payment_terms" value={form.payment_terms} onChange={handle} style={inp} placeholder="e.g. Due within 7 days of invoice" />
         </div>
         <div style={{ gridColumn: '1/-1', ...grp }}>
+          <label style={lbl}>Service Response Time</label>
+          <input name="service_response_time" value={form.service_response_time || ''} onChange={handle} style={inp} placeholder="e.g. Within 12 hours of qualifying snowfall" />
+        </div>
+        <div style={{ gridColumn: '1/-1', ...grp }}>
           <label style={lbl}>Services Included</label>
           <textarea name="service_details" value={form.service_details} onChange={handle} rows={3} style={{ ...inp, resize: 'vertical' }} />
         </div>
@@ -371,7 +375,8 @@ function GenerateModal({ clients, onClose, onSuccess }) {
       title: `${yr} Snow Removal Service Agreement`,
       client_id: '', start_date: `${yr}-11-01`, end_date: `${yr + 1}-04-01`,
       rate_per_visit: '75', monthly_rate: '',
-      service_details: 'Snow plowing of driveway and walkways. Salting/sanding of entry points. Services triggered by 2+ inch snowfall.',
+      service_details: 'Snow plowing of driveway and walkways. Services triggered by 2+ inch snowfall.',
+      service_response_time: 'Within 24 hours of a qualifying snowfall event.',
       payment_terms: 'Due within 7 days of invoice.',
       billing_type: 'monthly', monthly_amount: '', billing_day: 1,
     },
@@ -656,7 +661,11 @@ export default function AdminContracts() {
     }
   };
 
-  const viewFile = id => window.open(`${window.location.origin}/api/contracts/${id}/view`, '_blank', 'noopener');
+  const viewFile = id => {
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!token) return window.location.href = '/login';
+    window.open(`${window.location.origin}/api/contracts/${id}/view?token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
+  };
   const downloadSigned = id => window.open(`${window.location.origin}/api/contracts/${id}/signed-file`, '_blank', 'noopener');
 
   const typeBadge = type => {
