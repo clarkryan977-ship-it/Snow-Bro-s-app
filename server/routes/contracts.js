@@ -976,8 +976,10 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// ── View contract as rendered HTML page (no auth required — uses sign_token or id) ──────────────
-router.get('/:id/view', async (req, res) => {
+// ── View contract as rendered HTML page ──────────────────────────────────────
+// New tabs carry the session token in the query string because they do not
+// inherit Axios' Authorization header. Ownership is enforced below.
+router.get('/:id/view', authenticateToken, async (req, res) => {
   try {
     const { rows: __contract } = await req.db.query(`
       SELECT c.*, cl.first_name || ' ' || cl.last_name AS client_name, cl.email AS client_email,
@@ -986,6 +988,9 @@ router.get('/:id/view', async (req, res) => {
       WHERE c.id = $1`, [req.params.id]);
     const contract = __contract[0];
     if (!contract) return res.status(404).send('<h1>Contract not found</h1>');
+    if (req.user.role === 'client' && contract.client_id !== req.user.id) {
+      return res.status(403).send('<h1>Access denied</h1>');
+    }
 
     // ── CASE 1: Generated contract (has contract_html from contractShell) ──────
     // contractShell() always returns a complete <!DOCTYPE html> page with its own

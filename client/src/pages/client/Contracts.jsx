@@ -57,7 +57,13 @@ export default function ClientContracts() {
     } finally { setLoading(false); }
   };
 
-  const viewFile = id => window.open(`/api/contracts/${id}/file`, '_blank');
+  // A new tab does not inherit Axios' Authorization header. Use the rendered
+  // contract route and pass the existing session token explicitly.
+  const viewFile = id => {
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!token) return window.location.href = '/login';
+    window.open(`/api/contracts/${id}/view?token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div className="container" style={{ maxWidth:800, padding:'2rem 1rem' }}>
