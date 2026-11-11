@@ -444,6 +444,39 @@ router.get('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Import address data from a prepared route workbook into existing stops.
+// Matching is by client name, while the route order remains unchanged.
+router.post('/:id/import-addresses', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ error: 'No address rows supplied' });
+    const { rows: stops } = await req.db.query(`
+      SELECT rs.id, rs.client_id, c.first_name, c.last_name
+      FROM route_stops rs LEFT JOIN clients c ON rs.client_id = c.id
+      WHERE rs.route_id = $1 ORDER BY rs.position ASC`, [req.params.id]);
+    const norm = v => String(v || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const byName = new Map();
+    for (const s of stops) byName.set(norm(`${s.first_name || ''} ${s.last_name || ''}`), s);
+    let updated = 0;
+    const unmatched = [];
+    for (const row of rows) {
+      const name = norm(row.client || row.name);
+      if (!name) continue;
+      const stop = byName.get(name);
+      if (!stop) { unmatched.push(row.client || row.name); continue; }
+      const lat = row.latitude !== '' && row.latitude != null ? Number(row.latitude) : null;
+      const lng = row.longitude !== '' && row.longitude != null ? Number(row.longitude) : null;
+      await req.db.query(`UPDATE route_stops SET address=$1, city=$2, state=$3, zip=$4,
+        stop_lat=$5, stop_lng=$6 WHERE id=$7 AND route_id=$8`, [
+        String(row.address || '').trim(), String(row.city || '').trim(), String(row.state || '').trim(),
+        String(row.zip || '').trim(), Number.isFinite(lat) ? lat : null, Number.isFinite(lng) ? lng : null,
+        stop.id, req.params.id]);
+      updated++;
+    }
+    res.json({ message: `Updated ${updated} route address${updated === 1 ? '' : 'es'}`, updated, unmatched });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.post('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
   try {
     let { client_id, booking_id, frequency, notes, stop_label, address, city, state, zip } = req.body;

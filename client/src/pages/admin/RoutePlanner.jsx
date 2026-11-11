@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../utils/api';
+import * as XLSX from 'xlsx';
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 function haversine(lat1, lng1, lat2, lng2) {
@@ -854,6 +855,9 @@ export default function RoutePlanner() {
   const [crewLat, setCrewLat] = useState(null);
   const [crewLng, setCrewLng] = useState(null);
   const [locationError, setLocationError] = useState(null); // null | 'denied' | 'timeout' | 'other'
+  const addressImportRef = useRef(null);
+  const [importingAddresses, setImportingAddresses] = useState(false);
+  const [addressImportResult, setAddressImportResult] = useState(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -1021,6 +1025,37 @@ export default function RoutePlanner() {
     } finally {
       setGeocodingStops(false);
     }
+  };
+
+  const handleAddressWorkbook = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !selectedRouteId) return;
+    setImportingAddresses(true); setAddressImportResult(null);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames.includes('Route') ? 'Route' : workbook.SheetNames[0]];
+      const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      const headerIndex = matrix.findIndex(row => row.some(cell => String(cell).trim().toLowerCase() === 'client'));
+      if (headerIndex < 0) throw new Error('Could not find the Client column in this workbook');
+      const headers = matrix[headerIndex].map(v => String(v).trim().toLowerCase());
+      const col = name => headers.findIndex(h => h === name);
+      const rows = matrix.slice(headerIndex + 1).map(row => {
+        const cityState = String(row[col('city / state')] || '');
+        const full = String(row[col('full address')] || '');
+        return {
+          client: row[col('client')], address: row[col('address')],
+          city: cityState.split('/')[0].trim(), state: cityState.split('/')[1]?.trim() || 'MN',
+          zip: full.match(/\b\d{5}(?:-\d{4})?\b/)?.[0] || '',
+          latitude: row[col('latitude')], longitude: row[col('longitude')],
+        };
+      }).filter(row => row.client);
+      const { data: result } = await api.post('/routes/' + selectedRouteId + '/import-addresses', { rows });
+      setAddressImportResult(result); loadRouteDetail(selectedRouteId, true);
+    } catch (e) {
+      setAddressImportResult({ error: e.response?.data?.error || e.message || 'Address import failed' });
+    } finally { setImportingAddresses(false); }
   };
 
   // Sort from Start: geocode optional address, then nearest-neighbour all stops
@@ -1370,6 +1405,23 @@ export default function RoutePlanner() {
                         style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: (geocodingAll || !!optimizing) ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: (geocodingAll || !!optimizing) ? 0.6 : 1 }}>
                         {geocodingAll ? '⏳ Geocoding…' : '🌐 Geocode All Addresses'}
                       </button>
+                    </div>
+                  )}
+                  {!liveMode && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                      <div style={{ flex: 1, fontSize: 12, color: '#64748b' }}>
+                        Load the prepared route workbook to fill exact stop addresses and coordinates.
+                      </div>
+                      <input ref={addressImportRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleAddressWorkbook} style={{ display: 'none' }} />
+                      <button onClick={() => addressImportRef.current?.click()} disabled={importingAddresses}
+                        style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: importingAddresses ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: importingAddresses ? 0.6 : 1 }}>
+                        {importingAddresses ? '⏳ Importing…' : '📊 Load Route Workbook'}
+                      </button>
+                    </div>
+                  )}
+                  {addressImportResult && (
+                    <div style={{ background: addressImportResult.error ? '#fef2f2' : '#dbeafe', border: '1px solid ' + (addressImportResult.error ? '#fca5a5' : '#93c5fd'), borderRadius: 7, padding: '6px 12px', marginTop: 4, fontSize: 12, color: addressImportResult.error ? '#991b1b' : '#1e40af' }}>
+                      {addressImportResult.error || `✅ ${addressImportResult.message}${addressImportResult.unmatched?.length ? ` · Unmatched: ${addressImportResult.unmatched.join(', ')}` : ''}`}
                     </div>
                   )}
                   {geocodeAllResult && (
