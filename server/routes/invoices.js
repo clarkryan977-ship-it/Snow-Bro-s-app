@@ -89,6 +89,38 @@ router.get('/auto-generated', authenticateToken, requireAdmin, async (req, res) 
   }
 });
 
+// Preview the next catch-up billing run without creating invoices.
+router.get('/billing-preview', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await req.db.query(`
+      SELECT co.id, co.title, co.status, co.billing_type, co.billing_day,
+             co.monthly_amount, co.rate, co.start_date, co.end_date, co.last_billed_at,
+             c.first_name, c.last_name, c.email, c.active
+      FROM contracts co JOIN clients c ON c.id = co.client_id
+      WHERE co.billing_type = 'monthly'
+      ORDER BY c.last_name, c.first_name, co.id`);
+    const now = new Date();
+    const day = now.getDate();
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const contracts = rows.map(c => {
+      const amount = Number.parseFloat(c.monthly_amount || c.rate);
+      const billingDay = Number(c.billing_day || 1);
+      const reasons = [];
+      if (c.status !== 'signed') reasons.push(`contract is ${c.status || 'not signed'}`);
+      if (c.active !== 1 && c.active !== true) reasons.push('client is inactive');
+      if (!Number.isFinite(amount) || amount <= 0) reasons.push('no valid monthly amount');
+      if (c.start_date && new Date(c.start_date) > now) reasons.push('season has not started');
+      if (c.end_date && new Date(c.end_date) < now) reasons.push('season has ended');
+      if (c.last_billed_at && new Date(c.last_billed_at) >= monthStart) reasons.push('already billed this month');
+      if (billingDay > day && billingDay <= lastDay) reasons.push(`billing day is the ${billingDay}th`);
+      const eligible = reasons.length === 0;
+      return { ...c, amount: Number.isFinite(amount) ? amount : null, eligible, reason: reasons.join('; ') };
+    });
+    res.json({ run_date: now.toISOString().slice(0, 10), eligible: contracts.filter(c => c.eligible), skipped: contracts.filter(c => !c.eligible), total: contracts.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Dashboard summary for receivables and collections
 router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
   try {

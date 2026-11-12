@@ -23,6 +23,8 @@ export default function AdminInvoices() {
   const [smsModal, setSmsModal]   = useState(null); // { invoiceId, smsText, phone }
   const [billingMsg, setBillingMsg] = useState(null);
   const [billingRunning, setBillingRunning] = useState(false);
+  const [billingPreview, setBillingPreview] = useState(null);
+  const [billingPreviewLoading, setBillingPreviewLoading] = useState(false);
   const [summary, setSummary] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -142,6 +144,16 @@ export default function AdminInvoices() {
     }
   };
 
+  const previewBilling = async () => {
+    setBillingPreviewLoading(true);
+    try {
+      const { data } = await api.get('/invoices/billing-preview');
+      setBillingPreview(data);
+    } catch (err) {
+      setBillingMsg('Preview failed: ' + (err.response?.data?.error || 'Unknown error'));
+    } finally { setBillingPreviewLoading(false); }
+  };
+
   const deleteInvoice = async (id) => {
     if (!window.confirm('Delete this invoice permanently?')) return;
     try {
@@ -196,6 +208,9 @@ export default function AdminInvoices() {
       <div className="flex-between page-header">
         <div><h1>Invoices</h1><p>Create, manage, and send client invoices.</p></div>
         <div style={{ display:'flex', gap:'.5rem', alignItems:'center' }}>
+          <button className="btn btn-secondary" onClick={previewBilling} disabled={billingPreviewLoading}>
+            {billingPreviewLoading ? <span className="spinner" style={{ width:14, height:14 }} /> : 'Preview Billing'}
+          </button>
           <button className="btn btn-secondary" onClick={runBilling} disabled={billingRunning}>
             {billingRunning ? <span className="spinner" style={{ width:14, height:14 }} /> : 'Run Billing Now'}
           </button>
@@ -206,6 +221,17 @@ export default function AdminInvoices() {
       {billingMsg && (
         <div className={`alert ${billingMsg.includes('failed') ? 'alert-error' : 'alert-success'}`} style={{ marginBottom:'1rem' }}>
           {billingMsg}
+        </div>
+      )}
+
+      {billingPreview && (
+        <div className="card" style={{ marginBottom:'1rem', border:'1px solid #bfdbfe', background:'#eff6ff' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', gap:'.75rem', alignItems:'flex-start', flexWrap:'wrap' }}>
+            <div><h3 style={{ margin:0 }}>Billing preview for {billingPreview.run_date}</h3><p style={{ margin:'.35rem 0 0', color:'var(--gray-600)' }}>{billingPreview.eligible.length} ready to bill · {billingPreview.skipped.length} skipped</p></div>
+            <button className="btn btn-secondary btn-sm" onClick={() => setBillingPreview(null)}>Close</button>
+          </div>
+          {billingPreview.skipped.length > 0 && <div style={{ marginTop:'.75rem', background:'#fff', borderRadius:8, padding:'.75rem' }}><strong>Skipped customers</strong>{billingPreview.skipped.map(c => <div key={c.id} style={{ display:'flex', justifyContent:'space-between', gap:'.5rem', padding:'.35rem 0', borderBottom:'1px solid #e5e7eb', fontSize:'.88rem' }}><span>{c.first_name} {c.last_name}</span><span style={{ color:'#b45309' }}>{c.reason}</span></div>)}</div>}
+          {billingPreview.eligible.length > 0 && <div style={{ marginTop:'.75rem', color:'#166534', fontSize:'.9rem' }}><strong>Ready:</strong> {billingPreview.eligible.map(c => `${c.first_name} ${c.last_name} ($${Number(c.amount).toFixed(2)})`).join(', ')}</div>}
         </div>
       )}
 
