@@ -220,6 +220,34 @@ router.put('/:id/status', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// Mark an invoice paid in full in one step, recording the remaining balance.
+router.post('/:id/pay-in-full', authenticateToken, requireAdmin, async (req, res) => {
+  const db = req.db;
+  try {
+    const method = String(req.body.payment_method || 'other').trim().toLowerCase();
+    const allowedMethods = ['cash','check','venmo','cash_app','zelle','card','bank_transfer','other'];
+    if (!allowedMethods.includes(method)) return res.status(400).json({ error: 'Invalid payment method' });
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query('SELECT * FROM invoices WHERE id=$1 FOR UPDATE', [req.params.id]);
+      const inv = rows[0];
+      if (!inv) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Invoice not found' }); }
+      const balance = Math.max(Number(inv.total) - Number(inv.amount_paid || 0), 0);
+      if (balance > 0.01) {
+        await client.query(`INSERT INTO invoice_payments (invoice_id,amount,payment_method,reference,notes,created_by)
+          VALUES ($1,$2,$3,$4,$5,$6)`, [req.params.id, balance, method, req.body.reference || '', req.body.notes || 'Marked paid in full', req.user.id]);
+      }
+      await client.query(`UPDATE invoices SET amount_paid=$1,status='paid',paid_at=COALESCE(paid_at,NOW()),
+        payment_method=$2,payment_reference=$3,payment_notes=$4 WHERE id=$5`,
+        [Number(inv.total), method, req.body.reference || '', req.body.notes || 'Marked paid in full', req.params.id]);
+      await client.query('INSERT INTO invoice_audit_log (invoice_id,action,details,created_by) VALUES ($1,$2,$3,$4)', [req.params.id, 'paid_in_full', `$${balance.toFixed(2)} remaining balance marked paid in full via ${method}`, req.user.id]);
+      await client.query('COMMIT');
+      res.status(201).json({ status: 'paid', amount_paid: Number(inv.total), balance_due: 0 });
+    } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Record a full or partial payment
 router.post('/:id/payments', authenticateToken, requireAdmin, async (req, res) => {
   const db = req.db;

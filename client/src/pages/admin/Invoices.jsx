@@ -83,6 +83,11 @@ export default function AdminInvoices() {
     catch (err) { alert(err.response?.data?.error || 'Could not update invoice status'); }
   };
   const openPayment = inv => { setPaymentMsg(null); setPaymentForm({ amount: Math.max(Number(inv.total)-Number(inv.amount_paid||0),0).toFixed(2), payment_method:'check', reference:'', notes:'' }); setPaymentModal(inv); };
+  const payInFull = async inv => {
+    if (!window.confirm(`Mark ${inv.invoice_number} paid in full for $${Math.max(Number(inv.total)-Number(inv.amount_paid||0),0).toFixed(2)}? This records the remaining balance as a manual payment.`)) return;
+    try { await api.post(`/invoices/${inv.id}/pay-in-full`, { payment_method:'other', notes:'Marked paid in full manually' }); await Promise.all([load(), loadSummary()]); }
+    catch (err) { alert(err.response?.data?.error || 'Could not mark invoice paid in full'); }
+  };
   const recordPayment = async e => { e.preventDefault(); setPaymentMsg(null); try { await api.post(`/invoices/${paymentModal.id}/payments`, paymentForm); setPaymentModal(null); await Promise.all([load(), loadSummary()]); if (viewInv?.id === paymentModal.id) viewFull(paymentModal); } catch (err) { setPaymentMsg(err.response?.data?.error || 'Could not record payment'); } };
   const remind = async inv => { try { await api.post(`/invoices/${inv.id}/remind`); alert('Payment reminder sent'); load(); } catch (err) { alert(err.response?.data?.error || 'Could not send reminder'); } };
   const archiveThroughYesterday = async () => { const cutoff=new Date(Date.now()-86400000).toISOString().slice(0,10); if(!window.confirm(`Archive all invoices dated on or before ${cutoff}? Nothing will be deleted.`)) return; try { const {data}=await api.post('/invoices/archive-before',{cutoff_date:cutoff}); alert(`${data.archived} invoices archived safely`); load(); } catch(err) { alert(err.response?.data?.error||'Could not archive invoices'); } };
@@ -257,7 +262,7 @@ export default function AdminInvoices() {
                         {['draft','sent','partial','paid','overdue','void'].map(s => <option key={s} value={s}>{s === 'paid' ? 'Paid in full' : s}</option>)}
                       </select>
                       {(inv.display_status || inv.status) !== 'paid' && (inv.display_status || inv.status) !== 'void' && (
-                        <button className="btn btn-sm" style={{ background:'#16a34a', color:'#fff', marginTop:'.35rem', whiteSpace:'nowrap' }} onClick={() => openPayment(inv)}>
+                        <button className="btn btn-sm" style={{ background:'#16a34a', color:'#fff', marginTop:'.35rem', whiteSpace:'nowrap' }} onClick={() => payInFull(inv)}>
                           Mark paid in full
                         </button>
                       )}
@@ -267,7 +272,7 @@ export default function AdminInvoices() {
                       <div style={{ display:'flex', gap:'.4rem', alignItems:'center', flexWrap:'wrap' }}>
                         <button className="btn btn-secondary btn-sm" onClick={() => viewFull(inv)}>View</button>
                         <button className="btn btn-secondary btn-sm" onClick={() => scanReceipt(inv)}>Scan Receipt</button>
-                        {(inv.display_status || inv.status) !== 'paid' && (inv.display_status || inv.status) !== 'void' && <button className="btn btn-sm" style={{background:'#16a34a',color:'#fff'}} onClick={() => openPayment(inv)}>Mark paid in full</button>}
+                        {(inv.display_status || inv.status) !== 'paid' && (inv.display_status || inv.status) !== 'void' && <button className="btn btn-sm" style={{background:'#16a34a',color:'#fff'}} onClick={() => payInFull(inv)}>Mark paid in full</button>}
                         {(inv.display_status || inv.status) !== 'paid' && <button className="btn btn-secondary btn-sm" onClick={() => remind(inv)}>Remind</button>}
                         <button
                           className="btn btn-primary btn-sm"
