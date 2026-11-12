@@ -454,6 +454,7 @@ router.post('/:id/import-addresses', authenticateToken, requireAdmin, async (req
       SELECT rs.id, rs.client_id, c.first_name, c.last_name
       FROM route_stops rs LEFT JOIN clients c ON rs.client_id = c.id
       WHERE rs.route_id = $1 ORDER BY rs.position ASC`, [req.params.id]);
+    const { rows: clients } = await req.db.query('SELECT id, first_name, last_name FROM clients');
     const norm = v => String(v || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const byName = new Map();
     for (const s of stops) {
@@ -461,6 +462,8 @@ router.post('/:id/import-addresses', authenticateToken, requireAdmin, async (req
       if (!byName.has(key)) byName.set(key, []);
       byName.get(key).push(s);
     }
+    const clientByName = new Map(clients.map(c => [norm(`${c.first_name || ''} ${c.last_name || ''}`), c]));
+    const clientUpdated = new Set();
     let updated = 0;
     const unmatched = [];
     for (const row of rows) {
@@ -476,9 +479,16 @@ router.post('/:id/import-addresses', authenticateToken, requireAdmin, async (req
         String(row.address || '').trim(), String(row.city || '').trim(), String(row.state || '').trim(),
         String(row.zip || '').trim(), Number.isFinite(lat) ? lat : null, Number.isFinite(lng) ? lng : null,
         stop.id, req.params.id]);
+      const client = clientByName.get(name);
+      if (client && !clientUpdated.has(client.id) && row.address && !String(row.address).toLowerCase().includes('reserved')) {
+        await req.db.query('UPDATE clients SET address=$1, city=$2, state=$3, zip=$4 WHERE id=$5', [
+          String(row.address).trim(), String(row.city || '').trim(), String(row.state || '').trim(), String(row.zip || '').trim(), client.id
+        ]);
+        clientUpdated.add(client.id);
+      }
       updated++;
     }
-    res.json({ message: `Updated ${updated} route address${updated === 1 ? '' : 'es'}`, updated, unmatched });
+    res.json({ message: `Updated ${updated} route address${updated === 1 ? '' : 'es'} and ${clientUpdated.size} client record${clientUpdated.size === 1 ? '' : 's'}`, updated, clientsUpdated: clientUpdated.size, unmatched });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
