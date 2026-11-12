@@ -456,13 +456,18 @@ router.post('/:id/import-addresses', authenticateToken, requireAdmin, async (req
       WHERE rs.route_id = $1 ORDER BY rs.position ASC`, [req.params.id]);
     const norm = v => String(v || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const byName = new Map();
-    for (const s of stops) byName.set(norm(`${s.first_name || ''} ${s.last_name || ''}`), s);
+    for (const s of stops) {
+      const key = norm(`${s.first_name || ''} ${s.last_name || ''}`);
+      if (!byName.has(key)) byName.set(key, []);
+      byName.get(key).push(s);
+    }
     let updated = 0;
     const unmatched = [];
     for (const row of rows) {
       const name = norm(row.client || row.name);
       if (!name) continue;
-      const stop = byName.get(name);
+      const matches = byName.get(name) || [];
+      const stop = matches.shift();
       if (!stop) { unmatched.push(row.client || row.name); continue; }
       const lat = row.latitude !== '' && row.latitude != null ? Number(row.latitude) : null;
       const lng = row.longitude !== '' && row.longitude != null ? Number(row.longitude) : null;
