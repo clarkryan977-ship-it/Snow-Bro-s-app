@@ -59,8 +59,13 @@ async function runBillingCycle(db) {
         const count = parseInt(countResult.rows[0].cnt);
         const invoice_number = `INV-${String(count + 1001).padStart(5, '0')}`;
 
-        // Determine service description
-        const isSnow = contract.service_category === 'snow';
+        // Determine service description. Contracts use values such as
+        // `snow_removal`, `snow`, and legacy titles/categories, so checking
+        // only service_category === 'snow' incorrectly labeled snow invoices
+        // as Lawn Care.
+        const contractSignals = [contract.service_category, contract.contract_type, contract.title, contract.service_details]
+          .filter(Boolean).join(' ').toLowerCase();
+        const isSnow = /snow|winter|plow/.test(contractSignals);
         const description = `${isSnow ? 'Snow Removal' : 'Lawn Care'} — Monthly Service (${monthName})`;
 
         // Create the invoice
