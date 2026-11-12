@@ -661,6 +661,18 @@ export default function AdminContracts() {
     }
   };
 
+  const recordPaperSignature = async contract => {
+    const signerName = window.prompt(`Name on the returned paper contract for ${contract.client_name}:`, contract.client_name || '');
+    if (!signerName?.trim()) return;
+    const signedAt = window.prompt('Date the paper contract was signed (YYYY-MM-DD):', new Date().toISOString().slice(0, 10));
+    if (!signedAt?.trim()) return;
+    try {
+      await api.post(`/contracts/${contract.id}/paper-signature`, { signer_name: signerName.trim(), signed_at: signedAt.trim() });
+      alert('Paper signature recorded. This contract is now eligible for monthly billing.');
+      load();
+    } catch (err) { alert('Could not record paper signature: ' + (err.response?.data?.error || err.message)); }
+  };
+
   const viewFile = id => {
     const token = localStorage.getItem('token') || sessionStorage.getItem('token');
     if (!token) return window.location.href = '/login';
@@ -759,13 +771,13 @@ export default function AdminContracts() {
                       color: c.status === 'signed' ? '#16a34a' : c.contract_type === 'uploaded' ? '#374151' : '#ca8a04',
                       fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
                     }}>
-                      {c.status === 'signed' ? '✅ E-signed' : c.contract_type === 'uploaded' ? '📎 Manual / Not e-signed' : '⏳ Awaiting signature'}
+                      {c.status === 'signed' ? (c.signature_type === 'paper' ? '📝 Paper signed' : '✅ E-signed') : c.contract_type === 'uploaded' ? '📎 Manual / Not e-signed' : '⏳ Awaiting signature'}
                     </span>
                   </td>
                   <td style={{ padding: '12px 14px' }}>
                     {c.status === 'signed' ? (
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{c.signer_name}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{c.signer_name} {c.signature_type === 'paper' ? '(paper)' : ''}</div>
                         <div style={{ fontSize: 12, color: '#9ca3af' }}>{c.signed_at ? new Date(c.signed_at).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' }) : ''}</div>
                       </div>
                     ) : <span style={{ color: '#d1d5db' }}>—</span>}
@@ -779,6 +791,11 @@ export default function AdminContracts() {
                       {c.status !== 'signed' && c.sign_token && (
                         <button onClick={() => resend(c.id, c.client_name)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
                           📧 Send
+                        </button>
+                      )}
+                      {c.status !== 'signed' && c.contract_type !== 'uploaded' && (
+                        <button onClick={() => recordPaperSignature(c)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
+                          📝 Paper Signed
                         </button>
                       )}
                       {c.status === 'signed' && c.signed_file_path && (

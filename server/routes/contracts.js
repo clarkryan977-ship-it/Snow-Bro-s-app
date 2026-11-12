@@ -593,6 +593,23 @@ router.post('/manual-bulk', authenticateToken, requireAdmin, async (req, res) =>
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Record a signature completed on paper and returned by mail.
+router.post('/:id/paper-signature', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const signerName = String(req.body.signer_name || '').trim();
+    const signedAt = req.body.signed_at ? new Date(req.body.signed_at) : new Date();
+    if (!signerName) return res.status(400).json({ error: 'Signer name is required' });
+    if (Number.isNaN(signedAt.getTime())) return res.status(400).json({ error: 'A valid signature date is required' });
+    const { rows } = await req.db.query(`
+      UPDATE contracts
+      SET status='signed', signed_at=$1, signer_name=$2, signature_type='paper'
+      WHERE id=$3
+      RETURNING id, title, status, signed_at, signer_name, signature_type`, [signedAt.toISOString(), signerName, req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Contract not found' });
+    res.json({ ...rows[0], message: 'Paper signature recorded; contract is now eligible for billing' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Admin: generate + create contract and send email ─────────────────────────
 router.post('/generate', authenticateToken, requireAdmin, async (req, res) => {
   try {
