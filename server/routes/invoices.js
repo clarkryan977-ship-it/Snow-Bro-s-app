@@ -52,6 +52,33 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// Permanently remove all invoice records and related bookkeeping artifacts.
+// Contracts, clients, and portal accounts are intentionally preserved.
+router.post('/purge-all', authenticateToken, requireAdmin, async (req, res) => {
+  const client = await req.db.connect();
+  try {
+    await client.query('BEGIN');
+    const counts = {};
+    for (const [table, sql] of [
+      ['invoice_attachments', 'DELETE FROM invoice_attachments'],
+      ['invoice_audit_log', 'DELETE FROM invoice_audit_log'],
+      ['invoice_payments', 'DELETE FROM invoice_payments'],
+      ['invoice_items', 'DELETE FROM invoice_items'],
+      ['invoices', 'DELETE FROM invoices'],
+    ]) {
+      const result = await client.query(sql);
+      counts[table] = result.rowCount;
+    }
+    // Allow the December cycle to bill every eligible monthly contract afresh.
+    await client.query('UPDATE contracts SET last_billed_at = NULL');
+    await client.query('COMMIT');
+    res.json({ message: 'All invoices and related records permanently deleted', deleted: counts, contracts_reset: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
+});
+
 // Archive historical invoices without deleting their financial records
 router.post('/archive-before', authenticateToken, requireAdmin, async (req, res) => {
   try {
