@@ -6,6 +6,9 @@ const { sendMail } = require('./mailer');
 const { wrapEmail, BUSINESS } = require('./emailHeader');
 
 const BASE_URL = process.env.BASE_URL || 'https://snowbros-production.up.railway.app';
+// Safety pause: automatic monthly generation/emailing is disabled until the
+// recent invoice batch is reviewed. Manual admin billing remains available.
+const AUTOMATED_BILLING_PAUSED = process.env.BILLING_AUTOMATION_PAUSED !== 'false';
 
 async function runBillingCycle(db) {
   const today = new Date();
@@ -161,6 +164,10 @@ async function runBillingCycle(db) {
  * Start the billing scheduler — runs once per day at midnight
  */
 function startBillingScheduler(db) {
+  if (AUTOMATED_BILLING_PAUSED) {
+    console.log('[billing] Automatic monthly invoice generation/emailing is PAUSED. Manual billing remains available.');
+    return;
+  }
   // Run immediately on startup to catch any missed billings
   setTimeout(() => {
     console.log('[billing] Running startup billing check...');
