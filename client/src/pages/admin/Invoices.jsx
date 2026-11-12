@@ -154,6 +154,18 @@ export default function AdminInvoices() {
     } finally { setBillingPreviewLoading(false); }
   };
 
+  const purgeAllInvoices = async () => {
+    if (!window.confirm('PERMANENTLY delete every invoice, payment, receipt attachment, and invoice audit record? Contracts, clients, and portal accounts will remain.')) return;
+    if (!window.confirm('Final confirmation: start December with zero invoices and reset contract billing timestamps? This cannot be undone.')) return;
+    try {
+      const { data } = await api.post('/invoices/purge-all');
+      const deleted = Object.values(data.deleted || {}).reduce((sum, count) => sum + count, 0);
+      setBillingMsg(`Purge complete: ${deleted} invoice and related records deleted. Contracts reset for December.`);
+      await Promise.all([load(), loadSummary()]);
+      if (tab === 'auto') loadAuto();
+    } catch (err) { setBillingMsg('Purge failed: ' + (err.response?.data?.error || 'Unknown error')); }
+  };
+
   const deleteInvoice = async (id) => {
     if (!window.confirm('Delete this invoice permanently?')) return;
     try {
@@ -213,6 +225,9 @@ export default function AdminInvoices() {
           </button>
           <button className="btn btn-secondary" onClick={runBilling} disabled={billingRunning}>
             {billingRunning ? <span className="spinner" style={{ width:14, height:14 }} /> : 'Run Billing Now'}
+          </button>
+          <button className="btn btn-secondary" onClick={purgeAllInvoices} style={{ color:'#b91c1c', borderColor:'#fecaca' }}>
+            Delete All Invoices
           </button>
           <button className="btn btn-primary" onClick={openCreate}>+ New Invoice</button>
         </div>
