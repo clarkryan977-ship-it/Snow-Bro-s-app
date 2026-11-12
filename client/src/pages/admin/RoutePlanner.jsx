@@ -1293,6 +1293,15 @@ export default function RoutePlanner() {
                         {showAddStop ? '✕ Close' : '+ Add Stops'}
                       </button>
                     )}
+                    {!liveMode && (
+                      <>
+                        <input ref={addressImportRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleAddressWorkbook} style={{ display: 'none' }} />
+                        <button onClick={() => addressImportRef.current?.click()} disabled={importingAddresses}
+                          style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 13, cursor: importingAddresses ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', opacity: importingAddresses ? 0.6 : 1 }}>
+                          {importingAddresses ? '⏳ Importing…' : '📊 Upload Workbook'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1404,18 +1413,6 @@ export default function RoutePlanner() {
                         title="Geocode all clients missing lat/lon using OpenStreetMap (runs in background ~2 min)"
                         style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: (geocodingAll || !!optimizing) ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: (geocodingAll || !!optimizing) ? 0.6 : 1 }}>
                         {geocodingAll ? '⏳ Geocoding…' : '🌐 Geocode All Addresses'}
-                      </button>
-                    </div>
-                  )}
-                  {!liveMode && (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-                      <div style={{ flex: 1, fontSize: 12, color: '#64748b' }}>
-                        Load the prepared route workbook to fill exact stop addresses and coordinates.
-                      </div>
-                      <input ref={addressImportRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleAddressWorkbook} style={{ display: 'none' }} />
-                      <button onClick={() => addressImportRef.current?.click()} disabled={importingAddresses}
-                        style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: importingAddresses ? 'default' : 'pointer', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, opacity: importingAddresses ? 0.6 : 1 }}>
-                        {importingAddresses ? '⏳ Importing…' : '📊 Load Route Workbook'}
                       </button>
                     </div>
                   )}
