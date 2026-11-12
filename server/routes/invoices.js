@@ -134,7 +134,8 @@ router.get('/billing-preview', authenticateToken, requireAdmin, async (req, res)
       const amount = Number.parseFloat(c.monthly_amount || c.rate);
       const billingDay = Number(c.billing_day || 1);
       const reasons = [];
-      if (c.status !== 'signed') reasons.push(`contract is ${c.status || 'not signed'}`);
+      const hasSignatureEvidence = c.status === 'signed' || Boolean(c.signed_at) || Boolean(c.signature_data);
+      if (!hasSignatureEvidence) reasons.push(`contract is ${c.status || 'not signed'}`);
       if (c.active !== 1 && c.active !== true) reasons.push('client is inactive');
       if (!Number.isFinite(amount) || amount <= 0) reasons.push('no valid monthly amount');
       if (c.start_date && new Date(c.start_date) > now) reasons.push('season has not started');

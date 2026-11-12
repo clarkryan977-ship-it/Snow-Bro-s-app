@@ -27,7 +27,7 @@ async function runBillingCycle(db) {
       FROM contracts co
       JOIN clients c ON co.client_id = c.id
       WHERE co.billing_type = 'monthly'
-        AND co.status = 'signed'
+        AND (co.status = 'signed' OR co.signed_at IS NOT NULL OR co.signature_data IS NOT NULL)
         AND (
           co.billing_day <= $1
           OR (co.billing_day > $2 AND $1 = $2)
