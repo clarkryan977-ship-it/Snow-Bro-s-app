@@ -10,27 +10,35 @@ const BASE_URL = process.env.BASE_URL || 'https://snowbros-production.up.railway
 async function runBillingCycle(db) {
   const today = new Date();
   const dayOfMonth = today.getDate();
+  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const monthName = today.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
   console.log(`[billing] Running billing cycle for day ${dayOfMonth} of ${monthName}`);
 
   try {
-    // Find all signed/active contracts with monthly billing that match today's billing day
-    // and haven't been billed this month yet
+    // Find all signed/active monthly contracts whose billing day is due today or
+    // overdue. The old exact-day filter permanently missed invoices when Railway
+    // restarted after the billing day. A billing day beyond the month's length is
+    // treated as due on the month's last day.
     const { rows: contracts } = await db.query(`
       SELECT co.*, 
-             c.first_name, c.last_name, c.email, c.phone, c.address, c.city, c.state, c.zip
+             c.first_name, c.last_name, c.email, c.phone, c.address, c.city, c.state, c.zip,
+             COALESCE(NULLIF(co.monthly_amount, ''), NULLIF(co.rate, '')) AS billable_amount
       FROM contracts co
       JOIN clients c ON co.client_id = c.id
       WHERE co.billing_type = 'monthly'
         AND co.status = 'signed'
-        AND co.billing_day = $1
-        AND (co.monthly_amount IS NOT NULL AND co.monthly_amount != '' AND co.monthly_amount != '0')
+        AND (
+          co.billing_day <= $1
+          OR (co.billing_day > $2 AND $1 = $2)
+        )
+        AND COALESCE(NULLIF(co.monthly_amount, ''), NULLIF(co.rate, '')) IS NOT NULL
+        AND COALESCE(NULLIF(co.monthly_amount, ''), NULLIF(co.rate, '')) != '0'
         AND c.active = 1
         AND (co.end_date IS NULL OR co.end_date = '' OR co.end_date::date >= CURRENT_DATE)
         AND (co.start_date IS NULL OR co.start_date = '' OR co.start_date::date <= CURRENT_DATE)
         AND (co.last_billed_at IS NULL OR co.last_billed_at < date_trunc('month', CURRENT_DATE))
-    `, [dayOfMonth]);
+    `, [dayOfMonth, lastDayOfMonth]);
 
     console.log(`[billing] Found ${contracts.length} contracts to bill`);
 
@@ -40,9 +48,9 @@ async function runBillingCycle(db) {
 
     for (const contract of contracts) {
       try {
-        const amount = parseFloat(contract.monthly_amount);
+        const amount = parseFloat(contract.billable_amount);
         if (isNaN(amount) || amount <= 0) {
-          console.log(`[billing] Skipping contract ${contract.id}: invalid amount "${contract.monthly_amount}"`);
+          console.log(`[billing] Skipping contract ${contract.id}: invalid amount "${contract.billable_amount}"`);
           continue;
         }
 
