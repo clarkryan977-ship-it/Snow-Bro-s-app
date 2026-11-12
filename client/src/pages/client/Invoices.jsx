@@ -10,9 +10,8 @@ export default function ClientInvoices() {
   const [viewInv, setViewInv] = useState(null);
 
   useEffect(() => {
-    // Clients see invoices via admin endpoint — in a full app you'd have a client-specific endpoint
-    // For now we show all invoices (the backend already filters by token role if needed)
-    api.get('/invoices').then(r => setInvoices(r.data)).catch(() => {});
+    // The /my endpoint is scoped server-side to the authenticated portal account.
+    api.get('/invoices/my').then(r => setInvoices(r.data)).catch(() => {});
   }, []);
 
   const viewFull = async inv => {

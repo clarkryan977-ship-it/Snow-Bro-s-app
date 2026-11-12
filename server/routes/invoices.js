@@ -139,6 +139,8 @@ router.get('/my', authenticateToken, async (req, res) => {
     if (req.user.role !== 'client') return res.status(403).json({ error: 'Clients only' });
     const { rows } = await req.db.query(`
       SELECT i.id, i.invoice_number, i.subtotal, i.tax_rate, i.tax_amount, i.total,
+             COALESCE(i.amount_paid,0) AS amount_paid,
+             GREATEST(i.total-COALESCE(i.amount_paid,0),0) AS balance_due,
              i.status, i.notes, i.service_date, i.due_date, i.sent_at, i.created_at
       FROM invoices i
       WHERE i.client_id = $1
@@ -158,6 +160,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const invoice = invoiceRows[0];
 
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (req.user.role === 'client' && Number(invoice.client_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'You can only view invoices assigned to your portal account' });
+    }
 
     const { rows: items } = await req.db.query('SELECT * FROM invoice_items WHERE invoice_id = $1', [req.params.id]);
     const { rows: payments } = await req.db.query('SELECT * FROM invoice_payments WHERE invoice_id=$1 ORDER BY paid_at DESC, id DESC', [req.params.id]);
