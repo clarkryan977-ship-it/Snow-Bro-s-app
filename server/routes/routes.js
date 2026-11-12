@@ -444,8 +444,8 @@ router.get('/:id/stops', authenticateToken, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Import address data from a prepared route workbook into existing stops.
-// Matching is by client name, while the route order remains unchanged.
+// Import address data from a prepared route workbook. Existing stops are updated;
+// missing stops are created so an empty route can be populated in one step.
 router.post('/:id/import-addresses', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
@@ -462,8 +462,17 @@ router.post('/:id/import-addresses', authenticateToken, requireAdmin, async (req
       if (!byName.has(key)) byName.set(key, []);
       byName.get(key).push(s);
     }
-    const clientByName = new Map(clients.map(c => [norm(`${c.first_name || ''} ${c.last_name || ''}`), c]));
+    const clientByName = new Map();
+    for (const c of clients) {
+      const key = norm(`${c.first_name || ''} ${c.last_name || ''}`);
+      if (!clientByName.has(key)) clientByName.set(key, []);
+      clientByName.get(key).push(c);
+    }
     const clientUpdated = new Set();
+    let created = 0;
+    let nextPosition = stops.length
+      ? Math.max(...stops.map(s => Number(s.position) || 0)) + 1
+      : 0;
     let updated = 0;
     const unmatched = [];
     for (const row of rows) {
@@ -471,24 +480,37 @@ router.post('/:id/import-addresses', authenticateToken, requireAdmin, async (req
       if (!name) continue;
       const matches = byName.get(name) || [];
       const stop = matches.shift();
-      if (!stop) { unmatched.push(row.client || row.name); continue; }
+      const client = (clientByName.get(name) || [])[0];
+      if (!stop && !client) { unmatched.push(row.client || row.name); continue; }
       const lat = row.latitude !== '' && row.latitude != null ? Number(row.latitude) : null;
       const lng = row.longitude !== '' && row.longitude != null ? Number(row.longitude) : null;
-      await req.db.query(`UPDATE route_stops SET address=$1, city=$2, state=$3, zip=$4,
-        stop_lat=$5, stop_lng=$6 WHERE id=$7 AND route_id=$8`, [
-        String(row.address || '').trim(), String(row.city || '').trim(), String(row.state || '').trim(),
-        String(row.zip || '').trim(), Number.isFinite(lat) ? lat : null, Number.isFinite(lng) ? lng : null,
-        stop.id, req.params.id]);
-      const client = clientByName.get(name);
+      const address = String(row.address || '').trim();
+      const city = String(row.city || '').trim();
+      const state = String(row.state || '').trim();
+      const zip = String(row.zip || '').trim();
+      if (stop) {
+        await req.db.query(`UPDATE route_stops SET address=$1, city=$2, state=$3, zip=$4,
+          stop_lat=$5, stop_lng=$6 WHERE id=$7 AND route_id=$8`, [
+          address, city, state, zip, Number.isFinite(lat) ? lat : null, Number.isFinite(lng) ? lng : null,
+          stop.id, req.params.id]);
+      } else {
+        await req.db.query(`INSERT INTO route_stops
+          (route_id, client_id, position, frequency, notes, stop_label, address, city, state, zip, stop_lat, stop_lng)
+          VALUES ($1,$2,$3,'weekly','',$4,$5,$6,$7,$8,$9,$10)`, [
+          req.params.id, client.id, nextPosition++, row.client || `${client.first_name} ${client.last_name}`,
+          address, city, state, zip, Number.isFinite(lat) ? lat : null, Number.isFinite(lng) ? lng : null
+        ]);
+        created++;
+      }
       if (client && !clientUpdated.has(client.id) && row.address && !String(row.address).toLowerCase().includes('reserved')) {
         await req.db.query('UPDATE clients SET address=$1, city=$2, state=$3, zip=$4 WHERE id=$5', [
-          String(row.address).trim(), String(row.city || '').trim(), String(row.state || '').trim(), String(row.zip || '').trim(), client.id
+          address, city, state, zip, client.id
         ]);
         clientUpdated.add(client.id);
       }
       updated++;
     }
-    res.json({ message: `Updated ${updated} route address${updated === 1 ? '' : 'es'} and ${clientUpdated.size} client record${clientUpdated.size === 1 ? '' : 's'}`, updated, clientsUpdated: clientUpdated.size, unmatched });
+    res.json({ message: `Updated ${updated} route address${updated === 1 ? '' : 'es'}, created ${created} stop${created === 1 ? '' : 's'}, and updated ${clientUpdated.size} client record${clientUpdated.size === 1 ? '' : 's'}`, updated, created, clientsUpdated: clientUpdated.size, unmatched });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
