@@ -229,7 +229,7 @@ export default function AdminInvoices() {
           <button className="btn btn-secondary" onClick={purgeAllInvoices} style={{ color:'#b91c1c', borderColor:'#fecaca' }}>
             Delete All Invoices
           </button>
-          <button className="btn btn-primary" onClick={openCreate}>+ New Invoice</button>
+          <button className="btn btn-primary" onClick={openCreate} aria-label="Create one-off invoice" style={{ minWidth: 150, whiteSpace: 'nowrap' }}>＋ Create Invoice</button>
         </div>
       </div>
 
